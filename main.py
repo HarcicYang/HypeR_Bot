@@ -1,11 +1,14 @@
 import asyncio
-from lib import Listener, Manager, Configurator, Segements
+from lib import Listener, Manager, Configurator, Segements, Logger
 import importlib
 import gc
 import modules
+import traceback
 
 config = Configurator.Config("config.json")
 handler_list = modules.funcs
+logger = Logger.Logger()
+logger.set_level(config.log_level)
 
 
 def load() -> None:
@@ -35,10 +38,14 @@ async def handler(event: Manager.Event, actions: Listener.Actions) -> None:
 
     task_list = []
     servicing.append(event.user_id)
-    for i in handler_list:
-        temp_handler = i.ModuleClass(actions, event)
-        task_list.append(asyncio.create_task(temp_handler.handle()))
-    await asyncio.gather(*task_list)
+    try:
+        for i in handler_list:
+            temp_handler = i.ModuleClass(actions, event)
+            task_list.append(asyncio.create_task(temp_handler.handle()))
+        await asyncio.gather(*task_list)
+    except:
+        logger.log("出现错误：", Logger.levels.ERROR)
+        traceback.print_exc()
     servicing.remove(event.user_id)
 
 Listener.run()

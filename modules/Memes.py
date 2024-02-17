@@ -1,8 +1,6 @@
 import httpx
-
 from lib import Manager, Listener, Segements
 from meme_generator import get_meme
-import asyncio
 import os
 
 emoji_dict = {
@@ -284,7 +282,7 @@ class ModuleClass:
                         f.write(response.content)
                     images.append(f"img{img_num}.jpg")
                     img_num += 1
-            result = asyncio.run(meme(images=images, texts=texts, args=args))
+            result = await meme(images=images, texts=texts, args=args)
             with open("result.png", "wb") as f:
                 f.write(result.getvalue())
 
