@@ -95,9 +95,6 @@ async def video_info(bv: str):
     return Info()
 
 
-
-
-
 class ModuleClass:
     def __init__(self, actions: Listener.Actions, event: Manager.Event):
         self.actions = actions
@@ -110,7 +107,7 @@ class ModuleClass:
             return
 
         if bv_id:
-            info = video_info(bv_id)
+            info = await video_info(bv_id)
             get_image(info)
             result = Manager.Message([Segements.Image(f"file:///{os.path.abspath('bili.png')}")])
 
@@ -123,9 +120,6 @@ class ModuleClass:
             return
         content = url.replace("github.com/", "opengraph.githubassets.com/Yenai/")
 
-        self.actions.send(group_id=self.event.group_id, message=
-                          Manager.Message(
-                              [Segements.Image(content)]
-                          )
-                          )
-
+        self.actions.send(group_id=self.event.group_id, message=Manager.Message(
+            [Segements.Image(content)]
+        ))
