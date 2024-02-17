@@ -1,0 +1,18 @@
+{
+  "owner": [
+    2488529467
+  ],
+  "black_list": [],
+  "Connection": {
+    "host": "127.0.0.1",
+    "port": 5004
+  },
+  "Log_level": "INFO",
+  "Others": {
+    "Chat": {
+      "Qwen": {
+        "key": "sk-2da665db50af40d2a28dcdfead623647"
+      }
+    }
+  }
+}
