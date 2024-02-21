@@ -161,10 +161,10 @@ class Video:
 
 class Poke:
     def __init__(self, poke_type: str, poke_id: str):
-        self.content = {"type": "video", "data": {"type": poke_type, "id": poke_id}}
+        self.content = {"type": "poke", "data": {"type": poke_type, "id": poke_id}}
 
     def set(self, poke_type: str, poke_id: str) -> None:
-        self.content = {"type": "video", "data": {"type": poke_type, "id": poke_id}}
+        self.content = {"type": "poke", "data": {"type": poke_type, "id": poke_id}}
 
     def get(self) -> None:
         raise NotImplementedError("This type of message cannot use '.get()'")
