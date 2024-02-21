@@ -1,6 +1,5 @@
 import asyncio
 import threading
-
 import websocket
 from lib import Configurator, Manager, Logger
 import json

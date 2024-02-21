@@ -57,9 +57,9 @@ class ModuleClass:
             if data[i].violations < 0:
                 data[i].violations = 0
 
-        if data[self.event.user_id].violations >= 7:
+        if data[self.event.user_id].violations >= 5:
             self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
-                                       duration=60 * data[self.event.user_id].violation_level)
+                                       duration=(60 * data[self.event.user_id].violation_level))
             self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
                               message=Manager.Message(
                                   [

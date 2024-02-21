@@ -1,5 +1,6 @@
 from lib import Manager, Listener, Segements
-import random, json
+import random
+import json
 
 with open("quick.json", "r", encoding="utf-8") as f:
     quicks = json.load(f)
