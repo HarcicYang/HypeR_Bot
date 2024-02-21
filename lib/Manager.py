@@ -7,14 +7,16 @@ config = Config("./config.json")
 logger = Logger()
 logger.set_level(config.log_level)
 
+accept_types = [Text, Image, At, Reply, Face, Location, Record, Video, Node, Contact, Forward, Poke, CustomNode]
+
 
 class Message:
-    def __init__(self, contents: list[Union[Text, Image, At, Reply, Face, Location]] = None):
+    def __init__(self, contents: list[Union[*accept_types]] = None):
         if contents is None:
             contents = []
         self.contents = contents
 
-    def add(self, content: Union[Text, Image, At, Reply, Face, Location]) -> None:
+    def add(self, content: Union[*accept_types]) -> None:
         self.contents.append(content)
 
     def get(self) -> list:
@@ -26,16 +28,16 @@ class Message:
     def __len__(self) -> int:
         return len(self.contents)
 
-    def __getitem__(self, index: int) -> Union[Text, Image, At, Reply, Face, Location]:
+    def __getitem__(self, index: int) -> Union[*accept_types]:
         return self.contents[index]
 
-    def __setitem__(self, index: int, content: Union[Text, Image, At, Reply, Face, Location]) -> None:
+    def __setitem__(self, index: int, content: Union[*accept_types]) -> None:
         self.contents[index] = content
 
     def __delitem__(self, index: int) -> None:
         del self.contents[index]
 
-    def __iter__(self) -> Union[Text, Image, At, Reply, Face, Location]:
+    def __iter__(self) -> Union[*accept_types]:
         for i in self.contents:
             yield i
 
