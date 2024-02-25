@@ -109,7 +109,7 @@ class ModuleClass:
         if bv_id:
             info = await video_info(bv_id)
             get_image(info)
-            result = Manager.Message([Segements.Image(f"file:///{os.path.abspath('bili.png')}")])
+            result = Manager.Message([Segements.Image(f"file://{os.path.abspath('bili.png')}")])
 
             self.actions.send(group_id=self.event.group_id, message=result)
 

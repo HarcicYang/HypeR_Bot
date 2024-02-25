@@ -1,3 +1,5 @@
+import base64
+
 import httpx
 from lib import Manager, Listener, Segements
 from meme_generator import get_meme
@@ -283,14 +285,18 @@ class ModuleClass:
                     images.append(f"img{img_num}.jpg")
                     img_num += 1
             result = await meme(images=images, texts=texts, args=args)
-            with open("result.png", "wb") as f:
-                f.write(result.getvalue())
+            # with open("result.png", "wb") as f:
+            #     f.write(result.getvalue())
+            content = result.getvalue()
+            content_text = f"base64://{base64.b64encode(content).decode()}"
 
             self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
                               message=Manager.Message(
                                   [
                                       Segements.Reply(self.event.message_id),
-                                      Segements.Image("file:///" + os.path.abspath("result.png"))
+                                      # Segements.Image("file://" + os.path.abspath("result.png"))
+                                      Segements.Image(content_text)
+
                                   ]
                               )
                               )
