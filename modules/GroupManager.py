@@ -1,4 +1,4 @@
-from lib import Manager, Listener, Segements
+from lib import Manager, Listener, Segments
 from Levenshtein import distance
 
 
@@ -63,8 +63,8 @@ class ModuleClass:
             self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
                               message=Manager.Message(
                                   [
-                                      Segements.At(str(self.event.user_id)),
-                                      Segements.Text("请勿刷屏")
+                                      Segments.At(str(self.event.user_id)),
+                                      Segments.Text("请勿刷屏")
                                   ]
                               ))
             data[self.event.user_id].violations = 2

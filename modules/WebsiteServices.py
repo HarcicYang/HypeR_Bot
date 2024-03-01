@@ -1,4 +1,4 @@
-from lib import Manager, Listener, Segements
+from lib import Manager, Listener, Segments
 import re
 from bilibili_api import video
 import os
@@ -109,7 +109,7 @@ class ModuleClass:
         if bv_id:
             info = await video_info(bv_id)
             get_image(info)
-            result = Manager.Message([Segements.Image(f"file://{os.path.abspath('bili.png')}")])
+            result = Manager.Message([Segments.Image(f"file://{os.path.abspath('bili.png')}")])
 
             self.actions.send(group_id=self.event.group_id, message=result)
 
@@ -121,5 +121,5 @@ class ModuleClass:
         content = url.replace("github.com/", "opengraph.githubassets.com/Yenai/")
 
         self.actions.send(group_id=self.event.group_id, message=Manager.Message(
-            [Segements.Image(content)]
+            [Segments.Image(content)]
         ))

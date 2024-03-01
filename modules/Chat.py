@@ -1,4 +1,4 @@
-from lib import Manager, Listener, Segements, DataBase, Configurator
+from lib import Manager, Listener, Segments, DataBase, Configurator
 import dashscope
 from dashscope import Generation
 from dashscope import MultiModalConversation
@@ -54,9 +54,9 @@ class LLM:
     def ask_qwenvl(self) -> str:
         messages = []
         for i in self.raw_message:
-            if type(i) is Segements.Text:
+            if type(i) is Segments.Text:
                 messages.append({"text": str(i.get()).replace(".chat ", "", 1)})
-            elif type(i) is Segements.Image:
+            elif type(i) is Segments.Image:
                 messages.append({"image": i.get()})
             else:
                 messages.append({"text": str(i)})
@@ -98,7 +98,7 @@ class ModuleClass:
                 llm = LLM(self.event.user_id, message, self.event.message)
                 text = llm.handle()
                 # print(text)
-                message = Manager.Message([Segements.Reply(self.event.message_id), Segements.Text(text)])
+                message = Manager.Message([Segments.Reply(self.event.message_id), Segments.Text(text)])
                 self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id, message=message)
 
             elif str(self.event.message).startswith(".sys") and self.event.is_owner:
@@ -106,8 +106,8 @@ class ModuleClass:
                 self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
                                   message=Manager.Message(
                                       [
-                                          Segements.Reply(self.event.message_id),
-                                          Segements.Text("成功"),
+                                          Segments.Reply(self.event.message_id),
+                                          Segments.Text("成功"),
                                       ]
                                   )
                                   )
@@ -117,8 +117,8 @@ class ModuleClass:
                 self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
                                   message=Manager.Message(
                                       [
-                                          Segements.Reply(self.event.message_id),
-                                          Segements.Text("成功"),
+                                          Segments.Reply(self.event.message_id),
+                                          Segments.Text("成功"),
                                       ]
                                   )
                                   )

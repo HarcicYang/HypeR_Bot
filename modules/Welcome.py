@@ -1,4 +1,4 @@
-from lib import Manager, Listener, Segements
+from lib import Manager, Listener, Segments
 import random
 import json
 
@@ -26,5 +26,5 @@ class ModuleClass:
             else:
                 return None
             self.actions.send(group_id=self.event.group_id, message=Manager.Message(
-                [Segements.Text(text)]
+                [Segments.Text(text)]
             ))

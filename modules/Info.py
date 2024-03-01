@@ -1,4 +1,4 @@
-from lib import Manager, Listener, Segements
+from lib import Manager, Listener, Segments
 import datetime
 
 
@@ -28,4 +28,4 @@ class ModuleClass:
                 name,
                 code
             )
-            self.actions.send(group_id=self.event.group_id, message=Manager.Message([Segements.Text(message)]))
+            self.actions.send(group_id=self.event.group_id, message=Manager.Message([Segments.Text(message)]))

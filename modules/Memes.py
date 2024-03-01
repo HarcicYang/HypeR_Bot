@@ -1,7 +1,7 @@
 import base64
 
 import httpx
-from lib import Manager, Listener, Segements
+from lib import Manager, Listener, Segments
 from meme_generator import get_meme
 import os
 
@@ -249,7 +249,7 @@ class ModuleClass:
                 self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
                                   message=Manager.Message(
                                       [
-                                          Segements.Text(
+                                          Segments.Text(
                                               "参数错误。请参阅https://github.com/MeetWq/meme-generator/blob/main/docs/memes.md"
                                           )
                                       ]
@@ -261,7 +261,7 @@ class ModuleClass:
             args = {}
             img_num = 0
             for i in self.event.message:
-                if type(i) is Segements.Text:
+                if type(i) is Segments.Text:
                     i = str(i).replace(f"{cmd} ", "", 1).replace(str(message).split()[1], "")
                     listed = i.split()
                     for j in listed:
@@ -278,7 +278,7 @@ class ModuleClass:
                             args[argv[0]] = value
                         else:
                             texts.append(j)
-                elif type(i) is Segements.Image:
+                elif type(i) is Segments.Image:
                     response = httpx.get(i.get())
                     with open(f"img{img_num}.jpg", "wb") as f:
                         f.write(response.content)
@@ -293,9 +293,9 @@ class ModuleClass:
             self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
                               message=Manager.Message(
                                   [
-                                      Segements.Reply(self.event.message_id),
-                                      # Segements.Image("file://" + os.path.abspath("result.png"))
-                                      Segements.Image(content_text)
+                                      Segments.Reply(self.event.message_id),
+                                      # Segments.Image("file://" + os.path.abspath("result.png"))
+                                      Segments.Image(content_text)
 
                                   ]
                               )

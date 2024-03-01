@@ -1,5 +1,5 @@
 from typing import Union
-from lib.Segements import *
+from lib.Segments import *
 from lib.Configurator import *
 from lib.Logger import Logger
 

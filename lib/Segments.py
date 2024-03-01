@@ -257,3 +257,43 @@ class CustomNode:
 
     def __repr__(self) -> str:
         return str(self.content)
+
+
+class KeyBoard:
+    def __init__(self, buttons: dict):
+        self.content = {"type": "keyboard", "data": {"content": buttons}}
+
+    def set(self, buttons: dict) -> None:
+        self.content = {"type": "keyboard", "data": {"content": buttons}}
+
+    def get(self) -> dict:
+        return self.content["data"]["content"]
+
+    def get_raw(self) -> dict:
+        return self.content
+
+    def __str__(self) -> str:
+        return f"[自定按键版]"
+
+    def __repr__(self) -> str:
+        return str(self.content)
+
+
+class MarkDown:
+    def __init__(self, content: dict):
+        self.content = {"type": "markdown", "data": {"content": content}}
+
+    def set(self, content: str):
+        self.content = {"type": "markdown", "data": {"content": content}}
+
+    def get(self) -> dict:
+        return self.content["data"]["content"]
+
+    def get_raw(self) -> dict:
+        return self.content
+
+    def __str__(self) -> str:
+        return f"[MarkDown]"
+
+    def __repr__(self) -> str:
+        return str(self.content)

@@ -1,4 +1,4 @@
-from lib import Manager, Listener, Segements, DataBase
+from lib import Manager, Listener, Segments, DataBase
 
 data_set = DataBase.Dataset()
 
@@ -20,7 +20,7 @@ class ModuleClass:
                 data_set.dict_set(item_id, {"user": self.event.user_id})
                 self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
                                   message=Manager.Message(
-                                      [Segements.Reply(self.event.message_id), Segements.Text("成功")]
+                                      [Segments.Reply(self.event.message_id), Segments.Text("成功")]
                                   )
                                   )
             else:
@@ -28,12 +28,12 @@ class ModuleClass:
                     data_set.clear()
                     self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
                                       message=Manager.Message(
-                                          [Segements.Reply(self.event.message_id), Segements.Text("成功")]
+                                          [Segments.Reply(self.event.message_id), Segments.Text("成功")]
                                       )
                                       )
                 else:
                     self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
                                       message=Manager.Message(
-                                          [Segements.Reply(self.event.message_id), Segements.Text("你无权这么做")]
+                                          [Segments.Reply(self.event.message_id), Segments.Text("你无权这么做")]
                                       )
                                       )

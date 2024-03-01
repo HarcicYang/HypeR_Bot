@@ -1,4 +1,4 @@
-from lib import Manager, Listener, Segements
+from lib import Manager, Listener, Segments
 
 
 class ModuleClass:
@@ -16,5 +16,5 @@ class ModuleClass:
             target = cmds.split(" ")[1]
             cmds = cmds.replace(target, "", 1).replace(".alert", "", 1)
             self.actions.send(group_id=int(target), message=Manager.Message(
-                [Segements.Text(cmds)]
+                [Segments.Text(cmds)]
             ))
