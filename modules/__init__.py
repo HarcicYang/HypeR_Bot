@@ -1,5 +1,5 @@
 import lib
-from modules import Chat, DataBaseManager, Memes, GroupManager, WebsiteServices, Alert, Welcome, Info
+from modules import Chat, DataBaseManager, Memes, GroupManager, WebsiteServices, Alert, Welcome, Info, Music, Rest
 
 funcs: list[type(lib)] = \
     [Chat,
@@ -9,5 +9,7 @@ funcs: list[type(lib)] = \
      WebsiteServices,
      Alert,
      Welcome,
-     Info
+     Info,
+     Music,
+     Rest
      ]
