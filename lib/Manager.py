@@ -7,7 +7,8 @@ config = Config("./config.json")
 logger = Logger()
 logger.set_level(config.log_level)
 
-accept_types = [Text, Image, At, Reply, Face, Location, Record, Video, Node, Contact, Forward, Poke, CustomNode]
+accept_types = \
+    [Text, Image, At, Reply, Face, Location, Record, Video, Node, Contact, Forward, Poke, CustomNode, KeyBoard, MarkDown]
 
 
 class Message:

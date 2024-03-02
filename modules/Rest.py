@@ -23,69 +23,16 @@ class ModuleClass:
                 self.actions.send(group_id=self.event.group_id,
                                   message=Manager.Message([Segments.Text("啊啊啊，什么啊，群友好恐怖呜呜呜")]))
             else:
-                message = Manager.Message(
-                    [Segments.Text("主人会选择哪个套餐呢。。。"), Segments.KeyBoard(
-                        {
-                            "rows": [{
-                                "buttons": [{
-                                    "id": "1",
-                                    "render_data": {
-                                        "label": "先吃饭！",
-                                        "visited_label": "先吃饭！",
-                                        "style": 1
-                                    },
-                                    "action": {
-                                        "type": 2,
-                                        "permission": {
-                                            "type": 2
-                                        },
-                                        "enter": True,
-                                        "click_limit": 10,
-                                        "unsupport_tips": "Harcic",
-                                        "data": "先吃饭吧"
-                                    }
-                                },
-                                    {
-                                        "id": "2",
-                                        "render_data": {
-                                            "label": "先洗澡！",
-                                            "visited_label": "先洗澡！",
-                                            "style": 1
-                                        },
-                                        "action": {
-                                            "type": 2,
-                                            "permission": {
-                                                "type": 2
-                                            },
-                                            "enter": True,
-                                            "click_limit": 10,
-                                            "unsupport_tips": "Harcic",
-                                            "data": "先洗澡吧"
-                                        }
-                                    },
-                                    {
-                                        "id": "3",
-                                        "render_data": {
-                                            "label": "先吃我？",
-                                            "visited_label": "先吃我？",
-                                            "style": 1
-                                        },
-                                        "action": {
-                                            "type": 2,
-                                            "permission": {
-                                                "type": 2
-                                            },
-                                            "enter": True,
-                                            "click_limit": 10,
-                                            "unsupport_tips": "Harcic",
-                                            "data": "嘿嘿我来了小机器人！！"
-                                        }
-                                    }
-                                ]
-                            }],
-                            "bot_appid": 0
-                        }
+                custom_row = [
+                    Segments.KeyBoardRow(
+                        [
+                            Segments.KeyBoardButton(text="先吃饭吧", data="先吃饭吧", enter=True),
+                            Segments.KeyBoardButton(text="先洗澡吧", data="先洗澡吧", enter=True),
+                            Segments.KeyBoardButton(text="先吃我？？", data="嘿嘿我来了小机器人~准备好了吗~~",
+                                                    enter=True),
+                        ]
                     )
-                     ])
+                ]
+                message = Manager.Message(
+                    [Segments.Text("主人会选择哪个套餐呢。。。"), Segments.KeyBoard(custom_row)])
                 self.actions.send(group_id=self.event.group_id, message=message)
-

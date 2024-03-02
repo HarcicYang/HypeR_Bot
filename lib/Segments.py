@@ -1,3 +1,6 @@
+import uuid
+from lib.Errors import *
+
 class Text:
     def __init__(self, text: str):
         self.content = {"type": "text", "data": {"text": text}}
@@ -167,7 +170,7 @@ class Poke:
         self.content = {"type": "poke", "data": {"type": poke_type, "id": poke_id}}
 
     def get(self) -> None:
-        raise NotImplementedError("This type of message cannot use '.get()'")
+        raise NotSupportError("This type of message cannot use '.get()'")
 
     def get_raw(self) -> dict:
         return self.content
@@ -187,7 +190,7 @@ class Contact:
         self.content = {"type": "contact", "data": {"type": platform, "id": target_id}}
 
     def get(self) -> str:
-        raise NotImplementedError("This type of message cannot use '.get()'")
+        raise NotSupportError("This type of message cannot use '.get()'")
 
     def get_raw(self) -> dict:
         return self.content
@@ -259,12 +262,102 @@ class CustomNode:
         return str(self.content)
 
 
-class KeyBoard:
-    def __init__(self, buttons: dict):
-        self.content = {"type": "keyboard", "data": {"content": buttons}}
+class KeyBoardButton:
+    def __init__(self,
+               text: str,
+               style: int = 1,
+               button_type: int = 2,
+               data: str = "Hello World",
+               enter: bool = False,
+               permission: int = 2,
+               specify_user_ids=None):
+        self.content = {
+            "id": str(uuid.uuid4()),
+            "render_data": {
+                "label": text,
+                "visited_label": text,
+                "style": style
+            },
+            "action": {
+                "type": button_type,
+                "permission": {
+                    "type": permission,
+                    "specify_user_ids": specify_user_ids
+                },
+                "enter": enter,
+                "unsupport_tips": "Harcic",
+                "data": data
+            }
+        }
 
-    def set(self, buttons: dict) -> None:
-        self.content = {"type": "keyboard", "data": {"content": buttons}}
+    def set(self,
+            text: str,
+            style: int = 1,
+            button_type: int = 2,
+            data: str = "Hello World",
+            enter: bool = False,
+            permission: int = 2,
+            specify_user_ids=None) -> None:
+        self.content = {
+            "id": str(uuid.uuid4()),
+            "render_data": {
+                "label": text,
+                "visited_label": text,
+                "style": style
+            },
+            "action": {
+                "type": button_type,
+                "permission": {
+                    "type": permission,
+                    "specify_user_ids": specify_user_ids
+                },
+                "enter": enter,
+                "unsupport_tips": "Harcic",
+                "data": data
+            }
+        }
+
+    def get(self) -> dict:
+        return self.content
+
+    def __str__(self) -> str:
+        return f"[按键{self.content['render_data']['label']}]"
+
+    def __repr__(self) -> str:
+        return str(self.content)
+
+
+class KeyBoardRow:
+    def __init__(self, buttons: list[KeyBoardButton] = None):
+        self.content = {
+            "buttons": []
+        }
+        buttons = [] if buttons is None else buttons
+        for i in buttons:
+            self.content["buttons"].append(i.get())
+
+    def add(self, button: KeyBoardButton) -> None:
+        if len(self.content["buttons"]) < 5:
+            self.content["buttons"].append(button.get())
+        else:
+            raise ButtonRowFulledError("This button row is full")
+
+    def get(self) -> dict:
+        return self.content
+
+
+class KeyBoard:
+    def __init__(self, button_rows: list[KeyBoardRow]):
+        rows = []
+        for i in button_rows:
+            rows.append(i.get())
+        self.content = {"type": "keyboard", "data": {"content": {"rows": rows}, "bot_appid": 0}}
+
+    def set(self, button_rows: list[KeyBoardRow]):
+        rows = []
+        for i in button_rows:
+            rows.append(i.get())
+        self.content = {"type": "keyboard", "data": {"content": {"rows": rows}, "bot_appid": 0}}
 
     def get(self) -> dict:
         return self.content["data"]["content"]
