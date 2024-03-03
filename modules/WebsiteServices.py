@@ -113,13 +113,18 @@ class ModuleClass:
 
             self.actions.send(group_id=self.event.group_id, message=result)
 
-        pa = r"https?://(?:www\.)?github\.com/(?P<username>[a-zA-Z0-9._-]+)/(?P<repository>[a-zA-Z0-9._-]+)/?"
+        pa = r"(http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+\b)"
         try:
             url = re.search(pa, str(self.event.message)).group()
         except:
             return
-        content = url.replace("github.com/", "opengraph.githubassets.com/Yenai/")
+        if "github.com/" in url:
+            content = url.replace("github.com/", "opengraph.githubassets.com/Yenai/")
+            self.actions.send(group_id=self.event.group_id, message=Manager.Message(
+                [Segments.Image(content)]
+            ))
 
-        self.actions.send(group_id=self.event.group_id, message=Manager.Message(
-            [Segments.Image(content)]
-        ))
+        elif "bilibili.com/video/" in url or "b23.tv/" in url:
+            pass
+        else:
+            return
