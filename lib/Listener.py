@@ -98,6 +98,43 @@ class Actions:
         self.ws.send(json.dumps(payload))
         return get_ret(echo)
 
+    def send_forward_msg(self, message: Manager.Message) -> Manager.Ret:
+        echo = get_echo("send_forward_msg")
+        payload = {
+            "action": "send_forward_msg",
+            "params": {
+                "message": message.get(),
+            },
+            "echo": echo,
+        }
+        self.ws.send(json.dumps(payload))
+        return get_ret(echo)
+
+    def send_group_forward_msg(self, group_id: int, message: Manager.Message) -> Manager.Ret:
+        echo = get_echo("send_group_forward_msg")
+        payload = {
+            "action": "send_group_forward_msg",
+            "params": {
+                "group_id": group_id,
+                "message": message.get(),
+            },
+        }
+        self.ws.send(json.dumps(payload))
+        return get_ret(echo)
+
+    def set_group_add_request(self, flag: str, sub_type: str, approve: bool, reason: str = "Refused") -> None:
+        payload = {
+            "action": "set_group_add_request",
+            "params": {
+                "flag": flag,
+                "sub_type": sub_type,
+                "approve": approve,
+                "reason": reason,
+            },
+        }
+        self.ws.send(json.dumps(payload))
+        logger.log(f"处理 {sub_type} 请求 {flag} 的结果为 {approve}")
+
 
 def get_ret(echo: str) -> Manager.Ret:
     old = None

@@ -8,7 +8,8 @@ logger = Logger()
 logger.set_level(config.log_level)
 
 accept_types = \
-    [Text, Image, At, Reply, Face, Location, Record, Video, Node, Contact, Forward, Poke, CustomNode, KeyBoard, MarkDown]
+    [Text, Image, At, Reply, Face, Location, Record, Video, Node, Contact, Forward, Poke, CustomNode, KeyBoard,
+     MarkDown]
 
 
 class Message:
@@ -82,26 +83,36 @@ def gen_message(data: dict) -> Message:
 
 class Event:
     def __init__(self, data: dict):
-        self.time = data["time"]
-        self.self_id = data["self_id"]
-        self.post_type = data["post_type"]
+        self.time = data.get("time")
+        self.self_id = data.get("self_id")
+        self.post_type = data.get("post_type")
         if self.post_type == "message":
-            self.message_type = data["message_type"]
-            self.sub_type = data["sub_type"]
-            self.message_id = str(data["message_id"])
-            self.user_id = data["user_id"]
+            self.message_type = data.get("message_type")
+            self.sub_type = data.get("sub_type")
+            self.message_id = str(data.get("message_id"))
+            self.user_id = data.get("user_id")
             self.group_id = data.get("group_id")
-            self.sender = Sender(data["sender"])
+            self.sender = Sender(data.get("sender"))
             self.message = gen_message(data)
             logger.log(
                 f"收到 {self.group_id} 由 {self.user_id} 发送的消息: {self.message if len(str(self.message)) < 5 else str(self.message)[:5] + '...'}")
 
         elif self.post_type == "notice":
-            self.notice_type = data["notice_type"]
-            self.sub_type = data["sub_type"]
+            self.notice_type = data.get("notice_type")
+            self.sub_type = data.get("sub_type")
             self.group_id = data.get("group_id")
             self.operator_id = data.get("operator_id")
-            self.user_id = data["user_id"]
+            self.user_id = data.get("user_id")
+
+        elif self.post_type == "request":
+            self.request_type = data.get("request_type")
+            self.sub_type = data.get("sub_type")
+            self.user_id = data.get("user_id")
+            self.group_id = data.get("group_id")
+            self.comment = data.get("comment")
+            self.flag = data.get("flag")
+            logger.log(
+                f"收到 {self.group_id} 由 {self.user_id} 发送的{'加群请求' if self.sub_type == 'add' else '邀请加群'}: {self.comment}")
 
         self.is_owner = int(self.user_id) in config.owner
 

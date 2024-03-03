@@ -1,5 +1,7 @@
+import json
 import uuid
 from lib.Errors import *
+
 
 class Text:
     def __init__(self, text: str):
@@ -243,11 +245,13 @@ class Node:
 
 
 class CustomNode:
-    def __init__(self, user_id: str, nick_name: str, content: list):
-        self.content = {"type": "node", "data": {"user_id": user_id, "nick_name": nick_name, "content": content}}
+    def __init__(self, user_id: str, nick_name: str, content):
+        self.content = {"type": "node",
+                        "data": {"user_id": user_id, "nick_name": nick_name, "content": content.get()}}
 
-    def set(self, user_id: str, nick_name: str, content: list) -> None:
-        self.content = {"type": "node", "data": {"user_id": user_id, "nick_name": nick_name, "content": content}}
+    def set(self, user_id: str, nick_name: str, content) -> None:
+        self.content = {"type": "node",
+                        "data": {"user_id": user_id, "nick_name": nick_name, "content": content.get()}}
 
     def get(self) -> list:
         return self.content["data"]["content"]
@@ -264,13 +268,13 @@ class CustomNode:
 
 class KeyBoardButton:
     def __init__(self,
-               text: str,
-               style: int = 1,
-               button_type: int = 2,
-               data: str = "Hello World",
-               enter: bool = False,
-               permission: int = 2,
-               specify_user_ids=None):
+                 text: str,
+                 style: int = 1,
+                 button_type: int = 2,
+                 data: str = "Hello World",
+                 enter: bool = False,
+                 permission: int = 2,
+                 specify_user_ids=None):
         self.content = {
             "id": str(uuid.uuid4()),
             "render_data": {
@@ -373,20 +377,40 @@ class KeyBoard:
 
 
 class MarkDown:
-    def __init__(self, content: dict):
-        self.content = {"type": "markdown", "data": {"content": content}}
+    def __init__(self, content: str):
+        self.content = {"type": "markdown", "data": {"content": json.dumps({"content": content, "bot_appid": 0})}}
 
-    def set(self, content: str):
-        self.content = {"type": "markdown", "data": {"content": content}}
+    def set(self, content: str) -> None:
+        self.content = {"type": "markdown", "data": {"content": json.dumps({"content": content, "bot_appid": 0})}}
 
-    def get(self) -> dict:
-        return self.content["data"]["content"]
+    def get(self) -> str:
+        return json.loads(self.content["data"]["content"])["content"]
 
     def get_raw(self) -> dict:
         return self.content
 
     def __str__(self) -> str:
         return f"[MarkDown]"
+
+    def __repr__(self) -> str:
+        return str(self.content)
+
+
+class LongMessage:
+    def __init__(self, long_msg_id: str):
+        self.content = {"type": "longmsg", "data": {"id": long_msg_id}}
+
+    def set(self, long_msg_id: str) -> None:
+        self.content = {"type": "longmsg", "data": {"id": long_msg_id}}
+
+    def get(self) -> str:
+        return self.content["data"]["id"]
+
+    def get_raw(self) -> dict:
+        return self.content
+
+    def __str__(self) -> str:
+        return f"[长消息{self.content['data']['id']}]"
 
     def __repr__(self) -> str:
         return str(self.content)
