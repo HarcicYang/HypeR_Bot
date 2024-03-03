@@ -17,8 +17,8 @@ class ModuleClass:
             version = self.actions.get_version_info()
             name = version.data["app_name"]
             code = version.data["app_version"]
-            message = ("HypeR Bot v0.1\n"
-                       "By Harcic(https://github.com/harcicyang )\n"
+            message = ("HypeR Bot v0.2\n"
+                       "https://github.com/HarcicYang/HypeR_Bot\n"
                        "\n"
                        "时间：{}\n"
                        "OneBot实现名称：{}"
