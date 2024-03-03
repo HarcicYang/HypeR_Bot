@@ -69,7 +69,10 @@ def gen_message(data: dict) -> Message:
         if i["type"] == "text":
             message.add(Text(i["data"]["text"]))
         elif i["type"] == "image":
-            message.add(Image(i["data"]["file"]))
+            url = str(i["data"]["file"])
+            if url.startswith("https://multimedia.nt.qq.com.cn/"):
+                url = url.replace("https://multimedia.nt.qq.com.cn/", "http://gchat.qpic.cn/")
+            message.add(Image(url))
         elif i["type"] == "at":
             message.add(At(i["data"]["qq"]))
         elif i["type"] == "reply":
