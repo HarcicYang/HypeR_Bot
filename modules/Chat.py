@@ -88,6 +88,8 @@ class ModuleClass:
         self.event = event
 
     async def handle(self):
+        if self.event.blocked or self.event.servicing:
+            return
         dataset.load()
         global sys_prompt, mode
         # print(str(self.event.message))

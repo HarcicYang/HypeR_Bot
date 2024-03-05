@@ -7,6 +7,8 @@ class ModuleClass:
         self.event = event
 
     async def handle(self):
+        if self.event.blocked or self.event.servicing:
+            return
         try:
             cmds = str(self.event.message)
         except AttributeError:

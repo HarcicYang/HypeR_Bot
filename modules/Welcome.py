@@ -12,6 +12,8 @@ class ModuleClass:
         self.event = event
 
     async def handle(self):
+        if self.event.blocked or self.event.servicing:
+            return
         if self.event.post_type == "notice":
             if self.event.notice_type == "group_increase":
                 text = str(quicks["group_increase"][random.randint(0, len(quicks["group_increase"]) - 1)]).replace(

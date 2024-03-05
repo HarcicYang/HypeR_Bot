@@ -1,7 +1,7 @@
 import asyncio
 import threading
 import websocket
-from lib import Configurator, Manager, Logger
+from lib import Configurator, Manager, Logger, Errors
 import json
 import random
 import queue
@@ -14,6 +14,9 @@ logger.set_level(config.log_level)
 
 def get_echo(action_name: str) -> str:
     return f"{action_name}_{random.randint(100, 999)}"
+
+
+servicing = []
 
 
 class Actions:
@@ -149,7 +152,7 @@ def get_ret(echo: str) -> Manager.Ret:
 
 
 async def tester(message_data: Manager.Event, actions: Actions) -> None:
-    print(message_data, actions)
+    ...
 
 
 def __handler(data: dict, actions: Actions) -> None:
@@ -172,8 +175,8 @@ def reg(func: callable):
 
 def run():
     global ws
-    if handler == tester:
-        raise Exception("No handler registered")
+    if handler is tester:
+        raise Errors.ListenerNotRegisteredError("No handler registered")
     ws = websocket.WebSocket()
     ws.connect(f"ws://{config.connection.host}:{config.connection.port}")
     logger.log("成功建立连接", level=Logger.levels.INFO)

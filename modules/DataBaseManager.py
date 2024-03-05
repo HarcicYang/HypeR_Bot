@@ -9,6 +9,8 @@ class ModuleClass:
         self.event = event
 
     async def handle(self):
+        if self.event.blocked:
+            return
         data_set.load()
         try:
             message = str(self.event.message)

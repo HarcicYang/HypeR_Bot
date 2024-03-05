@@ -10,6 +10,7 @@ logger.set_level(config.log_level)
 accept_types = \
     [Text, Image, At, Reply, Face, Location, Record, Video, Node, Contact, Forward, Poke, CustomNode, KeyBoard,
      MarkDown]
+servicing = []
 
 
 class Message:
@@ -118,6 +119,8 @@ class Event:
                 f"收到 {self.group_id} 由 {self.user_id} 发送的{'加群请求' if self.sub_type == 'add' else '邀请加群'}: {self.comment}")
 
         self.is_owner = int(self.user_id) in config.owner
+        self.servicing = True if self.user_id in servicing else False
+        self.blocked = True if self.user_id in config.black_list or self.group_id in config.black_list else False
 
 
 class Ret:
