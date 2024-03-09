@@ -53,10 +53,10 @@ class Message:
 
 class Sender:
     def __init__(self, json_data: dict):
-        self.user_id = json_data["user_id"]
-        self.nickname = json_data["nickname"]
-        self.sex = json_data["sex"]
-        self.age = json_data["age"]
+        self.user_id = json_data.get("user_id")
+        self.nickname = json_data.get("nickname")
+        self.sex = json_data.get("sex")
+        self.age = json_data.get("age")
         self.card = json_data.get("card")
         self.area = json_data.get("area")
         self.level = json_data.get("level")

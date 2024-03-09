@@ -30,4 +30,4 @@ class ModuleClass:
                 name,
                 code
             )
-            self.actions.send(group_id=self.event.group_id, message=Manager.Message([Segments.Text(message)]))
+            self.actions.send(group_id=self.event.group_id,user_id=self.event.user_id, message=Manager.Message([Segments.Text(message)]))

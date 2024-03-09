@@ -58,6 +58,6 @@ class ModuleClass:
                 ]
             )
 
-            self.actions.send(group_id=self.event.group_id, message=message)
+            self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=message)
 
 

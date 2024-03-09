@@ -122,7 +122,7 @@ class ModuleClass:
             return
         if "github.com/" in url:
             content = url.replace("github.com/", "opengraph.githubassets.com/Yenai/")
-            self.actions.send(group_id=self.event.group_id, message=Manager.Message(
+            self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Manager.Message(
                 [Segments.Image(content)]
             ))
 

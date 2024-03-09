@@ -36,4 +36,4 @@ class ModuleClass:
                     )
                 ]
                 message = Manager.Message([Segments.Text("主人会选择哪个套餐呢。。。"), Segments.KeyBoard(custom_row)])
-                self.actions.send(group_id=self.event.group_id, message=message)
+                self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=message)

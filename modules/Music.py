@@ -72,7 +72,7 @@ class ModuleClass:
                 file = reformat("music.mp3")
 
             self.actions.send(
-                group_id=self.event.group_id,
+                group_id=self.event.group_id, user_id=self.event.user_id,
                 message=Manager.Message(
                     [Segments.Record(f"file://{file}")]
                 )
