@@ -1,7 +1,6 @@
 import base64
-
 import httpx
-from lib import Manager, Listener, Segments
+from lib import Manager, ModuleClass, Segments
 from meme_generator import get_meme
 import os
 
@@ -232,11 +231,8 @@ emoji_dict = {
 cmd = ".meme"
 
 
-class ModuleClass:
-    def __init__(self, actions: Listener.Actions, event: Manager.Event):
-        self.actions = actions
-        self.event = event
-
+@ModuleClass.ModuleRegister.register(["message"])
+class Module(ModuleClass.Module):
     async def handle(self):
         if self.event.blocked or self.event.servicing:
             return

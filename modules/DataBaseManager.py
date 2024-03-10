@@ -1,13 +1,10 @@
-from lib import Manager, Listener, Segments, DataBase
+from lib import Manager, ModuleClass, Segments, DataBase
 
 data_set = DataBase.Dataset()
 
 
-class ModuleClass:
-    def __init__(self, actions: Listener.Actions, event: Manager.Event):
-        self.actions = actions
-        self.event = event
-
+@ModuleClass.ModuleRegister.register(["message"])
+class Module(ModuleClass.Module):
     async def handle(self):
         if self.event.blocked:
             return

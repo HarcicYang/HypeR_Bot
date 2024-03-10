@@ -1,11 +1,8 @@
-from lib import Manager, Listener, Segments
+from lib import Manager, Segments, ModuleClass
 
 
-class ModuleClass:
-    def __init__(self, actions: Listener.Actions, event: Manager.Event):
-        self.actions = actions
-        self.event = event
-
+@ModuleClass.ModuleRegister.register(["message"])
+class Module(ModuleClass.Module):
     async def handle(self):
         try:
             cmds = str(self.event.message)

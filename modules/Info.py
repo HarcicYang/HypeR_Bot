@@ -1,12 +1,9 @@
-from lib import Manager, Listener, Segments
+from lib import Manager, ModuleClass, Segments
 import datetime
 
 
-class ModuleClass:
-    def __init__(self, actions: Listener.Actions, event: Manager.Event):
-        self.actions = actions
-        self.event = event
-
+@ModuleClass.ModuleRegister.register(["message"])
+class Module(ModuleClass.Module):
     async def handle(self):
         if self.event.blocked or self.event.servicing:
             return
@@ -30,4 +27,5 @@ class ModuleClass:
                 name,
                 code
             )
-            self.actions.send(group_id=self.event.group_id,user_id=self.event.user_id, message=Manager.Message([Segments.Text(message)]))
+            self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
+                              message=Manager.Message([Segments.Text(message)]))

@@ -82,6 +82,7 @@ def gen_message(data: dict) -> Message:
             message.add(Face(i["data"]["id"]))
         elif i["type"] == "location":
             message.add(Location(i["data"]["lat"], i["data"]["lon"]))
+
     return message
 
 

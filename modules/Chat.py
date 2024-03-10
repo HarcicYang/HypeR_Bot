@@ -1,4 +1,4 @@
-from lib import Manager, Listener, Segments, DataBase, Configurator
+from lib import Manager, ModuleClass, Segments, DataBase, Configurator
 import dashscope
 from dashscope import Generation
 from dashscope import MultiModalConversation
@@ -82,11 +82,8 @@ class LLM:
 mode = "qwen"
 
 
-class ModuleClass:
-    def __init__(self, actions: Listener.Actions, event: Manager.Event):
-        self.actions = actions
-        self.event = event
-
+@ModuleClass.ModuleRegister.register(["message"])
+class Module(ModuleClass.Module):
     async def handle(self):
         if self.event.blocked or self.event.servicing:
             return

@@ -1,4 +1,4 @@
-from lib import Manager, Listener, Segments
+from lib import Manager, ModuleClass, Segments
 from Levenshtein import distance
 
 
@@ -21,11 +21,8 @@ def string_similarity(s1: str, s2: str) -> float:
     return similarity
 
 
-class ModuleClass:
-    def __init__(self, actions: Listener.Actions, event: Manager.Event):
-        self.actions = actions
-        self.event = event
-
+@ModuleClass.ModuleRegister.register(["message"])
+class Module(ModuleClass.Module):
     async def handle(self):
         if not data.get(self.event.user_id):
             data[self.event.user_id] = UserInfo()

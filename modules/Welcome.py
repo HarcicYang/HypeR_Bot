@@ -1,4 +1,4 @@
-from lib import Manager, Listener, Segments
+from lib import Manager, ModuleClass, Segments
 import random
 import json
 
@@ -6,11 +6,8 @@ with open("quick.json", "r", encoding="utf-8") as f:
     quicks = json.load(f)
 
 
-class ModuleClass:
-    def __init__(self, actions: Listener.Actions, event: Manager.Event):
-        self.actions = actions
-        self.event = event
-
+@ModuleClass.ModuleRegister.register(["notice", "request"])
+class Module(ModuleClass.Module):
     async def handle(self):
         if self.event.blocked or self.event.servicing:
             return

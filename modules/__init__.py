@@ -1,16 +1,6 @@
-import lib
-from modules import Chat, DataBaseManager, Memes, GroupManager, WebsiteServices, Alert, Welcome, Info, Music, Rest, TextReverse
+import os
+import importlib
 
-funcs: list[type(lib)] = \
-    [Chat,
-     DataBaseManager,
-     Memes,
-     GroupManager,
-     WebsiteServices,
-     Alert,
-     Welcome,
-     Info,
-     Music,
-     Rest,
-     TextReverse
-     ]
+for i in os.listdir("modules"):
+    if i.endswith(".py") and i != "__init__.py":
+        importlib.import_module(f"modules.{i[:-3]}")
