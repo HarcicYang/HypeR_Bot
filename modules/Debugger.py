@@ -29,13 +29,24 @@ class Module(ModuleClass.Module):
                     self.actions.send(group_id=self.event.group_id, message=message)
                     return
                 if self.event.user_id not in registered:
-                    cmds = cmds.replace("register ", "", 1)
+                    cmds = cmds.replace("register", "", 1)
                     if len(cmds) < 2:
                         verify_code = str(uuid.uuid4())
                         register[self.event.user_id] = verify_code
                         print(f"验证信息： {verify_code}")
+                        message = Manager.Message(
+                            [
+                                Segments.Reply(self.event.message_id),
+                                Segments.Text("请前往后台获取验证信息")
+                            ]
+                        )
+                        self.actions.send(
+                            user_id=self.event.user_id,
+                            message=message
+                        )
+                        return
                     else:
-                        if register[self.event.self_id] in cmds:
+                        if register[self.event.user_id] in cmds:
                             del register[self.event.user_id]
                             registered.append(self.event.user_id)
                             message = Manager.Message(
