@@ -8,7 +8,7 @@ class Text:
         self.content = {"type": "text", "data": {"text": text}}
 
     def set(self, text: str) -> None:
-        self.content["data"]["text"] = text
+        self.__init__(text)
 
     def get(self) -> str:
         return self.content["data"]["text"]
@@ -28,7 +28,7 @@ class Image:
         self.content = {"type": "image", "data": {"file": image}}
 
     def set(self, image: str) -> None:
-        self.content["data"]["file"] = image
+        self.__init__(image)
 
     def get(self) -> str:
         return self.content["data"]["file"]
@@ -48,7 +48,7 @@ class At:
         self.content = {"type": "at", "data": {"qq": user_id}}
 
     def set(self, user_id: str) -> None:
-        self.content["data"]["qq"] = user_id
+        self.__init__(user_id)
 
     def get(self) -> str:
         return self.content["data"]["qq"]
@@ -68,7 +68,7 @@ class Reply:
         self.content = {"type": "reply", "data": {"id": message_id}}
 
     def set(self, message_id: str) -> None:
-        self.content["data"]["id"] = message_id
+        self.__init__(message_id)
 
     def get(self) -> str:
         return self.content["data"]["id"]
@@ -88,7 +88,7 @@ class Face:
         self.content = {"type": "face", "data": {"id": face_id}}
 
     def set(self, face_id: str) -> None:
-        self.content["data"]["id"] = face_id
+        self.__init__(face_id)
 
     def get(self) -> str:
         return self.content["data"]["id"]
@@ -108,8 +108,7 @@ class Location:
         self.content = {"type": "location", "data": {"lat": lat, "lon": lon}}
 
     def set(self, lat: str, lon: str) -> None:
-        self.content["data"]["lat"] = lat
-        self.content["data"]["lon"] = lon
+        self.__init__(lat, lon)
 
     def get(self) -> tuple[str, str]:
         return self.content["data"]["lat"], self.content["data"]["lon"]
@@ -129,7 +128,7 @@ class Record:
         self.content = {"type": "record", "data": {"file": record}}
 
     def set(self, record: str) -> None:
-        self.content["data"]["file"] = record
+        self.__init__(record)
 
     def get(self) -> str:
         return self.content["data"]["file"]
@@ -149,7 +148,7 @@ class Video:
         self.content = {"type": "video", "data": {"file": video}}
 
     def set(self, video: str) -> None:
-        self.content["data"]["file"] = video
+        self.__init__(video)
 
     def get(self) -> str:
         return self.content["data"]["file"]
@@ -169,7 +168,7 @@ class Poke:
         self.content = {"type": "poke", "data": {"type": poke_type, "id": poke_id}}
 
     def set(self, poke_type: str, poke_id: str) -> None:
-        self.content = {"type": "poke", "data": {"type": poke_type, "id": poke_id}}
+        self.__init__(poke_type, poke_id)
 
     def get(self) -> None:
         raise NotSupportError("This type of message cannot use '.get()'")
@@ -189,7 +188,7 @@ class Contact:
         self.content = {"type": "contact", "data": {"type": platform, "id": target_id}}
 
     def set(self, platform: str, target_id: str) -> None:
-        self.content = {"type": "contact", "data": {"type": platform, "id": target_id}}
+        self.__init__(platform, target_id)
 
     def get(self) -> str:
         raise NotSupportError("This type of message cannot use '.get()'")
@@ -209,7 +208,7 @@ class Forward:
         self.content = {"type": "forward", "data": {"id": forward_id}}
 
     def set(self, forward_id: str) -> None:
-        self.content = {"type": "forward", "data": {"id": forward_id}}
+        self.__init__(forward_id)
 
     def get(self) -> str:
         return self.content["data"]["id"]
@@ -229,7 +228,7 @@ class Node:
         self.content = {"type": "node", "data": {"id": node_id}}
 
     def set(self, node_id: str) -> None:
-        self.content = {"type": "node", "data": {"id": node_id}}
+        self.__init__(node_id)
 
     def get(self) -> str:
         return self.content["data"]["id"]
@@ -250,8 +249,7 @@ class CustomNode:
                         "data": {"user_id": user_id, "nick_name": nick_name, "content": content.get()}}
 
     def set(self, user_id: str, nick_name: str, content) -> None:
-        self.content = {"type": "node",
-                        "data": {"user_id": user_id, "nick_name": nick_name, "content": content.get()}}
+        self.__init__(user_id, nick_name, content)
 
     def get(self) -> list:
         return self.content["data"]["content"]
@@ -302,24 +300,7 @@ class KeyBoardButton:
             enter: bool = False,
             permission: int = 2,
             specify_user_ids=None) -> None:
-        self.content = {
-            "id": str(uuid.uuid4()),
-            "render_data": {
-                "label": text,
-                "visited_label": text,
-                "style": style
-            },
-            "action": {
-                "type": button_type,
-                "permission": {
-                    "type": permission,
-                    "specify_user_ids": specify_user_ids
-                },
-                "enter": enter,
-                "unsupport_tips": "Harcic",
-                "data": data
-            }
-        }
+        self.__init__(text, style, button_type, data, enter, permission, specify_user_ids)
 
     def get(self) -> dict:
         return self.content
@@ -352,16 +333,10 @@ class KeyBoardRow:
 
 class KeyBoard:
     def __init__(self, button_rows: list[KeyBoardRow]):
-        rows = []
-        for i in button_rows:
-            rows.append(i.get())
-        self.content = {"type": "keyboard", "data": {"content": {"rows": rows}, "bot_appid": 0}}
+        self.content = {"type": "keyboard", "data": {"content": {"rows": [i.get() for i in button_rows]}, "bot_appid": 0}}
 
-    def set(self, button_rows: list[KeyBoardRow]):
-        rows = []
-        for i in button_rows:
-            rows.append(i.get())
-        self.content = {"type": "keyboard", "data": {"content": {"rows": rows}, "bot_appid": 0}}
+    def set(self, button_rows: list[KeyBoardRow]) -> None:
+        self.__init__(button_rows)
 
     def get(self) -> dict:
         return self.content["data"]["content"]
@@ -381,7 +356,7 @@ class MarkDown:
         self.content = {"type": "markdown", "data": {"content": json.dumps({"content": content, "bot_appid": 0})}}
 
     def set(self, content: str) -> None:
-        self.content = {"type": "markdown", "data": {"content": json.dumps({"content": content, "bot_appid": 0})}}
+        self.__init__(content)
 
     def get(self) -> str:
         return json.loads(self.content["data"]["content"])["content"]
@@ -401,7 +376,7 @@ class LongMessage:
         self.content = {"type": "longmsg", "data": {"id": long_msg_id}}
 
     def set(self, long_msg_id: str) -> None:
-        self.content = {"type": "longmsg", "data": {"id": long_msg_id}}
+        self.__init__(long_msg_id)
 
     def get(self) -> str:
         return self.content["data"]["id"]
@@ -411,6 +386,26 @@ class LongMessage:
 
     def __str__(self) -> str:
         return f"[长消息{self.content['data']['id']}]"
+
+    def __repr__(self) -> str:
+        return str(self.content)
+
+
+class JSON:
+    def __init__(self, content: dict):
+        self.content = {"type": "json", "data": {"data": json.dumps(content, ensure_ascii=False)}}
+
+    def set(self, content: dict) -> None:
+        self.__init__(content)
+
+    def get(self) -> dict:
+        return json.loads(self.content["data"]["data"])
+
+    def get_raw(self) -> dict:
+        return self.content
+
+    def __str__(self) -> str:
+        return f"[JSON]"
 
     def __repr__(self) -> str:
         return str(self.content)

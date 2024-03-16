@@ -5,6 +5,7 @@ from lib import Configurator, Manager, Logger, Errors
 import json
 import random
 import queue
+import time
 
 reports = queue.Queue()
 config = Configurator.Config("config.json")
@@ -23,7 +24,7 @@ class Actions:
     def __init__(self, socket: websocket.WebSocket):
         self.ws = socket
 
-    def send(self, message: Manager.Message, group_id: int = None, user_id: int = None) -> None:
+    def send(self, message: Manager.Message, group_id: int = None, user_id: int = None) -> Manager.Ret:
         echo = get_echo("send_msg")
         if group_id is not None:
             payload = {
@@ -44,9 +45,10 @@ class Actions:
                 "echo": echo,
             }
         else:
-            return None
+            raise Errors.ArgsInvalidError("'send' API requires 'group_id' or 'user_id' but none of them are provided.")
         logger.log(f"向 {group_id} 发送消息:{str(message) if len(str(message)) < 5 else str(message)[:5] + '...'}")
         self.ws.send(json.dumps(payload))
+        return get_ret(echo)
 
     def del_message(self, message_id: int) -> None:
         payload = {
@@ -138,6 +140,43 @@ class Actions:
         self.ws.send(json.dumps(payload))
         logger.log(f"处理 {sub_type} 请求 {flag} 的结果为 {approve}")
 
+    def get_stranger_info(self, user_id: int) -> Manager.Ret:
+        echo = get_echo("get_stranger_info")
+        payload = {
+            "action": "get_stranger_info",
+            "params": {
+                "user_id": user_id,
+                "no_cache": True,
+            },
+            "echo": echo,
+        }
+        self.ws.send(json.dumps(payload))
+        return get_ret(echo)
+
+    def get_group_member_info(self, group_id: int, user_id: int) -> Manager.Ret:
+        echo = get_echo("get_group_member_info")
+        payload = {
+            "action": "get_group_member_info",
+            "params": {
+                "group_id": group_id,
+                "user_id": user_id,
+                "no_cache": True,
+            },
+            "echo": echo,
+        }
+        self.ws.send(json.dumps(payload))
+        return get_ret(echo)
+
+    def get_status(self) -> Manager.Ret:
+        echo = get_echo("get_status")
+        payload = {
+            "action": "get_status",
+            "params": {},
+            "echo": echo,
+        }
+        self.ws.send(json.dumps(payload))
+        return get_ret(echo)
+
 
 def get_ret(echo: str) -> Manager.Ret:
     old = None
@@ -178,14 +217,30 @@ def run():
     if handler is tester:
         raise Errors.ListenerNotRegisteredError("No handler registered")
     ws = websocket.WebSocket()
-    ws.connect(f"ws://{config.connection.host}:{config.connection.port}")
-    logger.log("成功建立连接", level=Logger.levels.INFO)
-    actions = Actions(ws)
+    retried = 0
     while True:
         try:
-            data = json.loads(ws.recv())
-        except KeyboardInterrupt:
-            logger.log("正在退出 (Ctrl+C被按下)", level=Logger.levels.WARNING)
-            ws.close()
-            break
-        threading.Thread(target=lambda: __handler(data, actions)).start()
+            ws.connect(f"ws://{config.connection.host}:{config.connection.port}")
+        except ConnectionRefusedError or TimeoutError:
+            if retried >= config.connection.retries:
+                logger.log(f"重试次数达到最大值({config.connection.retries})，退出", level=Logger.levels.CRITICAL)
+                break
+
+            logger.log(f"连接建立失败，3秒后重试({retried}/{config.connection.retries})", level=Logger.levels.WARNING)
+            retried += 1
+            time.sleep(3)
+            continue
+        logger.log("成功建立连接", level=Logger.levels.INFO)
+        retried = 0
+        actions = Actions(ws)
+        while True:
+            try:
+                data = json.loads(ws.recv())
+            except KeyboardInterrupt:
+                logger.log("正在退出 (Ctrl+C被按下)", level=Logger.levels.WARNING)
+                ws.close()
+                break
+            except ConnectionResetError:
+                logger.log("连接断开", level=Logger.levels.ERROR)
+                break
+            threading.Thread(target=lambda: __handler(data, actions)).start()
