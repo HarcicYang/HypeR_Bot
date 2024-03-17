@@ -1,4 +1,4 @@
-from lib import Manager, ModuleClass, Segments
+from lib import Manager, ModuleClass, Segments, WordSafety
 from Levenshtein import distance
 
 
@@ -8,6 +8,7 @@ class UserInfo:
         self.violations = 0
         self.last_message: str = ""
         self.last_time: int = 0
+        self.words_unsafe_times = 0
 
 
 data: dict[int, UserInfo] = {}
@@ -33,18 +34,15 @@ class Module(ModuleClass.Module):
             data[self.event.user_id].last_time = self.event.time
             return None
 
-        try:
-            if string_similarity(data[self.event.user_id].last_message, str(self.event.message)) >= 0.66:
-                if self.event.time - data[self.event.user_id].last_time < 2:
-                    data[self.event.user_id].violations += 2
-                elif 2 < self.event.time - data[self.event.user_id].last_time < 20:
-                    data[self.event.user_id].violations += 1
-                elif 20 < self.event.time - data[self.event.user_id].last_time < 60:
-                    data[self.event.user_id].violations += 0.5
-                else:
-                    data[self.event.user_id].violations += 0.1
-        except AttributeError:
-            return None
+        if string_similarity(data[self.event.user_id].last_message, str(self.event.message)) >= 0.66:
+            if self.event.time - data[self.event.user_id].last_time < 2:
+                data[self.event.user_id].violations += 2
+            elif 2 < self.event.time - data[self.event.user_id].last_time < 20:
+                data[self.event.user_id].violations += 1
+            elif 20 < self.event.time - data[self.event.user_id].last_time < 60:
+                data[self.event.user_id].violations += 0.5
+            else:
+                data[self.event.user_id].violations += 0.1
 
         data[self.event.user_id].last_message = str(self.event.message)
         data[self.event.user_id].last_time = self.event.time
@@ -63,6 +61,33 @@ class Module(ModuleClass.Module):
                                       Segments.At(str(self.event.user_id)),
                                       Segments.Text("请勿刷屏")
                                   ]
-                              ))
+                              )
+                              )
             data[self.event.user_id].violations = 2
             data[self.event.user_id].violation_level += 1
+
+        safety = WordSafety.check(str(self.event.message))
+        if not safety.result:
+            self.actions.del_message(self.event.message_id)
+            self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
+                              message=Manager.Message(
+                                  [
+                                      Segments.At(str(self.event.user_id)),
+                                      Segments.Text(safety.message)
+                                  ]
+                              )
+                              )
+            data[self.event.user_id].words_unsafe_times += 1
+            if data[self.event.user_id].words_unsafe_times >= 3:
+                self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
+                                           duration=(60 * data[self.event.user_id].violation_level))
+                self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
+                                  message=Manager.Message(
+                                      [
+                                          Segments.At(str(self.event.user_id)),
+                                          Segments.Text("请勿发送违禁词")
+                                      ]
+                                  )
+                                  )
+                data[self.event.user_id].words_unsafe_times = 0
+                data[self.event.user_id].violation_level += 1

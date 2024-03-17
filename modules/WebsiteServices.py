@@ -1,4 +1,4 @@
-from lib import Manager, ModuleClass, Segments
+from lib import Manager, ModuleClass, Segments, WordSafety
 import re
 from bilibili_api import video
 import os
@@ -95,6 +95,22 @@ async def video_info(bv: str):
     return Info()
 
 
+def github_safety_check(url: str) -> bool:
+    urls = url.split("/")
+    base_index = None
+    for i in urls:
+        if i == "github.com":
+            base_index = urls.index(i)
+            break
+    if not base_index:
+        return False
+    repo = f"https://api.github.com/repos/{urls[base_index + 1]}/{urls[base_index + 2]}"
+    response = httpx.get(repo, verify=False)
+    desc = response.json()["description"]
+    result = WordSafety.check(desc)
+    return result.result
+
+
 @ModuleClass.ModuleRegister.register(["message"])
 class Module(ModuleClass.Module):
     async def handle(self):
@@ -118,6 +134,8 @@ class Module(ModuleClass.Module):
         except:
             return
         if "github.com/" in url:
+            if not github_safety_check(url):
+                return
             content = url.replace("github.com/", "opengraph.githubassets.com/Yenai/")
             self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Manager.Message(
                 [Segments.Image(content)]
