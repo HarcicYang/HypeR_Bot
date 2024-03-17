@@ -6,6 +6,7 @@ import json
 import random
 import queue
 import time
+import sys
 
 reports = queue.Queue()
 config = Configurator.Config("config.json")
@@ -239,7 +240,7 @@ def run():
             except KeyboardInterrupt:
                 logger.log("正在退出 (Ctrl+C被按下)", level=Logger.levels.WARNING)
                 ws.close()
-                break
+                sys.exit()
             except ConnectionResetError:
                 logger.log("连接断开", level=Logger.levels.ERROR)
                 break
