@@ -1,4 +1,9 @@
-from lib import Manager, Listener
+from lib import Manager, Listener, Logger, Configurator
+
+
+config = Configurator.Config("config.json")
+logger = Logger.Logger()
+logger.set_level(config.log_level)
 
 
 class Module:
@@ -25,8 +30,7 @@ class ModuleRegister:
         def decorator(func):
             if len(args) not in [1, 2]:
                 raise TypeError("register() expects either 1 or 2 arguments")
-
-            module, allowed_post_types = (args[0], ["message", "notice", "request"]) if len(args) == 1 else args
+            allowed_post_types = args[0] if len(args) == 1 else ["message", "notice", "request"]
             register_modules.append(InnerHandler(func, allowed_post_types))
 
             return func
