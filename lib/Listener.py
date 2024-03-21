@@ -178,6 +178,16 @@ class Actions:
         self.ws.send(json.dumps(payload))
         return get_ret(echo)
 
+    def set_essence_msg(self, message_id: int) -> None:
+        payload = {
+            "action": "set_essence_msg",
+            "params": {
+                "message_id": message_id,
+            },
+        }
+        self.ws.send(json.dumps(payload))
+        logger.log(f"将消息 {message_id} 设为精华")
+
 
 def get_ret(echo: str) -> Manager.Ret:
     old = None
