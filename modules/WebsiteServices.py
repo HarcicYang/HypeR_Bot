@@ -106,7 +106,7 @@ def github_safety_check(url: str) -> bool:
         return False
     repo = f"https://api.github.com/repos/{urls[base_index + 1]}/{urls[base_index + 2]}"
     response = httpx.get(repo, verify=False)
-    desc = response.json()["description"]
+    desc = str(response.json()["description"])
     result = WordSafety.check(desc)
     return result.result
 
