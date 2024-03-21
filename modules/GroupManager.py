@@ -34,7 +34,9 @@ class Module(ModuleClass.Module):
             data[self.event.user_id].last_time = self.event.time
             return None
 
-        if string_similarity(data[self.event.user_id].last_message, str(self.event.message)) >= 0.66:
+        if string_similarity(data[self.event.user_id].last_message, str(self.event.message)) >= 0.66\
+                or len(str(self.event.message)) >= 120\
+                or self.event.time - data[self.event.user_id].last_time < 2:
             if self.event.time - data[self.event.user_id].last_time < 2:
                 data[self.event.user_id].violations += 2
             elif 2 < self.event.time - data[self.event.user_id].last_time < 20:
