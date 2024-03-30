@@ -1,7 +1,7 @@
 from typing import Union
 from lib.Segments import *
 from lib.Configurator import *
-from lib.Logger import Logger
+from lib.Logger import Logger, levels
 
 config = Config("./config.json")
 logger = Logger()
@@ -64,24 +64,95 @@ class Sender:
         self.title = json_data.get("title")
 
 
+message_types = {
+    "text": {
+        "type": Text,
+        "args": [
+            "text"
+        ]
+    },
+    "image": {
+        "type": Image,
+        "args": [
+            "file"
+        ]
+    },
+    "at": {
+        "type": At,
+        "args": [
+            "qq"
+        ]
+    },
+    "reply": {
+        "type": Reply,
+        "args": [
+            "id"
+        ]
+    },
+    "face": {
+        "type": Face,
+        "args": [
+            "id"
+        ]
+    },
+    "location": {
+        "type": Location,
+        "args": [
+            "lat",
+            "lon"
+        ]
+    },
+    "record": {
+        "type": Record,
+        "args": [
+            "file"
+        ]
+    },
+    "video": {
+        "type": Video,
+        "args": [
+            "file"
+        ]
+    },
+    "node": {
+        "type": Node,
+        "args": [
+            "id"
+        ]
+    },
+    "contact": {
+        "type": Contact,
+        "args": [
+            "type",
+            "id"
+        ]
+    },
+    "forward": {
+        "type": Forward,
+        "args": [
+            "id"
+        ]
+    },
+    "poke": {
+        "type": Poke,
+        "args": [
+            "type",
+            "id"
+        ]
+    }
+}
+
+
 def gen_message(data: dict) -> Message:
     message = Message()
     for i in data["message"]:
-        if i["type"] == "text":
-            message.add(Text(i["data"]["text"]))
-        elif i["type"] == "image":
-            url = str(i["data"]["file"])
-            if url.startswith("https://multimedia.nt.qq.com.cn/"):
-                url = url.replace("https://multimedia.nt.qq.com.cn/", "http://gchat.qpic.cn/")
-            message.add(Image(url))
-        elif i["type"] == "at":
-            message.add(At(i["data"]["qq"]))
-        elif i["type"] == "reply":
-            message.add(Reply(i["data"]["id"]))
-        elif i["type"] == "face":
-            message.add(Face(i["data"]["id"]))
-        elif i["type"] == "location":
-            message.add(Location(i["data"]["lat"], i["data"]["lon"]))
+        if i["type"] in message_types:
+            args = []
+            for j in message_types[i["type"]]["args"]:
+                args.append(i["data"].get(j))
+            message.add(message_types[i["type"]]["type"](*args))
+        else:
+            logger.log(f"无法序列化的消息段 {i['type']}", levels.WARNING)
 
     return message
 
