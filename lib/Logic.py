@@ -1,5 +1,5 @@
-import inspect
-import asyncio
+from lib import Logger
+import traceback
 
 
 class Cacher:
@@ -30,5 +30,29 @@ class Cacher:
                 return ret
             else:
                 return self.cached[str(kwargs)]
+
+        return wrapper
+
+
+class ErrorHandler:
+    def __init__(self, level=Logger.levels.ERROR):
+        self.level = level
+        self.logger = Logger.Logger()
+
+    def handle(self, func):
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except:
+                self.logger.log(f"出现错误：\n{str(traceback.format_exc())}", level=self.level)
+
+        return wrapper
+
+    def handle_async(self, func):
+        async def wrapper(*args, **kwargs):
+            try:
+                return await func(*args, **kwargs)
+            except:
+                self.logger.log(f"出现错误：\n{str(traceback.format_exc())}", level=self.level)
 
         return wrapper

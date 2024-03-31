@@ -2,7 +2,6 @@ import base64
 import httpx
 from lib import Manager, ModuleClass, Segments
 from meme_generator import get_meme
-import os
 
 emoji_dict = {
     "兆": "5000choyen",

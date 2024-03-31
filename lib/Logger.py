@@ -46,5 +46,11 @@ class Logger:
         if levels.level_nums[level] < levels.level_nums[self.log_level]:
             return None
         time = datetime.datetime.now()
-        content = f" \033[38;5;244m[{str(time)[:-4]}]\033[0m {level} {message}"
-        print(content)
+        if "\n" in message:
+            listed = message.split("\n")
+            for i in listed:
+                content = f" \033[38;5;244m[{str(time)[:-4]}]\033[0m {level} {i}"
+                print(content)
+        else:
+            content = f" \033[38;5;244m[{str(time)[:-4]}]\033[0m {level} {message}"
+            print(content)
