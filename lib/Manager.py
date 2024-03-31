@@ -2,6 +2,7 @@ from typing import Union
 from lib.Segments import *
 from lib.Configurator import *
 from lib.Logger import Logger, levels
+from lib import Logic
 
 config = Config("./config.json")
 logger = Logger()
@@ -143,6 +144,7 @@ message_types = {
 }
 
 
+@Logic.Cacher().cache
 def gen_message(data: dict) -> Message:
     message = Message()
     for i in data["message"]:
@@ -169,7 +171,7 @@ class Event:
             self.user_id = data.get("user_id")
             self.group_id = data.get("group_id")
             self.sender = Sender(data.get("sender"))
-            self.message = gen_message(data)
+            self.message = gen_message(data=data)
             logger.log(
                 f"收到 {self.group_id} 由 {self.user_id} 发送的消息: {self.message if len(str(self.message)) < 5 else str(self.message)[:5] + '...'}")
 

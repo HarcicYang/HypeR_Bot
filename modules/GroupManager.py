@@ -68,7 +68,7 @@ class Module(ModuleClass.Module):
             data[self.event.user_id].violations = 2
             data[self.event.user_id].violation_level += 1
 
-        safety = WordSafety.check(str(self.event.message))
+        safety = WordSafety.check(text=str(self.event.message))
         if not safety.result:
             self.actions.del_message(self.event.message_id)
             self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,

@@ -1,4 +1,4 @@
-from lib import Manager, ModuleClass, Segments, WordSafety
+from lib import Manager, ModuleClass, Segments, WordSafety, Logic
 import re
 from bilibili_api import video
 import os
@@ -56,6 +56,7 @@ def get_image(info):
     background.save("bili.png")
 
 
+@Logic.Cacher().cache
 def get_bv(text: str):
     bv_pattern = r"BV[a-zA-Z0-9]{10,12}"
     if "b23.tv" in text:
@@ -75,6 +76,7 @@ def get_bv(text: str):
     return bv.group() if bv else None
 
 
+@Logic.Cacher().cache_async
 async def video_info(bv: str):
     v = video.Video(bvid=bv)
     info = await v.get_info()
@@ -95,6 +97,7 @@ async def video_info(bv: str):
     return Info()
 
 
+@Logic.Cacher().cache
 def github_safety_check(url: str) -> bool:
     urls = url.split("/")
     base_index = None
@@ -107,7 +110,7 @@ def github_safety_check(url: str) -> bool:
     repo = f"https://api.github.com/repos/{urls[base_index + 1]}/{urls[base_index + 2]}"
     response = httpx.get(repo, verify=False)
     desc = str(response.json()["description"])
-    result = WordSafety.check(desc)
+    result = WordSafety.check(text=desc)
     return result.result
 
 
@@ -117,12 +120,12 @@ class Module(ModuleClass.Module):
         if self.event.blocked or self.event.servicing:
             return
         try:
-            bv_id = get_bv(str(self.event.message))
+            bv_id = get_bv(text=str(self.event.message))
         except AttributeError:
             return
 
         if bv_id:
-            info = await video_info(bv_id)
+            info = await video_info(bv=bv_id)
             get_image(info)
             result = Manager.Message([Segments.Image(f"file://{os.path.abspath('bili.png')}")])
 
@@ -134,7 +137,7 @@ class Module(ModuleClass.Module):
         except:
             return
         if "github.com/" in url:
-            if not github_safety_check(url):
+            if not github_safety_check(url=url):
                 return
             content = url.replace("github.com/", "opengraph.githubassets.com/Yenai/")
             self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Manager.Message(

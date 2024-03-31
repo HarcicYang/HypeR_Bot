@@ -1,7 +1,7 @@
 import asyncio
 import threading
 import websocket
-from lib import Configurator, Manager, Logger, Errors
+from lib import Configurator, Manager, Logger, Errors, Logic
 import json
 import random
 import queue
@@ -84,6 +84,7 @@ class Actions:
         self.ws.send(json.dumps(payload))
         logger.log(f"将 {user_id} 在 {group_id} 禁言 {duration} 秒")
 
+    @Logic.Cacher().cache
     def get_login_info(self) -> Manager.Ret:
         echo = get_echo("get_login_info")
         payload = {
@@ -94,6 +95,7 @@ class Actions:
         self.ws.send(json.dumps(payload))
         return get_ret(echo)
 
+    @Logic.Cacher().cache
     def get_version_info(self) -> Manager.Ret:
         echo = get_echo("get_version_info")
         payload = {
@@ -141,6 +143,7 @@ class Actions:
         self.ws.send(json.dumps(payload))
         logger.log(f"处理 {sub_type} 请求 {flag} 的结果为 {approve}")
 
+    @Logic.Cacher().cache
     def get_stranger_info(self, user_id: int) -> Manager.Ret:
         echo = get_echo("get_stranger_info")
         payload = {
@@ -154,6 +157,7 @@ class Actions:
         self.ws.send(json.dumps(payload))
         return get_ret(echo)
 
+    @Logic.Cacher().cache
     def get_group_member_info(self, group_id: int, user_id: int) -> Manager.Ret:
         echo = get_echo("get_group_member_info")
         payload = {

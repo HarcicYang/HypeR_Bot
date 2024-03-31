@@ -1,6 +1,7 @@
 import jieba
 import logging
 import asyncio
+from lib import Logic
 
 logging.getLogger("jieba").setLevel(logging.ERROR)
 
@@ -40,6 +41,7 @@ with open("assets/dict.txt", "r", encoding="utf-8") as f:
             tmp = []
 
 
+@Logic.Cacher().cache
 def check(text: str) -> Result:
     texts = jieba.lcut(text)
     for j in words:
@@ -51,6 +53,7 @@ def check(text: str) -> Result:
     return ret
 
 
+@Logic.Cacher().cache
 async def check_async(text: str) -> Result:
     texts = jieba.lcut(text)
     __tasks: list[asyncio.Task] = []
