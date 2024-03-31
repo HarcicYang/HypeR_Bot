@@ -18,6 +18,7 @@ def square_scale(image: Image, height: int):
     return image.resize((width, height))
 
 
+@Logic.Cacher(1).cache
 def get_image(info):
     old = Image.open("assets/bilibili/back.png")
     background = Image.new('RGBA', old.size, (255, 255, 255, 255))

@@ -217,7 +217,7 @@ class Forward:
         return self.content
 
     def __str__(self) -> str:
-        return f"[推荐QQ{'用户' if self.content['data']['type'] == 'qq' else '群'}{self.content['data']['id']}]"
+        return f"[转发消息]"
 
     def __repr__(self) -> str:
         return str(self.content)
@@ -333,7 +333,8 @@ class KeyBoardRow:
 
 class KeyBoard:
     def __init__(self, button_rows: list[KeyBoardRow]):
-        self.content = {"type": "keyboard", "data": {"content": {"rows": [i.get() for i in button_rows]}, "bot_appid": 0}}
+        self.content = {"type": "keyboard",
+                        "data": {"content": {"rows": [i.get() for i in button_rows]}, "bot_appid": 0}}
 
     def set(self, button_rows: list[KeyBoardRow]) -> None:
         self.__init__(button_rows)
@@ -391,7 +392,7 @@ class LongMessage:
         return str(self.content)
 
 
-class JSON:
+class Json:
     def __init__(self, content: dict):
         self.content = {"type": "json", "data": {"data": json.dumps(content, ensure_ascii=False)}}
 
@@ -405,7 +406,86 @@ class JSON:
         return self.content
 
     def __str__(self) -> str:
-        return f"[JSON]"
+        return f"[Json]"
 
     def __repr__(self) -> str:
         return str(self.content)
+
+
+message_types = {
+    "text": {
+        "type": Text,
+        "args": [
+            "text"
+        ]
+    },
+    "image": {
+        "type": Image,
+        "args": [
+            "file"
+        ]
+    },
+    "at": {
+        "type": At,
+        "args": [
+            "qq"
+        ]
+    },
+    "reply": {
+        "type": Reply,
+        "args": [
+            "id"
+        ]
+    },
+    "face": {
+        "type": Face,
+        "args": [
+            "id"
+        ]
+    },
+    "location": {
+        "type": Location,
+        "args": [
+            "lat",
+            "lon"
+        ]
+    },
+    "record": {
+        "type": Record,
+        "args": [
+            "file"
+        ]
+    },
+    "video": {
+        "type": Video,
+        "args": [
+            "file"
+        ]
+    },
+    "node": {
+        "type": Node,
+        "args": [
+            "id"
+        ]
+    },
+    "contact": {
+        "type": Contact,
+        "args": [
+            "type",
+            "id"
+        ]
+    },
+    "forward": {
+        "type": Forward,
+        "args": [
+            "id"
+        ]
+    },
+    "poke": {
+        "type": Poke,
+        "args": [
+            "type",
+            "id"
+        ]
+    }
+}

@@ -51,6 +51,14 @@ class Message:
     def __repr__(self) -> str:
         return str(self.contents)
 
+    def __add__(self, new):
+        self.contents += new.contents
+        return self
+
+    def __iadd__(self, new):
+        self.contents += new.contents
+        return self
+
 
 class Sender:
     def __init__(self, json_data: dict):
@@ -63,85 +71,6 @@ class Sender:
         self.level = json_data.get("level")
         self.role = json_data.get("role")
         self.title = json_data.get("title")
-
-
-message_types = {
-    "text": {
-        "type": Text,
-        "args": [
-            "text"
-        ]
-    },
-    "image": {
-        "type": Image,
-        "args": [
-            "file"
-        ]
-    },
-    "at": {
-        "type": At,
-        "args": [
-            "qq"
-        ]
-    },
-    "reply": {
-        "type": Reply,
-        "args": [
-            "id"
-        ]
-    },
-    "face": {
-        "type": Face,
-        "args": [
-            "id"
-        ]
-    },
-    "location": {
-        "type": Location,
-        "args": [
-            "lat",
-            "lon"
-        ]
-    },
-    "record": {
-        "type": Record,
-        "args": [
-            "file"
-        ]
-    },
-    "video": {
-        "type": Video,
-        "args": [
-            "file"
-        ]
-    },
-    "node": {
-        "type": Node,
-        "args": [
-            "id"
-        ]
-    },
-    "contact": {
-        "type": Contact,
-        "args": [
-            "type",
-            "id"
-        ]
-    },
-    "forward": {
-        "type": Forward,
-        "args": [
-            "id"
-        ]
-    },
-    "poke": {
-        "type": Poke,
-        "args": [
-            "type",
-            "id"
-        ]
-    }
-}
 
 
 @Logic.Cacher().cache
@@ -173,7 +102,8 @@ class Event:
             self.sender = Sender(data.get("sender"))
             self.message = gen_message(data=data)
             logger.log(
-                f"收到 {self.group_id} 由 {self.user_id} 发送的消息: {self.message if len(str(self.message)) < 5 else str(self.message)[:5] + '...'}")
+                f"收到 {self.group_id} 由 {self.user_id} 发送的消息: "
+                f"{self.message if len(str(self.message)) < 5 else str(self.message)[:5] + '...'}")
 
         elif self.post_type == "notice":
             self.notice_type = data.get("notice_type")
