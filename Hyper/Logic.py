@@ -35,9 +35,10 @@ class Cacher:
 
 
 class ErrorHandler:
-    def __init__(self, level=Logger.levels.ERROR):
+    def __init__(self, level=Logger.levels.ERROR, retries: int = 0):
         self.level = level
         self.logger = Logger.Logger()
+        self.retries = retries
 
     def handle(self, func):
         def wrapper(*args, **kwargs):
@@ -54,5 +55,31 @@ class ErrorHandler:
                 return await func(*args, **kwargs)
             except:
                 self.logger.log(f"出现错误：\n{str(traceback.format_exc())}", level=self.level)
+
+        return wrapper
+
+    def auto_retry(self, func):
+        def wrapper(*args, **kwargs):
+            retried = 0
+            while retried < self.retries:
+                retried += 1
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    self.logger.log(f"出现错误：\n{str(e)}, 正在重试...", level=self.level)
+            self.logger.log(f"错误在{retried}次重试后失败", level=self.level)
+
+        return wrapper
+
+    def auto_retry_async(self, func):
+        async def wrapper(*args, **kwargs):
+            retried = 0
+            while retried < self.retries:
+                retried += 1
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    self.logger.log(f"出现错误：\n{str(e)}, 正在重试...", level=self.level)
+            self.logger.log(f"错误在{retried}次重试后失败", level=self.level)
 
         return wrapper
