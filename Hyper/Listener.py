@@ -3,7 +3,6 @@ import threading
 import websocket
 from Hyper import Configurator, Manager, Logger, Errors, Logic
 import json
-import random
 import queue
 import time
 import sys
@@ -12,10 +11,11 @@ reports = queue.Queue()
 config = Configurator.Config("config.json")
 logger = Logger.Logger()
 logger.set_level(config.log_level)
+random = Logic.Random(2333)
 
 
 def get_echo(action_name: str) -> str:
-    return f"{action_name}_{random.randint(100, 999)}"
+    return f"{action_name}_{random()}"
 
 
 servicing = []

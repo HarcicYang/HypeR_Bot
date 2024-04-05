@@ -83,3 +83,15 @@ class ErrorHandler:
             self.logger.log(f"错误在{retried}次重试后失败", level=self.level)
 
         return wrapper
+
+
+class Random:
+    def __init__(self, seed: int = None):
+        self.seed = seed
+
+    def random(self) -> int:
+        self.seed = self.seed ** 2
+        return int(str(self.seed)[1:5])
+
+    def __call__(self) -> int:
+        return self.random()
