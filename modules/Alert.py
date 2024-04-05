@@ -1,4 +1,4 @@
-from lib import Manager, Segments, ModuleClass
+from Hyper import Manager, Segments, ModuleClass
 
 
 @ModuleClass.ModuleRegister.register(["message"])

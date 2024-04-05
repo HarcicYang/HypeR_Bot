@@ -1,4 +1,4 @@
-from lib import Manager, ModuleClass, Segments, DataBase, Configurator
+from Hyper import Manager, ModuleClass, Segments, DataBase, Configurator
 import dashscope
 from dashscope import Generation
 from dashscope import MultiModalConversation

@@ -1,4 +1,4 @@
-from lib import Manager, ModuleClass, Segments, WordSafety, Logic
+from Hyper import Manager, ModuleClass, Segments, WordSafety, Logic
 import re
 from bilibili_api import video
 import os

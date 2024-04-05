@@ -1,4 +1,4 @@
-from lib import Manager, ModuleClass, Segments, DataBase
+from Hyper import Manager, ModuleClass, Segments, DataBase
 
 data_set = DataBase.Dataset()
 

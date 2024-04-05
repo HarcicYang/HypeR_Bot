@@ -1,4 +1,4 @@
-from lib import Manager, ModuleClass, Segments
+from Hyper import Manager, ModuleClass, Segments
 import random
 import json
 

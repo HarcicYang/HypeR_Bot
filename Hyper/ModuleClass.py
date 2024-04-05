@@ -1,4 +1,4 @@
-from lib import Manager, Listener, Logger, Configurator
+from Hyper import Manager, Listener, Logger, Configurator
 
 
 config = Configurator.Config("config.json")

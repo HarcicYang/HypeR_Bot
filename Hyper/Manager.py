@@ -1,8 +1,8 @@
 from typing import Union
-from lib.Segments import *
-from lib.Configurator import *
-from lib.Logger import Logger, levels
-from lib import Logic
+from Hyper.Segments import *
+from Hyper.Configurator import *
+from Hyper.Logger import Logger, levels
+from Hyper import Logic
 
 config = Config("./config.json")
 logger = Logger()

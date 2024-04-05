@@ -1,4 +1,4 @@
-from lib import Manager, ModuleClass, Segments, WordSafety
+from Hyper import Manager, ModuleClass, Segments, WordSafety
 from Levenshtein import distance
 
 

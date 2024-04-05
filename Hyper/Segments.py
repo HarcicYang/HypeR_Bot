@@ -1,6 +1,6 @@
 import json
 import uuid
-from lib.Errors import *
+from Hyper.Errors import *
 
 
 class Text:
@@ -45,7 +45,7 @@ class Image:
 
 class At:
     def __init__(self, user_id: str):
-        self.content = {"type": "at", "data": {"qq": user_id}}
+        self.content = {"type": "at", "data": {"qq": str(user_id)}}
 
     def set(self, user_id: str) -> None:
         self.__init__(user_id)

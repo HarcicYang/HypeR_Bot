@@ -1,4 +1,4 @@
-from lib import Logger
+from Hyper import Logger
 import traceback
 
 

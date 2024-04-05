@@ -1,5 +1,5 @@
 import asyncio
-from lib import Listener, Manager, Configurator, Logger, ModuleClass, Logic
+from Hyper import Listener, Manager, Configurator, Logger, ModuleClass, Logic
 import importlib
 
 importlib.import_module("modules")

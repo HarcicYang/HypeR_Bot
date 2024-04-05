@@ -1,7 +1,7 @@
 import asyncio
 import threading
 import websocket
-from lib import Configurator, Manager, Logger, Errors, Logic
+from Hyper import Configurator, Manager, Logger, Errors, Logic
 import json
 import random
 import queue

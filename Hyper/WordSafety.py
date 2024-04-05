@@ -1,7 +1,7 @@
 import jieba
 import logging
 import asyncio
-from lib import Logic
+from Hyper import Logic
 
 logging.getLogger("jieba").setLevel(logging.ERROR)
 

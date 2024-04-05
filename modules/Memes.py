@@ -1,6 +1,6 @@
 import base64
 import httpx
-from lib import Manager, ModuleClass, Segments
+from Hyper import Manager, ModuleClass, Segments
 from meme_generator import get_meme
 
 emoji_dict = {
