@@ -1,5 +1,4 @@
 from Hyper import Manager, ModuleClass, Segments, WordSafety
-from Levenshtein import distance
 
 
 class UserInfo:
@@ -12,6 +11,19 @@ class UserInfo:
 
 
 data: dict[int, UserInfo] = {}
+
+
+def distance(s1: str, s2: str) -> int:
+    if s2 > s1:
+        s1, s2 = s2, s1
+
+    difference = 0
+    s2 += " " * (len(s1) - len(s2))
+    for i in range(len(s1)):
+        if s1[i] != s2[i]:
+            difference += 1
+
+    return difference
 
 
 def string_similarity(s1: str, s2: str) -> float:
@@ -34,8 +46,8 @@ class Module(ModuleClass.Module):
             data[self.event.user_id].last_time = self.event.time
             return None
 
-        if string_similarity(data[self.event.user_id].last_message, str(self.event.message)) >= 0.66\
-                or len(str(self.event.message)) >= 120\
+        if string_similarity(data[self.event.user_id].last_message, str(self.event.message)) >= 0.66 \
+                or len(str(self.event.message)) >= 120 \
                 or self.event.time - data[self.event.user_id].last_time < 2:
             if self.event.time - data[self.event.user_id].last_time < 2:
                 data[self.event.user_id].violations += 2
