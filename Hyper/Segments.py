@@ -204,11 +204,11 @@ class Contact:
 
 
 class Forward:
-    def __init__(self, forward_id: str):
-        self.content = {"type": "forward", "data": {"id": forward_id}}
+    def __init__(self, res_id: str):
+        self.content = {"type": "forward", "data": {"id": res_id}}
 
-    def set(self, forward_id: str) -> None:
-        self.__init__(forward_id)
+    def set(self, res_id: str) -> None:
+        self.__init__(res_id)
 
     def get(self) -> str:
         return self.content["data"]["id"]
@@ -352,11 +352,21 @@ class KeyBoard:
         return str(self.content)
 
 
-class MarkDown:
-    def __init__(self, content: str):
-        self.content = {"type": "markdown", "data": {"content": json.dumps({"content": content, "bot_appid": 0})}}
+class MarkdownContent:
+    def __init__(self, raw_content: str):
+        self.content = (
+            raw_content
+            .replace('"', r'\\\"')
+            .replace(r"\`", r"\`")
+        )
 
-    def set(self, content: str) -> None:
+
+class MarkDown:
+    def __init__(self, content: MarkdownContent):
+        self.content = {"type": "markdown",
+                        "data": {"content": json.dumps({"content": content.content}).replace('"', '"')}}
+
+    def set(self, content: MarkdownContent) -> None:
         self.__init__(content)
 
     def get(self) -> str:
@@ -373,11 +383,11 @@ class MarkDown:
 
 
 class LongMessage:
-    def __init__(self, long_msg_id: str):
-        self.content = {"type": "longmsg", "data": {"id": long_msg_id}}
+    def __init__(self, res_id: str):
+        self.content = {"type": "longmsg", "data": {"id": res_id}}
 
-    def set(self, long_msg_id: str) -> None:
-        self.__init__(long_msg_id)
+    def set(self, res_id: str) -> None:
+        self.__init__(res_id)
 
     def get(self) -> str:
         return self.content["data"]["id"]
@@ -394,7 +404,7 @@ class LongMessage:
 
 class Json:
     def __init__(self, content: dict):
-        self.content = {"type": "json", "data": {"data": json.dumps(content, ensure_ascii=False)}}
+        self.content = {"type": "json", "data": {"data": json.dumps(content, ensure_ascii=False).replace("'", r'/"')}}
 
     def set(self, content: dict) -> None:
         self.__init__(content)

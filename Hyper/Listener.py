@@ -111,7 +111,7 @@ class Actions:
         payload = {
             "action": "send_forward_msg",
             "params": {
-                "message": message.get(),
+                "messages": message.get(),
             },
             "echo": echo,
         }

@@ -10,7 +10,6 @@ class Connection:
 
 
 class Config:
-    @Logic.Cacher().cache
     def __init__(self, file: str):
         with open(file, "r", encoding="utf-8") as f:
             self.config_json = json.load(f)
