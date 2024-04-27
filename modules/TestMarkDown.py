@@ -35,3 +35,20 @@ class Test(ModuleClass.Module):
                 group_id=self.event.group_id,
                 user_id=self.event.user_id
             )
+
+            row = KeyBoardRow(
+                [
+                    KeyBoardButton("Test")
+                ]
+            )
+
+            keyboard = KeyBoard([row])
+            self.actions.send(
+                user_id=self.event.user_id,
+                group_id=self.event.group_id,
+                message=Message(
+                    [
+                        keyboard
+                    ]
+                )
+            )
