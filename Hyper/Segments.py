@@ -24,11 +24,11 @@ class Text:
 
 
 class Image:
-    def __init__(self, image: str):
-        self.content = {"type": "image", "data": {"file": image}}
+    def __init__(self, image: str, summary: str = "[图片]"):
+        self.content = {"type": "image", "data": {"file": image, "summary": summary}}
 
-    def set(self, image: str) -> None:
-        self.__init__(image)
+    def set(self, image: str, summary: str = "[图片]") -> None:
+        self.__init__(image, summary)
 
     def get(self) -> str:
         return self.content["data"]["file"]
@@ -422,6 +422,26 @@ class Json:
         return str(self.content)
 
 
+class MarketFace:
+    def __init__(self, face_id: str, tab_id: str, key: str):
+        self.content = {"type": "face", "data": {"face_id": face_id, "tab_id": tab_id, "key": key}}
+
+    def set(self, face_id: str, tab_id: str, key: str) -> None:
+        self.__init__(face_id, tab_id, key)
+
+    def get(self) -> str:
+        return self.content["data"]["face_id"]
+
+    def get_raw(self) -> dict:
+        return self.content
+
+    def __str__(self) -> str:
+        return ""
+
+    def __repr__(self) -> str:
+        return str(self.content)
+
+
 message_types = {
     "text": {
         "type": Text,
@@ -496,6 +516,14 @@ message_types = {
         "args": [
             "type",
             "id"
+        ]
+    },
+    "marketface": {
+        "type": MarketFace,
+        "args": [
+            "face_id",
+            "tab_id",
+            "key"
         ]
     }
 }

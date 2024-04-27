@@ -98,8 +98,14 @@ async def video_info(bv: str):
     return Info()
 
 
+class GithubSafetyResult:
+    def __init__(self, safe: bool, address: str):
+        self.safe: bool = safe
+        self.address: str = address
+
+
 @Logic.Cacher().cache
-def github_safety_check(url: str) -> bool:
+def github_safety_check(url: str) -> GithubSafetyResult:
     urls = url.split("/")
     base_index = None
     for i in urls:
@@ -112,7 +118,8 @@ def github_safety_check(url: str) -> bool:
     response = httpx.get(repo, verify=False)
     desc = str(response.json()["description"])
     result = WordSafety.check(text=desc)
-    return result.result
+    ret = GithubSafetyResult(result.result, f"{urls[base_index + 1]}/{urls[base_index + 2]}")
+    return ret
 
 
 @ModuleClass.ModuleRegister.register(["message"])
@@ -128,7 +135,7 @@ class Module(ModuleClass.Module):
         if bv_id:
             info = await video_info(bv=bv_id)
             get_image(info)
-            result = Manager.Message([Segments.Image(f"file://{os.path.abspath('bili.png')}")])
+            result = Manager.Message([Segments.Image(f"file://{os.path.abspath('bili.png')}", f"{info.title}")])
 
             self.actions.send(group_id=self.event.group_id, message=result)
 
@@ -138,11 +145,12 @@ class Module(ModuleClass.Module):
         except:
             return
         if "github.com/" in url:
-            if not github_safety_check(url=url):
+            safety = github_safety_check(url=url)
+            if not safety.safe:
                 return
             content = url.replace("github.com/", "opengraph.githubassets.com/Yenai/")
             self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Manager.Message(
-                [Segments.Image(content)]
+                [Segments.Image(content, f"{safety.address}")]
             ))
 
         elif "bilibili.com/video/" in url or "b23.tv/" in url:
