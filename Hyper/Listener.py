@@ -192,6 +192,18 @@ class Actions:
         self.ws.send(json.dumps(payload))
         logger.log(f"将消息 {message_id} 设为精华")
 
+    def set_group_special_title(self, group_id: int, user_id: int, title: str) -> None:
+        payload = {
+            "action": "set_group_special_title",
+            "params": {
+                "group_id": group_id,
+                "user_id": user_id,
+                "special_title": title,
+            },
+        }
+        self.ws.send(json.dumps(payload))
+        logger.log(f"在群{group_id}为{user_id}设置头衔 {title}")
+
 
 def get_ret(echo: str) -> Manager.Ret:
     old = None
