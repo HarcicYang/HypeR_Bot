@@ -25,6 +25,30 @@ class Actions:
     def __init__(self, socket: websocket.WebSocket):
         self.ws = socket
 
+        class CustomAction:
+            def __getattr__(self, item) -> callable:
+                def wrapper(no_return: bool, **kwargs) -> Manager.Ret:
+                    if no_return:
+                        payload = {
+                            "action": str(item),
+                            "params": kwargs
+                        }
+                        self.ws.send(json.dumps(payload))
+                        return Manager.Ret({"status": None, "ret_code": None})
+                    else:
+                        echo = get_echo(str(item))
+                        payload = {
+                            "action": str(item),
+                            "params": kwargs,
+                            "echo": echo
+                        }
+                        self.ws.send(json.dumps(payload))
+                        return get_ret(echo)
+
+                return wrapper
+
+        self.custom = CustomAction()
+
     def send(self, message: Manager.Message, group_id: int = None, user_id: int = None) -> Manager.Ret:
         echo = get_echo("send_msg")
         if group_id is not None:
