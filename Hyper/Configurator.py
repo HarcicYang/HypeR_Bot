@@ -11,8 +11,7 @@ class Connection:
 
 class Config:
     def __init__(self, file: str):
-        with open(file, "r", encoding="utf-8") as f:
-            self.config_json = json.load(f)
+        self.config_json = Logic.FileManager.read_as_json(file)
 
         self.owner: list[int] = self.config_json["owner"]
         self.black_list: list[int] = self.config_json["black_list"]
