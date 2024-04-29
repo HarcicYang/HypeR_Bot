@@ -1,19 +1,28 @@
+import json
+import os
+import shutil
+
 from Hyper import Logger
 import traceback
 
 
 class Cacher:
-    def __init__(self, cache_time: int = 10):
+    def __init__(self, cache_time: int = 5):
         self.cache_time: int = cache_time
         self.cached: dict = {}
 
     def cache(self, func):
         def wrapper(*args, **kwargs):
+            if kwargs.get("no_cache", False):
+                kwargs.pop("no_cache")
+                return func(*args, **kwargs)
             if str(kwargs) not in self.cached:
                 ret = func(*args, **kwargs)
                 self.cached[str(kwargs)] = ret
                 if len(self.cached) >= self.cache_time:
-                    self.cached = {}
+                    for i in self.cached:
+                        del self.cached[i]
+                        break
                 return ret
             else:
                 return self.cached[str(kwargs)]
@@ -22,11 +31,16 @@ class Cacher:
 
     def cache_async(self, func):
         async def wrapper(*args, **kwargs):
+            if kwargs.get("no_cache", False):
+                kwargs.pop("no_cache")
+                return await func(*args, **kwargs)
             if str(kwargs) not in self.cached:
                 ret = await func(*args, **kwargs)
                 self.cached[str(kwargs)] = ret
                 if len(self.cached) >= self.cache_time:
-                    self.cached = {}
+                    for i in self.cached:
+                        del self.cached[i]
+                        break
                 return ret
             else:
                 return self.cached[str(kwargs)]
@@ -95,3 +109,57 @@ class Random:
 
     def __call__(self) -> int:
         return self.random()
+
+
+class FileManager:
+    @staticmethod
+    def create(path: str) -> bool:
+        try:
+            with open(path, "w") as f:
+                f.write("")
+        except (FileExistsError | OSError | IOError):
+            return False
+
+        return True
+
+    @staticmethod
+    def exists(path: str) -> bool:
+        try:
+            with open(path, "r") as f:
+                return True
+        except FileNotFoundError:
+            return False
+
+    @staticmethod
+    @Cacher(7).cache
+    def read_as_text(path: str, encoding: str = "utf-8") -> str:
+        with open(path, "r", encoding=encoding) as f:
+            return f.read()
+
+    @staticmethod
+    @Cacher(7).cache
+    def read_as_json(path: str, encoding: str = "utf-8") -> dict | list:
+        with open(path, "r", encoding=encoding) as f:
+            return json.load(f)
+
+    @staticmethod
+    @Cacher(7).cache
+    def read_raw(path: str) -> bytes:
+        with open(path, "rb") as f:
+            return f.read()
+
+    @staticmethod
+    def delete(path: str) -> bool:
+        try:
+            os.remove(path)
+            return True
+        except (FileNotFoundError | OSError | IOError):
+            return False
+
+    @staticmethod
+    def copy(path1: str, path2: str) -> bool:
+        try:
+            shutil.copy(path1, path2)
+            return True
+        except (FileNotFoundError | OSError | IOError):
+            return False
