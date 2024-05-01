@@ -424,7 +424,7 @@ class Json:
 
 class MarketFace:
     def __init__(self, face_id: str, tab_id: str, key: str):
-        self.content = {"type": "face", "data": {"face_id": face_id, "tab_id": tab_id, "key": key}}
+        self.content = {"type": "marketface", "data": {"face_id": face_id, "tab_id": tab_id, "key": key}}
 
     def set(self, face_id: str, tab_id: str, key: str) -> None:
         self.__init__(face_id, tab_id, key)

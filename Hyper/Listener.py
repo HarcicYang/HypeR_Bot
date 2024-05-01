@@ -265,33 +265,40 @@ def reg(func: callable):
 
 def run():
     global ws
-    if handler is tester:
-        raise Errors.ListenerNotRegisteredError("No handler registered")
-    ws = websocket.WebSocket()
-    retried = 0
-    while True:
-        try:
-            ws.connect(f"ws://{config.connection.host}:{config.connection.port}")
-        except ConnectionRefusedError or TimeoutError:
-            if retried >= config.connection.retries:
-                logger.log(f"重试次数达到最大值({config.connection.retries})，退出", level=Logger.levels.CRITICAL)
-                break
-
-            logger.log(f"连接建立失败，3秒后重试({retried}/{config.connection.retries})", level=Logger.levels.WARNING)
-            retried += 1
-            time.sleep(3)
-            continue
-        logger.log("成功建立连接", level=Logger.levels.INFO)
+    try:
+        if handler is tester:
+            raise Errors.ListenerNotRegisteredError("No handler registered")
+        ws = websocket.WebSocket()
         retried = 0
-        actions = Actions(ws)
         while True:
             try:
-                data = json.loads(ws.recv())
-            except KeyboardInterrupt:
-                logger.log("正在退出 (Ctrl+C被按下)", level=Logger.levels.WARNING)
-                ws.close()
-                sys.exit()
-            except ConnectionResetError:
-                logger.log("连接断开", level=Logger.levels.ERROR)
-                break
-            threading.Thread(target=lambda: __handler(data, actions)).start()
+                ws.connect(f"ws://{config.connection.host}:{config.connection.port}")
+            except ConnectionRefusedError or TimeoutError:
+                if retried >= config.connection.retries:
+                    logger.log(f"重试次数达到最大值({config.connection.retries})，退出", level=Logger.levels.CRITICAL)
+                    break
+
+                logger.log(f"连接建立失败，3秒后重试({retried}/{config.connection.retries})",
+                           level=Logger.levels.WARNING)
+                retried += 1
+                time.sleep(3)
+                continue
+            logger.log("成功建立连接", level=Logger.levels.INFO)
+            retried = 0
+            actions = Actions(ws)
+            while True:
+                try:
+                    data = json.loads(ws.recv())
+                except ConnectionResetError:
+                    logger.log("连接断开", level=Logger.levels.ERROR)
+                    break
+                except json.decoder.JSONDecodeError:
+                    logger.log("收到错误的JSON内容", level=Logger.levels.ERROR)
+                threading.Thread(target=lambda: __handler(data, actions)).start()
+    except KeyboardInterrupt:
+        logger.log("正在退出(Ctrl+C)", level=Logger.levels.WARNING)
+        try:
+            ws.close()
+        except:
+            pass
+        sys.exit()
