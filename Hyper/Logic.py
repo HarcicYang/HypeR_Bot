@@ -105,6 +105,7 @@ class Random:
 
     def random(self) -> int:
         self.seed = self.seed ** 2
+        self.seed = int(str(self.seed)[:7])
         return int(str(self.seed)[1:5])
 
     def __call__(self) -> int:
@@ -126,6 +127,7 @@ class FileManager:
     def exists(path: str) -> bool:
         try:
             with open(path, "r") as f:
+                f.read()
                 return True
         except FileNotFoundError:
             return False
