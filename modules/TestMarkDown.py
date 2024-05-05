@@ -38,7 +38,7 @@ class Test(ModuleClass.Module):
 
             row = KeyBoardRow(
                 [
-                    KeyBoardButton("Test")
+                    KeyBoardButton("这是什么", data="我和校溯都是小南娘。人家已经急不可耐了呢~~", enter=True)
                 ]
             )
 
@@ -52,3 +52,55 @@ class Test(ModuleClass.Module):
                     ]
                 )
             )
+
+        elif str(self.event.message) == ".test2":
+            forward_result = self.actions.send_forward_msg(
+                message=Message(
+                    [
+                        CustomNode(user_id="2530894749", nick_name='dext("⁧⁧ ("⁧‭', content=Message(
+                            [
+                                At("2488529467"),
+                                Text("好想🥵，好想被主人宠幸🥵")
+                            ]
+                        ))
+                    ]
+                )
+            )
+            res_id: str = forward_result.data
+            message = Message(
+                [
+                    Forward(res_id)
+                ]
+            )
+            self.actions.send(
+                message=message,
+                group_id=self.event.group_id,
+                user_id=self.event.user_id
+            )
+
+        elif str(self.event.message) == ".test3":
+            result = self.actions.get_stranger_info(1449924494)
+            print(result.ret_code)
+            print(result.data)
+            result = self.actions.get_group_info(group_id=894446744)
+            print(result.data)
+
+        elif str(self.event.message) == "Ciallo～(∠・ω< )⌒★":
+            row = KeyBoardRow(
+                [
+                    KeyBoardButton("Ciallo～(∠・ω< )⌒★", data="https://ciallo.cc", button_type=0)
+                ]
+            )
+
+            keyboard = KeyBoard([row])
+            forward_result = self.actions.send_forward_msg(
+                message=Message(
+                    [
+                        CustomNode(user_id=str(self.event.self_id), nick_name="bot", content=Message([keyboard])
+                                   )
+                    ]
+                )
+            )
+            res_id: str = forward_result.data
+            self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
+                              message=Message([LongMessage(res_id)]))

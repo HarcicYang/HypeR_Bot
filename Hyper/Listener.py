@@ -196,6 +196,20 @@ class Actions:
         self.ws.send(json.dumps(payload))
         return get_ret(echo)
 
+    @Logic.Cacher().cache
+    def get_group_info(self, group_id: int) -> Manager.Ret:
+        echo = get_echo("get_group_info")
+        payload = {
+            "action": "get_group_member_info",
+            "params": {
+                "group_id": group_id,
+                "no_cache": True,
+            },
+            "echo": echo,
+        }
+        self.ws.send(json.dumps(payload))
+        return get_ret(echo)
+
     def get_status(self) -> Manager.Ret:
         echo = get_echo("get_status")
         payload = {

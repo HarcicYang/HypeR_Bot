@@ -1,6 +1,5 @@
 from Hyper import Manager, Listener, Logger, Configurator
 
-
 config = Configurator.Config("config.json")
 logger = Logger.Logger()
 logger.set_level(config.log_level)

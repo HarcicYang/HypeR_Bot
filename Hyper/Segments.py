@@ -442,6 +442,34 @@ class MarketFace:
         return str(self.content)
 
 
+class Dice:
+    def __init__(self):
+        self.content = {"type": "dice", "data": {}}
+
+    def get_raw(self) -> dict:
+        return self.content
+
+    def __str__(self) -> str:
+        return "[骰子]"
+
+    def __repr__(self) -> str:
+        return str(self.content)
+
+
+class Rps:
+    def __init__(self):
+        self.content = {"type": "rps", "data": {}}
+
+    def get_raw(self) -> dict:
+        return self.content
+
+    def __str__(self) -> str:
+        return "[猜拳]"
+
+    def __repr__(self) -> str:
+        return str(self.content)
+
+
 message_types = {
     "text": {
         "type": Text,
@@ -525,5 +553,13 @@ message_types = {
             "tab_id",
             "key"
         ]
+    },
+    "dice": {
+        "type": Dice,
+        "args": []
+    },
+    "rps": {
+        "type": Rps,
+        "args": []
     }
 }

@@ -1,4 +1,3 @@
-from typing import Union
 from Hyper.Segments import *
 from Hyper.Configurator import *
 from Hyper.Logger import Logger, levels
@@ -8,19 +7,16 @@ config = Config("./config.json")
 logger = Logger()
 logger.set_level(config.log_level)
 
-accept_types = \
-    [Text, Image, At, Reply, Face, Location, Record, Video, Node, Contact, Forward, Poke, CustomNode, KeyBoard,
-     MarkDown]
 servicing = []
 
 
 class Message:
-    def __init__(self, contents: list[Union[*accept_types]] = None):
+    def __init__(self, contents: list = None):
         if contents is None:
             contents = []
         self.contents = contents
 
-    def add(self, content: Union[*accept_types]) -> None:
+    def add(self, content) -> None:
         self.contents.append(content)
 
     def get(self) -> list:
@@ -32,16 +28,16 @@ class Message:
     def __len__(self) -> int:
         return len(self.contents)
 
-    def __getitem__(self, index: int) -> Union[*accept_types]:
+    def __getitem__(self, index: int):
         return self.contents[index]
 
-    def __setitem__(self, index: int, content: Union[*accept_types]) -> None:
+    def __setitem__(self, index: int, content) -> None:
         self.contents[index] = content
 
     def __delitem__(self, index: int) -> None:
         del self.contents[index]
 
-    def __iter__(self) -> Union[*accept_types]:
+    def __iter__(self):
         for i in self.contents:
             yield i
 
