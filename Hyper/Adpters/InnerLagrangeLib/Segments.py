@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os.path
-
+import httpx
 from Hyper.Errors import *
 from lagrange.client.message import elems
 from Hyper.Adpters.InnerLagrangeLib import LagrangeClient
@@ -47,7 +47,7 @@ class Image:
 
     async def get_raw(self, **kwargs) -> elems.Image:
         path = self.content["data"]["file"].replace("file://", "")
-        if self.content["data"]["file"].startwith("http"):
+        if "http" in str(self.content["data"]["file"])[:4]:
             content = httpx.get(self.content["data"]["file"]).content
             with open("temp114.png","wb") as f:
                 f.write(content)
