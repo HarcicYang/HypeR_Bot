@@ -13,14 +13,14 @@ class Module(ModuleClass.Module):
 
         if cmds.startswith(f"@{self.event.self_id}"):
             if "先吃饭吧" in cmds:
-                self.actions.send(group_id=self.event.group_id,
-                                  message=Manager.Message([Segments.Text("好啊好啊，不过，饭还没做好")]))
+                await self.actions.send(group_id=self.event.group_id,
+                                        message=Manager.Message([Segments.Text("好啊好啊，不过，饭还没做好")]))
             elif "先洗澡吧" in cmds:
-                self.actions.send(group_id=self.event.group_id,
-                                  message=Manager.Message([Segments.Text("好啊好啊，不过，水还没烧好")]))
+                await self.actions.send(group_id=self.event.group_id,
+                                        message=Manager.Message([Segments.Text("好啊好啊，不过，水还没烧好")]))
             elif "嘿嘿我来了" in cmds:
-                self.actions.send(group_id=self.event.group_id,
-                                  message=Manager.Message([Segments.Text("啊啊啊，什么啊，群友好恐怖呜呜呜")]))
+                await self.actions.send(group_id=self.event.group_id,
+                                        message=Manager.Message([Segments.Text("啊啊啊，什么啊，群友好恐怖呜呜呜")]))
             else:
                 custom_row = [
                     Segments.KeyBoardRow(
@@ -33,4 +33,4 @@ class Module(ModuleClass.Module):
                     )
                 ]
                 message = Manager.Message([Segments.Text("主人会选择哪个套餐呢。。。"), Segments.KeyBoard(custom_row)])
-                self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=message)
+                await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=message)

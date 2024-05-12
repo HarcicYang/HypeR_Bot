@@ -13,7 +13,7 @@ class Module(ModuleClass.Module):
             return None
 
         if cmd == ".info":
-            version = self.actions.get_version_info()
+            version = await self.actions.get_version_info()
             name = version.data["app_name"]
             code = version.data["app_version"]
             message = ("HypeR Bot v0.5\n"
@@ -27,5 +27,5 @@ class Module(ModuleClass.Module):
                 name,
                 code
             )
-            self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
+            await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
                               message=Manager.Message([Segments.Text(message)]))

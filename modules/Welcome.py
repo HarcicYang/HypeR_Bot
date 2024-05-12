@@ -24,24 +24,28 @@ class Module(ModuleClass.Module):
                     return None
             else:
                 return None
-            self.actions.send(group_id=self.event.group_id, message=Manager.Message(
+            await self.actions.send(group_id=self.event.group_id, message=Manager.Message(
                 [Segments.Text(text)]
             ))
 
         elif self.event.post_type == "request":
             if self.event.request_type == "group":
-                self.actions.set_group_add_request(flag=self.event.flag, sub_type=self.event.sub_type, approve=True)
+
                 if self.event.sub_type == "add":
-                    message = Manager.Message(
-                        [
-                            Segments.Text(f"同意用户{self.event.user_id}的加群请求，他的理由是：{self.event.comment}")
-                        ]
-                    )
-                    self.actions.send(group_id=self.event.group_id, message=message)
+                    if str(self.event.group_id) == "615504117" or str(self.event.group_id) == "615461114":
+                        if "前一节的补充" in self.event.comment:
+                            pass
+                        else:
+                            await self.actions.set_group_add_request(flag=self.event.flag, sub_type=self.event.sub_type,
+                                                                     approve=False)
+                            return
+
+                    await self.actions.set_group_add_request(flag=self.event.flag, sub_type=self.event.sub_type,
+                                                             approve=True)
                 elif self.event.sub_type == "invite":
                     message = Manager.Message(
                         [
                             Segments.Text(f"HypeR Bot 通过用户{self.event.user_id}的邀请加入群组")
                         ]
                     )
-                    self.actions.send(group_id=self.event.group_id, message=message)
+                    await self.actions.send(group_id=self.event.group_id, message=message)

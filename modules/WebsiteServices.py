@@ -137,7 +137,7 @@ class Module(ModuleClass.Module):
             get_image(info)
             result = Manager.Message([Segments.Image(f"file://{os.path.abspath('bili.png')}", f"{info.title}")])
 
-            self.actions.send(group_id=self.event.group_id, message=result)
+            await self.actions.send(group_id=self.event.group_id, message=result)
 
         pa = r"(http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+\b)"
         try:
@@ -149,8 +149,10 @@ class Module(ModuleClass.Module):
             if not safety.safe:
                 return
             content = url.replace("github.com/", "opengraph.githubassets.com/Yenai/")
-            self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Manager.Message(
-                [Segments.Image(content, f"{safety.address}")]
+            with open("github.png", "wb") as f:
+                f.write(httpx.get(content).content)
+            await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Manager.Message(
+                [Segments.Image(f"file://{os.path.abspath('github.png')}", f"{safety.address}")]
             ))
 
         elif "bilibili.com/video/" in url or "b23.tv/" in url:

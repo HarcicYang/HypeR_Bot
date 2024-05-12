@@ -66,42 +66,42 @@ class Module(ModuleClass.Module):
             if data[i].violations < 0:
                 data[i].violations = 0
 
-        if data[self.event.user_id].violations >= 5:
-            self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
-                                       duration=(60 * data[self.event.user_id].violation_level))
-            self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                              message=Manager.Message(
-                                  [
-                                      Segments.At(str(self.event.user_id)),
-                                      Segments.Text("请勿刷屏")
-                                  ]
-                              )
-                              )
+        if data[self.event.user_id].violations >= 7:
+            await self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
+                                             duration=(60 * data[self.event.user_id].violation_level))
+            await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
+                                    message=Manager.Message(
+                                        [
+                                            Segments.At(str(self.event.user_id)),
+                                            Segments.Text("请勿刷屏")
+                                        ]
+                                    )
+                                    )
             data[self.event.user_id].violations = 2
             data[self.event.user_id].violation_level += 1
 
         safety = WordSafety.check(text=str(self.event.message))
         if not safety.result:
-            self.actions.del_message(self.event.message_id)
-            self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                              message=Manager.Message(
-                                  [
-                                      Segments.At(str(self.event.user_id)),
-                                      Segments.Text(safety.message)
-                                  ]
-                              )
-                              )
+            await self.actions.del_message(self.event.message_id)
+            await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
+                                    message=Manager.Message(
+                                        [
+                                            Segments.At(str(self.event.user_id)),
+                                            Segments.Text(safety.message)
+                                        ]
+                                    )
+                                    )
             data[self.event.user_id].words_unsafe_times += 1
             if data[self.event.user_id].words_unsafe_times >= 3:
-                self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
-                                           duration=(60 * data[self.event.user_id].violation_level))
-                self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                                  message=Manager.Message(
-                                      [
-                                          Segments.At(str(self.event.user_id)),
-                                          Segments.Text("请勿发送违禁词")
-                                      ]
-                                  )
-                                  )
+                await self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
+                                                 duration=(60 * data[self.event.user_id].violation_level))
+                await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
+                                        message=Manager.Message(
+                                            [
+                                                Segments.At(str(self.event.user_id)),
+                                                Segments.Text("请勿发送违禁词")
+                                            ]
+                                        )
+                                        )
                 data[self.event.user_id].words_unsafe_times = 0
                 data[self.event.user_id].violation_level += 1

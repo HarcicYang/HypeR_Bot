@@ -9,8 +9,9 @@ class UserTitle(ModuleClass.Module):
         if str(self.event.message).startswith(".title"):
             args = str(self.event.message).split(" ")
             if len(args) == 3:
-                self.actions.set_group_special_title(group_id=int(self.event.group_id), title=args[2], user_id=int(args[1]))
-                self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Message(
+                await self.actions.set_group_special_title(group_id=int(self.event.group_id), title=args[2],
+                                                           user_id=int(args[1]))
+                await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Message(
                     [
                         Reply(self.event.message_id),
                         Text("成功")

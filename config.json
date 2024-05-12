@@ -9,11 +9,13 @@
     "retries": 5
   },
   "Log_level": "INFO",
+  "protocol": "Inner",
   "Others": {
     "Chat": {
       "Qwen": {
         "key": "sk-key"
       }
-    }
+    },
+    "uin": 3591992788
   }
 }

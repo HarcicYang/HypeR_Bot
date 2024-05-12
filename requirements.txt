@@ -1,5 +1,4 @@
 bilibili-api-python==16.1.1
-meme_generator
-Levenshtein
 dashscope
 Pillow
+websocket

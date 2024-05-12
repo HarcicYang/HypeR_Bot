@@ -1,4 +1,6 @@
 import base64
+import os.path
+
 import httpx
 from Hyper import Manager, ModuleClass, Segments
 from meme_generator import get_meme
@@ -243,15 +245,15 @@ class Module(ModuleClass.Module):
             try:
                 meme = get_meme(emoji_dict[str(message).split()[1]])
             except:
-                self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                                  message=Manager.Message(
-                                      [
-                                          Segments.Text(
-                                              "参数错误。请参阅https://github.com/MeetWq/meme-generator/blob/main/docs/memes.md"
-                                          )
-                                      ]
-                                  )
-                                  )
+                await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
+                                        message=Manager.Message(
+                                            [
+                                                Segments.Text(
+                                                    "参数错误。请参阅https://github.com/MeetWq/meme-generator/blob/main/docs/memes.md"
+                                                )
+                                            ]
+                                        )
+                                        )
                 return None
             texts = []
             images = []
@@ -285,15 +287,17 @@ class Module(ModuleClass.Module):
             # with open("result.png", "wb") as f:
             #     f.write(result.getvalue())
             content = result.getvalue()
-            content_text = f"base64://{base64.b64encode(content).decode()}"
+            with open("meme.png", "wb") as f:
+                f.write(content)
+            content_text = os.path.abspath("meme.png")
 
-            self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                              message=Manager.Message(
-                                  [
-                                      Segments.Reply(self.event.message_id),
-                                      # Segments.Image("file://" + os.path.abspath("result.png"))
-                                      Segments.Image(content_text)
+            await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
+                                    message=Manager.Message(
+                                        [
+                                            Segments.Reply(self.event.message_id),
+                                            # Segments.Image("file://" + os.path.abspath("result.png"))
+                                            Segments.Image(content_text)
 
-                                  ]
-                              )
-                              )
+                                        ]
+                                    )
+                                    )

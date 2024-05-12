@@ -13,6 +13,7 @@ class Config:
     def __init__(self, file: str):
         self.config_json = Logic.FileManager.read_as_json(file)
 
+        self.protocol: str = self.config_json["protocol"]
         self.owner: list[int] = self.config_json["owner"]
         self.black_list: list[int] = self.config_json["black_list"]
         self.connection = Connection(

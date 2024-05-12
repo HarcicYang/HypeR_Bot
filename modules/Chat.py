@@ -98,28 +98,28 @@ class Module(ModuleClass.Module):
                 text = llm.handle()
                 # print(text)
                 message = Manager.Message([Segments.Reply(self.event.message_id), Segments.Text(text)])
-                self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id, message=message)
+                await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id, message=message)
 
             elif str(self.event.message).startswith(".sys") and self.event.is_owner:
                 sys_prompt = str(self.event.message).replace(".sys ", "", 1)
-                self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                                  message=Manager.Message(
-                                      [
-                                          Segments.Reply(self.event.message_id),
-                                          Segments.Text("成功"),
-                                      ]
-                                  )
-                                  )
+                await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
+                                        message=Manager.Message(
+                                            [
+                                                Segments.Reply(self.event.message_id),
+                                                Segments.Text("成功"),
+                                            ]
+                                        )
+                                        )
 
             elif str(self.event.message).startswith(".mode") and self.event.is_owner:
                 mode = str(self.event.message).replace(".mode ", "", 1)
-                self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                                  message=Manager.Message(
-                                      [
-                                          Segments.Reply(self.event.message_id),
-                                          Segments.Text("成功"),
-                                      ]
-                                  )
-                                  )
+                await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
+                                        message=Manager.Message(
+                                            [
+                                                Segments.Reply(self.event.message_id),
+                                                Segments.Text("成功"),
+                                            ]
+                                        )
+                                        )
         except AttributeError:
             return None

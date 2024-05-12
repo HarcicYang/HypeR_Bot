@@ -13,7 +13,7 @@ class Test(ModuleClass.Module):
                        " \n ```python\nprint('Hello World')```"
                        " \n - 1"
                        " \n - 2")
-            forward_result = self.actions.send_forward_msg(
+            forward_result = await self.actions.send_forward_msg(
                 message=Message(
                     [
                         CustomNode(user_id=f"{self.event.self_id}", nick_name="Hyper Bot", content=Message(
@@ -30,7 +30,7 @@ class Test(ModuleClass.Module):
                     LongMessage(res_id)
                 ]
             )
-            self.actions.send(
+            await self.actions.send(
                 message=message,
                 group_id=self.event.group_id,
                 user_id=self.event.user_id
@@ -38,12 +38,12 @@ class Test(ModuleClass.Module):
 
             row = KeyBoardRow(
                 [
-                    KeyBoardButton("这是什么", data="我和校溯都是小南娘。人家已经急不可耐了呢~~", enter=True)
+                    KeyBoardButton("Ciallo!", data="我。。。我要做主人的新怒！🥵嗯…🥵哈～呃🥵～🥵🥵🥵🥵🥵主人最棒了！再深一点~🥵", enter=True)
                 ]
             )
 
             keyboard = KeyBoard([row])
-            self.actions.send(
+            await self.actions.send(
                 user_id=self.event.user_id,
                 group_id=self.event.group_id,
                 message=Message(
@@ -54,7 +54,7 @@ class Test(ModuleClass.Module):
             )
 
         elif str(self.event.message) == ".test2":
-            forward_result = self.actions.send_forward_msg(
+            forward_result = await self.actions.send_forward_msg(
                 message=Message(
                     [
                         CustomNode(user_id="2530894749", nick_name='dext("⁧⁧ ("⁧‭', content=Message(
@@ -72,17 +72,17 @@ class Test(ModuleClass.Module):
                     Forward(res_id)
                 ]
             )
-            self.actions.send(
+            await self.actions.send(
                 message=message,
                 group_id=self.event.group_id,
                 user_id=self.event.user_id
             )
 
         elif str(self.event.message) == ".test3":
-            result = self.actions.get_stranger_info(1449924494)
+            result = await self.actions.get_stranger_info(1449924494)
             print(result.ret_code)
             print(result.data)
-            result = self.actions.get_group_info(group_id=894446744)
+            result = await self.actions.get_group_info(group_id=894446744)
             print(result.data)
 
         elif str(self.event.message) == "Ciallo～(∠・ω< )⌒★":
@@ -93,7 +93,7 @@ class Test(ModuleClass.Module):
             )
 
             keyboard = KeyBoard([row])
-            forward_result = self.actions.send_forward_msg(
+            forward_result = await self.actions.send_forward_msg(
                 message=Message(
                     [
                         CustomNode(user_id=str(self.event.self_id), nick_name="bot", content=Message([keyboard])
@@ -102,5 +102,5 @@ class Test(ModuleClass.Module):
                 )
             )
             res_id: str = forward_result.data
-            self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
+            await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
                               message=Message([LongMessage(res_id)]))

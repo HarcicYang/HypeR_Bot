@@ -7,6 +7,9 @@
 <img src="https://img.shields.io/static/v1?label=LICENSE&message=GPL-3.0&color=lightrey" alt="Badge">
 </div>
 
+## 激动人心的时刻！
+在2024年5月12日更新后，无需搭配OneBot框架即可稳定运行！
+
 
 ## 概览
 HypeR Bot是一个适配OneBot协议的机器人框架，旨在提供一个简洁、高效、可扩展的机器人运行结构。
@@ -18,6 +21,8 @@ HypeR Bot是一个适配OneBot协议的机器人框架，旨在提供一个简�
 │   ├── __init__.py
 │   ├── ...
 │   
+├── lagrange
+│ 
 ├── lib
 │   ├── Configuratior.py
 │   ├── DataBase.py
@@ -42,12 +47,14 @@ HypeR Bot是一个适配OneBot协议的机器人框架，旨在提供一个简�
     "port": 5004
   },
   "Log_level": "INFO",
+  "protocol": "Inner",
   "Others": {
     "Chat": {
       "Qwen": {
         "key": "key"
       }
-    }
+    },
+    "uin": 0
   }
 }
 ```
@@ -58,6 +65,8 @@ HypeR Bot是一个适配OneBot协议的机器人框架，旨在提供一个简�
 - `Connection`：连接信息，包括主机地址和端口；
 - `Log_level`：日志等级，可选值为`DEBUG`、`TRACE`、`INFO`、`WARNING`、`ERROR`、`CRITICAL`；
 - `Others`：其他配置项，这里的内容应当由各个功能模块的作者指定，示例中的`Chat`是用于实现调用[通义千问](https://dashscope.aliyun.com/)聊天功能的模块，其配置项为`Qwen`；
+- `uin`：使用Inner协议是需要；
+- `protocol`：适配的协议。设置为“Inner”即使用内置的Lagrange-Python客户端，设置为“OneBot”即与OneBot对接
 
 
 ## 环境
