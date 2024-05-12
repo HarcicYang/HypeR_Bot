@@ -1,5 +1,7 @@
 import asyncio
 import json
+import os.path
+
 from Hyper.Errors import *
 from lagrange.client.message import elems
 from Hyper.Adpters.InnerLagrangeLib import LagrangeClient
@@ -44,13 +46,19 @@ class Image:
         return self.content["data"]["file"]
 
     async def get_raw(self, **kwargs) -> elems.Image:
+        path = self.content["data"]["file"].replace("file://", "")
+        if self.content["data"]["file"].startwith("http"):
+            content = httpx.get(self.content["data"]["file"]).content
+            with open("temp114.png","wb") as f:
+                f.write(content)
+            path = os.path.abspath("temp114.png")
         if kwargs.get("group_id") is not None:
             return await LagrangeClient.client.upload_grp_image(
-                open(self.content["data"]["file"].replace("file://", ""), "rb"), kwargs["group_id"]
+                open(path, "rb"), kwargs["group_id"]
             )
         else:
             return await LagrangeClient.client.upload_friend_image(
-                open(self.content["data"]["file"].replace("file://", ""), "rb"), kwargs["user_id"]
+                open(path, "rb"), kwargs["user_id"]
             )
 
     def __str__(self) -> str:

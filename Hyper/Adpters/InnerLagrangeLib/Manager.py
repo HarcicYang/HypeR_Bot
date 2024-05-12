@@ -86,6 +86,10 @@ def gen_message(data: GroupMessage) -> Message:
                 msg_id = list(LagrangeClient.msg_history.keys())[list(LagrangeClient.msg_history.values()).index(data)]
                 message.add(message_types[i]["type"](msg_id))
                 continue
+            if isinstance(i, elems.At):
+                qq = i.uin
+                message.add(message_types[i]["type"](qq))
+                continue
             args = []
             for j in message_types[i]["args"]:
                 args.append(i.__getattribute__(j))
