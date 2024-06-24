@@ -38,7 +38,7 @@ class LLM:
             history = []
         history.append({"role": "user", "content": self.message})
         response = Generation.call(
-            Generation.Models.qwen_max,
+            "qwen2-1.5b-instruct",
             messages=new + history,
             result_format='message'
         )
