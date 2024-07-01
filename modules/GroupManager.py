@@ -32,7 +32,7 @@ class UserInfo:
 
     @property
     def need_mute(self) -> bool:
-        return self.violations >= 12 or self.words_unsafe_times >= 3
+        return self.violations >= 7 or self.words_unsafe_times >= 3
 
     def update(self, last_msg, last_time) -> None:
         self.last_message = last_msg
@@ -118,10 +118,7 @@ class Module(ModuleClass.Module):
         elif 1 > sim >= 0.75:
             user.inc_violations(1.5)
         elif sim == 1:
-            if len(self.event.message) == 1 and isinstance(self.event.message[0], Segments.Image):
-                user.inc_violations(0.5)
-            else:
-                user.inc_violations(2)
+            user.inc_violations(2)
 
         if len(str(self.event.message)) < 50:
             pass
