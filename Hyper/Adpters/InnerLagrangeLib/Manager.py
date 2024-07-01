@@ -123,7 +123,7 @@ class Event:
             self.blocked = True if self.user_id in config.black_list or self.group_id in config.black_list else False
             logger.log(
                 f"收到 {self.group_id} 由 {self.user_id} 发送的消息: "
-                f"{self.message if len(str(self.message)) < 5 else str(self.message)[:5] + '...'}")
+                f"{self.message if len(str(self.message)) < 12 else str(self.message)[:12] + '...'}")
             # print(self.message)
 
 

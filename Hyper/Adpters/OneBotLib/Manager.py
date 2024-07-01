@@ -74,7 +74,6 @@ class Sender:
         self.title = json_data.get("title")
 
 
-@Logic.Cacher().cache
 def gen_message(data: dict) -> Message:
     message = Message()
     for i in data["message"]:
@@ -104,7 +103,7 @@ class Event:
             self.message = gen_message(data=data)
             logger.log(
                 f"收到 {self.group_id} 由 {self.user_id} 发送的消息: "
-                f"{self.message if len(str(self.message)) < 5 else str(self.message)[:5] + '...'}")
+                f"{self.message if len(str(self.message)) < 12 else str(self.message)[:12] + '...'}")
 
         elif self.post_type == "notice":
             self.notice_type = data.get("notice_type")

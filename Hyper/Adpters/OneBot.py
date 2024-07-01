@@ -238,6 +238,18 @@ class Actions:
         self.ws.send(json.dumps(payload))
         logger.log(f"在群{group_id}为{user_id}设置头衔 {title}")
 
+    async def get_msg(self, msg_id: int) -> Manager.Ret:
+        echo = get_echo("get_msg")
+        payload = {
+            "action": "get_msg",
+            "params": {
+                "message_id": int(msg_id)
+            },
+            "echo": echo,
+        }
+        self.ws.send(json.dumps(payload))
+        return get_ret(echo)
+
 
 async def tester(message_data: Manager.Event, actions: Actions) -> None:
     ...

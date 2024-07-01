@@ -50,7 +50,7 @@ class Actions:
         pass
 
     async def set_group_ban(self, group_id: int, user_id: int, duration: int = 60) -> None:
-        pass
+        await self.client.set_mute_member(grp_id=int(group_id), uin=int(user_id), duration=duration)
 
     @Logic.Cacher().cache
     async def get_login_info(self) -> Manager.Ret:

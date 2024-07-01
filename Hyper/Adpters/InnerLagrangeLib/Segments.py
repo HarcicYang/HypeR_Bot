@@ -45,11 +45,13 @@ class Image:
     def get(self) -> str:
         return self.content["data"]["file"]
 
-    async def get_raw(self, **kwargs) -> elems.Image:
+    async def get_raw(self, **kwargs) -> elems.Image | dict:
+        if kwargs.get("group_id") == "" and kwargs.get("user_id") == "":
+            return self.content
         path = self.content["data"]["file"].replace("file://", "")
         if "http" in str(self.content["data"]["file"])[:4]:
             content = httpx.get(self.content["data"]["file"]).content
-            with open("temp114.png","wb") as f:
+            with open("temp114.png", "wb") as f:
                 f.write(content)
             path = os.path.abspath("temp114.png")
         if kwargs.get("group_id") is not None:
