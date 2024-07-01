@@ -1,6 +1,6 @@
 from Hyper import Manager, ModuleClass, Segments, WordSafety, Logic
 import re
-from bilibili_api import video
+from bilibili_api import video, login
 import os
 from io import BytesIO
 import httpx
