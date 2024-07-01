@@ -564,6 +564,6 @@ message_types = {
     },
     "json": {
         "type": Json,
-        "args": [data]
+        "args": ["data"]
     }
 }
