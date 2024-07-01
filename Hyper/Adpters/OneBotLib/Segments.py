@@ -546,7 +546,7 @@ message_types = {
             "id"
         ]
     },
-    "marketface": {
+    "mface": {
         "type": MarketFace,
         "args": [
             "face_id",
