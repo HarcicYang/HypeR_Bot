@@ -561,5 +561,9 @@ message_types = {
     "rps": {
         "type": Rps,
         "args": []
+    },
+    "json": {
+        "type": Json,
+        "args": [data]
     }
 }
