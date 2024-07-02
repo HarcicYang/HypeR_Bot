@@ -1,3 +1,6 @@
+import os.path
+import json
+
 from Hyper import Manager, ModuleClass, Segments, WordSafety
 
 
@@ -25,6 +28,8 @@ class UserInfo:
 
     def dec_violations(self, num: int | float) -> None:
         self.violations -= num
+        if self.violations <= 0:
+            self.violations = 0
 
     def clr_violations(self) -> None:
         self.violations = 0
@@ -32,12 +37,33 @@ class UserInfo:
 
     @property
     def need_mute(self) -> bool:
-        return self.violations >= 7 or self.words_unsafe_times >= 3
+        return self.violations >= 5 or self.words_unsafe_times >= 3
 
     def update(self, last_msg, last_time) -> None:
         self.last_message = last_msg
         self.last_time = last_time
         self.inited = True
+
+    @classmethod
+    def load(cls, j_data: dict) -> "UserInfo":
+        obj = cls()
+        obj.inited = True
+        obj.violation_level = j_data["violation_level"]
+        obj.violations = j_data["violations"]
+        obj.last_message = j_data["last_message"]
+        obj.last_time = j_data["last_time"]
+        obj.words_unsafe_times = j_data["words_unsafe_times"]
+
+        return obj
+
+    def dump(self) -> dict:
+        return dict(
+            violation_level=self.violation_level,
+            violations=self.violations,
+            last_message=self.last_message,
+            last_time=self.last_time,
+            words_unsafe_times=self.words_unsafe_times,
+        )
 
 
 class GroupInfo:
@@ -55,6 +81,23 @@ class GroupInfo:
         for i in self.users:
             self.users[i].dec_violations(1)
 
+    @classmethod
+    def load(cls, j_data: dict) -> "GroupInfo":
+        obj = cls()
+        dic = dict()
+        for i in j_data:
+            dic[int(i)] = UserInfo.load(j_data[i])
+        obj.users = dic
+
+        return obj
+
+    def dump(self) -> dict:
+        dic = dict()
+        for i in self.users:
+            dic[str(i)] = self.users[i].dump()
+
+        return dic
+
 
 class InfoManager:
     def __init__(self):
@@ -67,8 +110,38 @@ class InfoManager:
             self.groups[gid] = GroupInfo()
             return self.groups[gid]
 
+    @classmethod
+    def load(cls, j_data: dict) -> "InfoManager":
+        obj = cls()
+        dic = dict()
+        for i in j_data:
+            dic[int(i)] = GroupInfo.load(j_data[i])
+        obj.groups = dic
 
-data = InfoManager()
+        return obj
+
+    @classmethod
+    def load_from(cls, path: str) -> "InfoManager":
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                j_data = json.load(f)
+            return cls.load(j_data)
+        else:
+            return cls()
+
+    def dump(self) -> dict:
+        dic = dict()
+        for i in self.groups:
+            dic[str(i)] = self.groups[i].dump()
+
+        return dic
+
+    def dump_to(self, path: str) -> None:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.dump(), f, indent=2)
+
+
+data = InfoManager.load_from("group.json")
 
 
 def distance(s1: str, s2: str) -> int:
@@ -95,6 +168,8 @@ def string_similarity(s1: str, s2: str) -> float:
 @ModuleClass.ModuleRegister.register(["message"])
 class Module(ModuleClass.Module):
     async def handle(self):
+        if self.event.is_owner and str(self.event.message) == ".dump":
+            print(data.dump())
         user = data.get_group(self.event.group_id).get_user(self.event.user_id)
         if not user.inited:
             user.update(str(self.event.message), self.event.time)
@@ -103,33 +178,36 @@ class Module(ModuleClass.Module):
         sim = string_similarity(user.last_message, str(self.event.message))
 
         if self.event.time - user.last_time < 2:
-            user.inc_violations(2)
-        elif 2 < self.event.time - user.last_time < 20:
+            user.inc_violations(3)
+        elif 2 < self.event.time - user.last_time < 10:
             user.inc_violations(1)
-        elif 20 < self.event.time - user.last_time < 60:
-            user.inc_violations(0.5)
+        elif 10 < self.event.time - user.last_time < 20:
+            user.inc_violations(0.2)
         else:
             pass
 
         if sim < 0.66:
             pass
         elif 0.75 >= sim >= 0.66:
-            user.inc_violations(1)
+            user.inc_violations(0.5)
         elif 1 > sim >= 0.75:
-            user.inc_violations(1.5)
+            user.inc_violations(1)
         elif sim == 1:
-            user.inc_violations(2)
+            if str(self.event.message) == "[图片]":
+                user.inc_violations(0.5)
+            else:
+                user.inc_violations(2)
 
         if len(str(self.event.message)) < 50:
             pass
         elif 100 > len(str(self.event.message)) >= 50:
-            user.inc_violations(0.1)
+            user.inc_violations(0.2)
         elif 150 > len(str(self.event.message)) >= 100:
-            user.inc_violations(0.5)
-        elif 200 > len(str(self.event.message)) >= 150:
             user.inc_violations(1)
-        else:
+        elif 200 > len(str(self.event.message)) >= 150:
             user.inc_violations(2)
+        else:
+            user.inc_violations(3)
 
         user.update(str(self.event.message), self.event.time)
         data.get_group(self.event.group_id).glb_dec()
@@ -137,28 +215,28 @@ class Module(ModuleClass.Module):
         if user.need_mute:
             await self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
                                              duration=(60 * user.violation_level))
-            await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                                    message=Manager.Message(
-                                        [
-                                            Segments.At(str(self.event.user_id)),
-                                            Segments.Text("请勿刷屏")
-                                        ]
-                                    )
-                                    )
+            # await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
+            #                         message=Manager.Message(
+            #                             [
+            #                                 Segments.At(str(self.event.user_id)),
+            #                                 Segments.Text("请勿刷屏")
+            #                             ]
+            #                         )
+            #                         )
             user.clr_violations()
             user.inc_violations(2)
 
         safety = WordSafety.check(text=str(self.event.message))
         if not safety.result:
             await self.actions.del_message(self.event.message_id)
-            await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                                    message=Manager.Message(
-                                        [
-                                            Segments.At(str(self.event.user_id)),
-                                            Segments.Text(safety.message)
-                                        ]
-                                    )
-                                    )
+            # await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
+            #                         message=Manager.Message(
+            #                             [
+            #                                 Segments.At(str(self.event.user_id)),
+            #                                 Segments.Text(safety.message)
+            #                             ]
+            #                         )
+            #                         )
             user.inc_unsafe_times()
             if user.need_mute:
                 await self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
@@ -172,3 +250,5 @@ class Module(ModuleClass.Module):
                                         )
                                         )
                 user.clr_unsafe_times()
+
+        data.dump_to("group.json")
