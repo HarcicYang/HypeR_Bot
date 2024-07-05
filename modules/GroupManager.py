@@ -12,9 +12,11 @@ class UserInfo:
         self.last_message: str = ""
         self.last_time: int = 0
         self.words_unsafe_times = 0
+        self.k1 = 1
+        self.k2 = 1
 
     def inc_violations(self, num: int | float) -> None:
-        self.violations += num
+        self.violations += (num * self.k1)
 
     def inc_unsafe_times(self) -> None:
         self.words_unsafe_times += 1
@@ -37,12 +39,16 @@ class UserInfo:
 
     @property
     def need_mute(self) -> bool:
-        return self.violations >= 5 or self.words_unsafe_times >= 3
+        return self.violations >= (6.5 * self.k2) or self.words_unsafe_times >= 3
 
     def update(self, last_msg, last_time) -> None:
         self.last_message = last_msg
         self.last_time = last_time
         self.inited = True
+
+    def set_k(self, k1: float, k2: float) -> None:
+        self.k1 = k1 + (self.violation_level * 0.000001)
+        self.k2 = k2
 
     @classmethod
     def load(cls, j_data: dict) -> "UserInfo":
@@ -97,6 +103,20 @@ class GroupInfo:
             dic[str(i)] = self.users[i].dump()
 
         return dic
+
+    def gen_k(self) -> None:
+        x = len(self.users)
+        y1 = (0.0005 * x) + 1
+        y2 = (0.000001 * (x ** 2)) + 1
+        if y1 >= y2:
+            k1 = y1
+            k2 = y2
+        else:
+            k1 = y2
+            k2 = y1
+
+        for i in self.users:
+            self.users[i].set_k(k1, k2)
 
 
 class InfoManager:
@@ -170,15 +190,18 @@ class Module(ModuleClass.Module):
     async def handle(self):
         if self.event.is_owner and str(self.event.message) == ".dump":
             print(data.dump())
+
         user = data.get_group(self.event.group_id).get_user(self.event.user_id)
         if not user.inited:
             user.update(str(self.event.message), self.event.time)
             return
 
+        data.get_group(self.event.group_id).gen_k()
+
         sim = string_similarity(user.last_message, str(self.event.message))
 
         if self.event.time - user.last_time < 2:
-            user.inc_violations(3)
+            user.inc_violations(2)
         elif 2 < self.event.time - user.last_time < 10:
             user.inc_violations(1)
         elif 10 < self.event.time - user.last_time < 20:
@@ -214,7 +237,7 @@ class Module(ModuleClass.Module):
 
         if user.need_mute:
             await self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
-                                             duration=(60 * user.violation_level))
+                                             duration=(120 * user.violation_level))
             # await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
             #                         message=Manager.Message(
             #                             [
@@ -240,7 +263,7 @@ class Module(ModuleClass.Module):
             user.inc_unsafe_times()
             if user.need_mute:
                 await self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
-                                                 duration=(60 * user.violation_level))
+                                                 duration=(120 * user.violation_level))
                 await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
                                         message=Manager.Message(
                                             [
