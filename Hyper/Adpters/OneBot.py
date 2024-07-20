@@ -45,6 +45,7 @@ class Actions:
 
         self.custom = CustomAction(self.ws)
 
+    @Logger.AutoLogAsync.register(Logger.AutoLog.templates().send, logger)
     async def send(self, message: Manager.Message, group_id: int = None, user_id: int = None) -> Manager.Ret:
         echo = get_echo("send_msg")
         if group_id is not None:
@@ -67,10 +68,10 @@ class Actions:
             }
         else:
             raise Errors.ArgsInvalidError("'send' API requires 'group_id' or 'user_id' but none of them are provided.")
-        logger.log(f"向 {group_id} 发送消息:{str(message) if len(str(message)) < 5 else str(message)[:5] + '...'}")
         self.ws.send(json.dumps(payload))
         return get_ret(echo)
 
+    @Logger.AutoLogAsync.register(Logger.AutoLog.templates().recall, logger)
     async def del_message(self, message_id: int) -> None:
         payload = {
             "action": "delete_msg",
@@ -79,8 +80,8 @@ class Actions:
             },
         }
         self.ws.send(json.dumps(payload))
-        logger.log(f"撤回消息 {message_id}")
 
+    @Logger.AutoLogAsync.register(Logger.AutoLog.templates().kick, logger)
     async def set_group_kick(self, group_id: int, user_id: int) -> None:
         payload = {
             "action": "set_group_kick",
@@ -90,8 +91,8 @@ class Actions:
             },
         }
         self.ws.send(json.dumps(payload))
-        logger.log(f"将 {user_id} 移出群 {group_id}")
 
+    @Logger.AutoLogAsync.register(Logger.AutoLog.templates().mute, logger)
     async def set_group_ban(self, group_id: int, user_id: int, duration: int = 60) -> None:
         payload = {
             "action": "set_group_ban",
@@ -102,7 +103,6 @@ class Actions:
             },
         }
         self.ws.send(json.dumps(payload))
-        logger.log(f"将 {user_id} 在 {group_id} 禁言 {duration} 秒")
 
     @Logic.Cacher().cache_async
     async def get_login_info(self) -> Manager.Ret:
@@ -150,6 +150,7 @@ class Actions:
         self.ws.send(json.dumps(payload))
         return get_ret(echo)
 
+    @Logger.AutoLogAsync.register(Logger.AutoLog.templates().set_req, logger)
     async def set_group_add_request(self, flag: str, sub_type: str, approve: bool, reason: str = "Refused") -> None:
         payload = {
             "action": "set_group_add_request",
@@ -161,7 +162,6 @@ class Actions:
             },
         }
         self.ws.send(json.dumps(payload))
-        logger.log(f"处理 {sub_type} 请求 {flag} 的结果为 {approve}")
 
     @Logic.Cacher().cache_async
     async def get_stranger_info(self, user_id: int) -> Manager.Ret:
@@ -216,6 +216,7 @@ class Actions:
         self.ws.send(json.dumps(payload))
         return get_ret(echo)
 
+    @Logger.AutoLogAsync.register(Logger.AutoLog.templates().set_ess, logger)
     async def set_essence_msg(self, message_id: int) -> None:
         payload = {
             "action": "set_essence_msg",
@@ -236,7 +237,6 @@ class Actions:
             },
         }
         self.ws.send(json.dumps(payload))
-        logger.log(f"在群{group_id}为{user_id}设置头衔 {title}")
 
     async def get_msg(self, msg_id: int) -> Manager.Ret:
         echo = get_echo("get_msg")
@@ -261,7 +261,7 @@ def __handler(data: dict, actions: Actions) -> None:
     elif data.get("post_type") == "meta_event" or data.get("user_id") == data.get("self_id"):
         pass
     else:
-        asyncio.run(handler(Manager.Event(data), actions))
+        asyncio.run(handler(Manager.build_event(data), actions))
 
 
 handler: callable = tester

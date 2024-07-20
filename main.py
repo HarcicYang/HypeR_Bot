@@ -1,8 +1,7 @@
 import asyncio
 from Hyper import Listener, Manager, Configurator, Logger, ModuleClass, Logic
-import importlib
 
-importlib.import_module("modules")
+from modules import *
 
 handler_list = ModuleClass.ModuleRegister.get_registered()
 config = Configurator.Config("config.json")

@@ -93,38 +93,67 @@ class Event:
         self.time = data.get("time")
         self.self_id = data.get("self_id")
         self.post_type = data.get("post_type")
-        if self.post_type == "message":
-            self.message_type = data.get("message_type")
-            self.sub_type = data.get("sub_type")
-            self.message_id = str(data.get("message_id"))
-            self.user_id = data.get("user_id")
-            self.group_id = data.get("group_id")
-            self.sender = Sender(data.get("sender"))
-            self.message = gen_message(data=data)
-            logger.log(
-                f"收到 {self.group_id} 由 {self.user_id} 发送的消息: "
-                f"{self.message if len(str(self.message)) < 12 else str(self.message)[:12] + '...'}")
-
-        elif self.post_type == "notice":
-            self.notice_type = data.get("notice_type")
-            self.sub_type = data.get("sub_type")
-            self.group_id = data.get("group_id")
-            self.operator_id = data.get("operator_id")
-            self.user_id = data.get("user_id")
-
-        elif self.post_type == "request":
-            self.request_type = data.get("request_type")
-            self.sub_type = data.get("sub_type")
-            self.user_id = data.get("user_id")
-            self.group_id = data.get("group_id")
-            self.comment = data.get("comment")
-            self.flag = data.get("flag")
-            logger.log(
-                f"收到 {self.group_id} 由 {self.user_id} 发送的{'加群请求' if self.sub_type == 'add' else '邀请加群'}: {self.comment}")
-
+        self.user_id = data.get("user_id")
+        self.group_id = data.get("group_id")
         self.is_owner = int(self.user_id) in config.owner
         self.servicing = True if self.user_id in servicing else False
         self.blocked = True if self.user_id in config.black_list or self.group_id in config.black_list else False
+
+    def print_log(self, **kwargs) -> None:
+        ...
+
+
+class MessageEvent(Event):
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self.message_type = data.get("message_type")
+        self.sub_type = data.get("sub_type")
+        self.message_id = str(data.get("message_id"))
+        self.sender = Sender(data.get("sender"))
+        self.message = gen_message(data=data)
+        data["message"] = self.message
+        self.print_log(**data)
+
+    @Logger.AutoLog.register(Logger.AutoLog.templates().on_message, logger)
+    def print_log(self, **kwargs) -> None:
+        pass
+
+
+class NoticeEvent(Event):
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self.notice_type = data.get("notice_type")
+        self.sub_type = data.get("sub_type")
+        self.operator_id = data.get("operator_id")
+        self.print_log(**data)
+
+    @Logger.AutoLog.register(Logger.AutoLog.templates().on_notice, logger)
+    def print_log(self, **kwargs) -> None:
+        pass
+
+
+class RequestEvent(Event):
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self.request_type = data.get("request_type")
+        self.sub_type = data.get("sub_type")
+        self.comment = data.get("comment")
+        self.flag = data.get("flag")
+        self.print_log(**data)
+
+    @Logger.AutoLog.register(Logger.AutoLog.templates().on_request, logger)
+    def print_log(self, **kwargs) -> None:
+        pass
+
+
+def build_event(data: dict) -> Event:
+    post_type = data.get("post_type")
+    if post_type == "message":
+        return MessageEvent(data)
+    elif post_type == "notice":
+        return NoticeEvent(data)
+    elif post_type == "request":
+        return RequestEvent(data)
 
 
 class Ret:
