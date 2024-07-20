@@ -1,12 +1,20 @@
 from Hyper.Segments import *
-from Hyper.Manager import Message
-from Hyper import ModuleClass
+from Hyper.Manager import Message, logger
+from Hyper import ModuleClass, Logger
+import json
+import time
 
 
 @ModuleClass.ModuleRegister.register(["message"])
 class Test(ModuleClass.Module):
     async def handle(self):
-        if str(self.event.message) == ".test":
+        if len(self.event.message) != 0 and isinstance(self.event.message[0], Json):
+            text = json.loads((await self.event.message.get())[0]["data"]["data"])
+            logger.log(text, level=Logger.levels.DEBUG)
+            # with open(f"debug/{int(time.time())}.json", "w", encoding="utf-8") as f:
+            #     f.write(str(text))
+
+        if str(self.event.message) == ".test_h":
             content = ("# Markdown"
                        " \n [测试](https://github.com)"
                        " \n `这是一个一个代码块114514`"
@@ -38,7 +46,8 @@ class Test(ModuleClass.Module):
 
             row = KeyBoardRow(
                 [
-                    KeyBoardButton("Ciallo!", data="我。。。我要做主人的新怒！🥵嗯…🥵哈～呃🥵～🥵🥵🥵🥵🥵主人最棒了！再深一点~🥵", enter=True)
+                    KeyBoardButton("Ciallo!", data="我。。。我要做主人的新怒！🥵嗯…🥵哈～呃🥵～🥵🥵🥵🥵🥵主人最棒了！再深一点~🥵",
+                                   enter=True)
                 ]
             )
 
@@ -53,7 +62,7 @@ class Test(ModuleClass.Module):
                 )
             )
 
-        elif str(self.event.message) == ".test2":
+        elif str(self.event.message) == ".test2_h":
             forward_result = await self.actions.send_forward_msg(
                 message=Message(
                     [
@@ -103,4 +112,8 @@ class Test(ModuleClass.Module):
             )
             res_id: str = forward_result.data
             await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
-                              message=Message([LongMessage(res_id)]))
+                                    message=Message([LongMessage(res_id)]))
+
+        elif str(self.event.message) == ".test4":
+            await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
+                                    message=Message([Dice()]))

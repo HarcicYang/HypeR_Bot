@@ -2,20 +2,9 @@ from Hyper import Segments
 from Hyper.Manager import gen_message, Message
 from Hyper.ModuleClass import Module, ModuleRegister
 from PIL import Image, ImageDraw, ImageFont
-from io import BytesIO
-import httpx
 import os
 
-
-def open_from_url(url: str):
-    return Image.open(BytesIO(httpx.get(url).content))
-
-
-def square_scale(image: Image, height: int):
-    old_width, old_height = image.size
-    x = height / old_height
-    width = int(old_width * x)
-    return image.resize((width, height))
+from modules.WebsiteServices import open_from_url, square_scale
 
 
 def wrap_text(text, chars_per_line=13):

@@ -1,9 +1,10 @@
 from Hyper import Manager, ModuleClass, Segments, WordSafety, Logic
 import re
-from bilibili_api import video, login
+from bilibili_api import video
 import os
 from io import BytesIO
 import httpx
+import json
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -79,8 +80,26 @@ def get_bv(text: str):
 
 @Logic.Cacher().cache_async
 async def video_info(bv: str):
-    v = video.Video(bvid=bv)
-    info = await v.get_info()
+    try:
+        v = video.Video(bvid=bv)
+        info = await v.get_info()
+    except Exception as err:
+        info = {
+            "pic": "https://i0.hdslb.com/bfs/new_dyn/7afd4c057eba6152836a52fbb4b126e9686607596.png",
+            "title": f"(╯°□°）╯︵ ┻━┻ {err.__dict__['msg']}",
+            "owner": {
+                "name": "蜀黍",
+                "face": "https://i2.hdslb.com/bfs/app/8920e6741fc2808cce5b81bc27abdbda291655d3.png@240w_240h_1c_1s_!web-avatar-search-videos.webp"
+            },
+            "stat": {
+                "view": 114514,
+                "reply": 0,
+                "like": 191,
+                "coin": 91,
+                "favorite": 80,
+            },
+            "desc": err.__str__()
+        }
 
     class Info:
         def __init__(self):
@@ -113,7 +132,7 @@ def github_safety_check(url: str) -> GithubSafetyResult:
             base_index = urls.index(i)
             break
     if not base_index:
-        return False
+        return GithubSafetyResult(False, urls[base_index])
     repo = f"https://api.github.com/repos/{urls[base_index + 1]}/{urls[base_index + 2]}"
     response = httpx.get(repo, verify=False)
     desc = str(response.json()["description"])
@@ -128,7 +147,11 @@ class Module(ModuleClass.Module):
         if self.event.blocked or self.event.servicing:
             return
         try:
-            bv_id = get_bv(text=str(self.event.message))
+            if len(self.event.message) != 0 and isinstance(self.event.message[0], Segments.Json):
+                json_data = json.loads(self.event.message[0].get())
+                bv_id = get_bv(text=str(json_data))
+            else:
+                bv_id = get_bv(text=str(self.event.message))
         except AttributeError:
             return
 

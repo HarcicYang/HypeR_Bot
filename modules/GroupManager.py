@@ -1,5 +1,6 @@
 import os.path
 import json
+import time
 
 from Hyper import Manager, ModuleClass, Segments, WordSafety
 
@@ -12,6 +13,8 @@ class UserInfo:
         self.last_message: str = ""
         self.last_time: int = 0
         self.words_unsafe_times = 0
+        self.last_punished_p: int = int(time.time())
+        self.last_punished_t: int | float = 0
         self.k1 = 1
         self.k2 = 1
 
@@ -29,9 +32,14 @@ class UserInfo:
         self.violation_level += 1
 
     def dec_violations(self, num: int | float) -> None:
+        if self.violations <= 0:
+            return
         self.violations -= num
         if self.violations <= 0:
             self.violations = 0
+            self.violation_level -= 0.01
+            if self.violation_level < 1:
+                self.violation_level = 1
 
     def clr_violations(self) -> None:
         self.violations = 0
@@ -39,7 +47,10 @@ class UserInfo:
 
     @property
     def need_mute(self) -> bool:
-        return self.violations >= (6.5 * self.k2) or self.words_unsafe_times >= 3
+        if time.time() - self.last_punished_p < self.last_punished_t:
+            return False
+        elif self.violations >= (5 * self.k2) or self.words_unsafe_times >= 3:
+            return True
 
     def update(self, last_msg, last_time) -> None:
         self.last_message = last_msg
@@ -49,6 +60,12 @@ class UserInfo:
     def set_k(self, k1: float, k2: float) -> None:
         self.k1 = k1 + (self.violation_level * 0.000001)
         self.k2 = k2
+
+    def punish(self, t: float | int) -> None:
+        self.last_punished_p = int(time.time())
+        self.last_punished_t = t
+        self.clr_violations()
+        self.inc_violations(2)
 
     @classmethod
     def load(cls, j_data: dict) -> "UserInfo":
@@ -106,8 +123,8 @@ class GroupInfo:
 
     def gen_k(self) -> None:
         x = len(self.users)
-        y1 = (0.0005 * x) + 1
-        y2 = (0.000001 * (x ** 2)) + 1
+        y1 = (0.0007 * x) + 1
+        y2 = (0.000002 * (x ** 2)) + 1
         if y1 >= y2:
             k1 = y1
             k2 = y2
@@ -161,7 +178,8 @@ class InfoManager:
             json.dump(self.dump(), f, indent=2)
 
 
-data = InfoManager.load_from("group.json")
+# data = InfoManager.load_from("group.json")
+data = InfoManager()
 
 
 def distance(s1: str, s2: str) -> int:
@@ -217,7 +235,12 @@ class Module(ModuleClass.Module):
             user.inc_violations(1)
         elif sim == 1:
             if str(self.event.message) == "[图片]":
-                user.inc_violations(0.5)
+                if self.event.time - user.last_time <= 5:
+                    user.inc_violations(2)
+                elif self.event.time - user.last_time <= 12:
+                    user.inc_violations(1)
+                else:
+                    user.inc_violations(0.5)
             else:
                 user.inc_violations(2)
 
@@ -230,14 +253,14 @@ class Module(ModuleClass.Module):
         elif 200 > len(str(self.event.message)) >= 150:
             user.inc_violations(2)
         else:
-            user.inc_violations(3)
+            user.inc_violations(2.5)
 
         user.update(str(self.event.message), self.event.time)
         data.get_group(self.event.group_id).glb_dec()
 
         if user.need_mute:
             await self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
-                                             duration=(120 * user.violation_level))
+                                             duration=int(120 * user.violation_level))
             # await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
             #                         message=Manager.Message(
             #                             [
@@ -246,8 +269,7 @@ class Module(ModuleClass.Module):
             #                             ]
             #                         )
             #                         )
-            user.clr_violations()
-            user.inc_violations(2)
+            user.punish(int(120 * user.violation_level))
 
         safety = WordSafety.check(text=str(self.event.message))
         if not safety.result:
@@ -263,7 +285,7 @@ class Module(ModuleClass.Module):
             user.inc_unsafe_times()
             if user.need_mute:
                 await self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
-                                                 duration=(120 * user.violation_level))
+                                                 duration=int(120 * user.violation_level))
                 await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
                                         message=Manager.Message(
                                             [
@@ -274,4 +296,4 @@ class Module(ModuleClass.Module):
                                         )
                 user.clr_unsafe_times()
 
-        data.dump_to("group.json")
+        # data.dump_to("group.json")

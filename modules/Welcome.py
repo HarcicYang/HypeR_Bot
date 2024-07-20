@@ -13,8 +13,7 @@ class Module(ModuleClass.Module):
             return
         if self.event.post_type == "notice":
             if self.event.notice_type == "group_increase":
-                text = str(quicks["group_increase"][random.randint(0, len(quicks["group_increase"]) - 1)]).split(
-                    "<user>")
+                text = str(random.choice(quicks["group_increase"])).split("<user>")
                 await self.actions.send(group_id=self.event.group_id, message=Manager.Message(
                     [
                         Segments.Text(text[0]),
@@ -24,9 +23,7 @@ class Module(ModuleClass.Module):
                 ))
             elif self.event.notice_type == "group_decrease":
                 try:
-                    text = str(quicks["group_decrease"][self.event.sub_type][
-                                   random.randint(0, len(quicks["group_decrease"][self.event.sub_type]) - 1)
-                               ]).replace("<user>", str(self.event.user_id))
+                    text = str(random.choice(quicks["group_decrease"][self.event.sub_type])).replace("<user>", str(self.event.user_id))
                     await self.actions.send(group_id=self.event.group_id, message=Manager.Message(
                         [
                             Segments.Text(text)
@@ -38,7 +35,6 @@ class Module(ModuleClass.Module):
             else:
                 return None
 
-
         elif self.event.post_type == "request":
             if self.event.request_type == "group":
                 if self.event.sub_type == "add":
@@ -48,7 +44,7 @@ class Module(ModuleClass.Module):
                         [
                             Segments.Text("同意用户"), Segments.At(self.event.user_id), Segments.Text("的加群请求。"),
                             Segments.Text("\n"),
-                            Segments.Text(self.event.comment)
+                            Segments.Text(str(self.event.comment))
                         ]
                     ))
                 elif self.event.sub_type == "invite":
