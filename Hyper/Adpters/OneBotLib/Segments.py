@@ -56,6 +56,9 @@ def segment_builder(sg_type: str):
 class Base:
     def to_json(self): ...
 
+    def __str__(self) -> str:
+        return ""
+
 
 @segment_builder("text")
 class Text(Base):
@@ -71,7 +74,7 @@ class Image(Base):
     summary: str = "[图片]"
 
     def __str__(self) -> str:
-        return self.summary
+        return self.summary or "[图片]"
 
 
 @segment_builder("at")
