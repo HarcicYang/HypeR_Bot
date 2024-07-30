@@ -1,4 +1,4 @@
-import asyncio
+import textwrap
 import datetime
 import typing
 import inspect
@@ -95,16 +95,16 @@ class AutoLog:
                 set_ess = "将 <message_id> 设为精华"
         else:
             class Templates(Base):
-                on_message = "Msg received in group <group_id> from <user_id> : <message>"
+                on_message = "Msg received in grp <group_id> from <user_id> : <message>"
                 on_notice = "<operator_id> acted '<notice_type>/<sub_type>' to <user_id> in <group_id>"
                 on_request = "Received '<request_type>/<sub_type>' request from <user_id> in <group_id>"
-                send = "A msg sent in group <group_id> to <user_id> : <message>"
+                send = "Sent a msg in grp <group_id> to <user_id> : <message>"
                 recall = "Deleted <message_id>"
                 kick = "kicked <user_id> out of <group_id>"
                 mute = "Muted <user_id> in <group_id> for <duration>s"
                 unmute = "Unmuted <user_id> in <group_id>"
                 set_req = "Resulted <sub_type>/<flag> as <approve>"
-                set_ess = "Pinned message <message_id>"
+                set_ess = "Pinned msg <message_id>"
 
         return Templates
 
