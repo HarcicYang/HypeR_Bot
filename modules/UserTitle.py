@@ -1,3 +1,4 @@
+from Hyper.ModuleClass import ModuleInfo
 from Hyper.Segments import *
 from Hyper.Manager import Message
 from Hyper import ModuleClass
@@ -5,6 +6,17 @@ from Hyper import ModuleClass
 
 @ModuleClass.ModuleRegister.register(["message"])
 class UserTitle(ModuleClass.Module):
+    @staticmethod
+    def info() -> ModuleInfo:
+        return ModuleInfo(
+            is_hidden=False,
+            module_name="UserTitle",
+            desc="设置自定义头衔",
+            helps="命令：.title <uin> <title>\n\n"
+                  "uin：要设置的用户的QQ号，只能在当前聊群设置；\n"
+                  "title：要设置的头衔"
+        )
+
     async def handle(self):
         if str(self.event.message).startswith(".title"):
             args = str(self.event.message).split(" ")

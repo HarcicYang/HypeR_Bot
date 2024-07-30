@@ -1,8 +1,19 @@
 from Hyper import Manager, Listener, Logger, Configurator
+import dataclasses
 
 config = Configurator.Config("config.json")
 logger = Logger.Logger()
 logger.set_level(config.log_level)
+
+
+@dataclasses.dataclass
+class ModuleInfo:
+    is_hidden: bool = True
+    module_name: str = "None"
+    author: str = "None"
+    version: str = "0.0"
+    desc: str = "None"
+    helps: str = "None"
 
 
 class Module:
@@ -12,6 +23,10 @@ class Module:
 
     async def handle(self):
         pass
+
+    @staticmethod
+    def info() -> ModuleInfo:
+        return ModuleInfo()
 
 
 class InnerHandler:

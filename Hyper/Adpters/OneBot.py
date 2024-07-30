@@ -255,13 +255,24 @@ async def tester(message_data: Manager.Event, actions: Actions) -> None:
     ...
 
 
-def __handler(data: dict, actions: Actions) -> None:
+async def __handler(data: dict, actions: Actions) -> None:
     if data.get("echo") is not None:
         reports.put(Manager.Ret(data))
     elif data.get("post_type") == "meta_event" or data.get("user_id") == data.get("self_id"):
         pass
     else:
-        asyncio.run(handler(Manager.build_event(data), actions))
+        task = asyncio.create_task(handler(Manager.build_event(data), actions))
+        Manager.servicing.append(data.get("user_id"))
+        timed = 0
+
+        while not task.done():
+            await asyncio.sleep(0.1)
+            timed += 0.1
+            if timed >= 30:
+                task.cancel()
+                break
+
+        Manager.servicing.remove(data.get("user_id"))
 
 
 handler: callable = tester
@@ -320,7 +331,7 @@ def run():
                     break
                 except json.decoder.JSONDecodeError:
                     logger.log("收到错误的JSON内容", level=Logger.levels.ERROR)
-                threading.Thread(target=lambda: __handler(data, actions)).start()
+                threading.Thread(target=lambda: asyncio.run(__handler(data, actions))).start()
     except KeyboardInterrupt:
         logger.log("正在退出(Ctrl+C)", level=Logger.levels.WARNING)
         try:

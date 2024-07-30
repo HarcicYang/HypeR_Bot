@@ -144,7 +144,7 @@ def github_safety_check(url: str) -> GithubSafetyResult:
 @ModuleClass.ModuleRegister.register(["message"])
 class Module(ModuleClass.Module):
     async def handle(self):
-        if self.event.blocked or self.event.servicing:
+        if self.event.blocked or self.event.servicing or self.event.is_silent:
             return
         try:
             if len(self.event.message) != 0 and isinstance(self.event.message[0], Segments.Json):
@@ -177,8 +177,3 @@ class Module(ModuleClass.Module):
             await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Manager.Message(
                 [Segments.Image(f"file://{os.path.abspath('github.png')}", f"{safety.address}")]
             ))
-
-        elif "bilibili.com/video/" in url or "b23.tv/" in url:
-            pass
-        else:
-            return

@@ -16,7 +16,7 @@ class Module(ModuleClass.Module):
             version = await self.actions.get_version_info()
             name = version.data["app_name"]
             code = version.data["app_version"]
-            message = ("HypeR Bot v0.5\n"
+            message = ("HypeR Bot v0.7\n"
                        "https://github.com/HarcicYang/HypeR_Bot\n"
                        "\n"
                        "时间：{}\n"
@@ -28,4 +28,4 @@ class Module(ModuleClass.Module):
                 code
             )
             await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
-                              message=Manager.Message([Segments.Text(message)]))
+                                    message=Manager.Message([Segments.Text(message)]))

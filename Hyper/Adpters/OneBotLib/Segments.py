@@ -2,245 +2,159 @@ import json
 import uuid
 from Hyper.Errors import *
 
-
-class Text:
-    def __init__(self, text: str):
-        self.content = {"type": "text", "data": {"text": text}}
-
-    def set(self, text: str) -> None:
-        self.__init__(text)
-
-    def get(self) -> str:
-        return self.content["data"]["text"]
-
-    def get_raw(self) -> dict:
-        return self.content
-
-    def __str__(self) -> str:
-        return self.content["data"]["text"]
-
-    def __repr__(self) -> str:
-        return str(self.content)
+message_types = {}
 
 
-class Image:
-    def __init__(self, image: str, summary: str = "[图片]"):
-        self.content = {"type": "image", "data": {"file": image, "summary": summary}}
+def segment_builder(sg_type: str):
+    # print(inspect.get_annotations(cls))
+    def inner_builder(cls):
+        var = dict(vars(cls))
+        anns: dict = var.get("__annotations__", False) or dict()
+        arg = {}
 
-    def set(self, image: str, summary: str = "[图片]") -> None:
-        self.__init__(image, summary)
+        def init(self, *args, **kwargs):
+            if len(args) > 0:
+                for i in args:
+                    arg[list(anns.keys())[list(args).index(i)]] = i
 
-    def get(self) -> str:
-        return self.content["data"]["file"]
+            if len(kwargs) > 0:
+                for i in kwargs:
+                    arg[i] = kwargs[i]
+            new_arg = arg.copy()
 
-    def get_raw(self) -> dict:
-        return self.content
+            if len(anns) > len(arg):
+                for i in anns.keys():
+                    if i not in arg.keys():
+                        if i not in var.keys():
+                            raise TypeError
+                        new_arg[i] = var[i]
 
-    def __str__(self) -> str:
-        return "[图片]"
+            for i in new_arg:
+                setattr(self, i, new_arg[i])
 
-    def __repr__(self) -> str:
-        return str(self.content)
+        cls.__init__ = init
 
+        def to_json(self) -> dict:
+            base = {"type": sg_type, "data": {}}
+            for i in anns:
+                base["data"][i] = getattr(self, i)
 
-class At:
-    def __init__(self, user_id: str):
-        self.content = {"type": "at", "data": {"qq": str(user_id)}}
+            return base
 
-    def set(self, user_id: str) -> None:
-        self.__init__(user_id)
+        cls.to_json = to_json
 
-    def get(self) -> str:
-        return self.content["data"]["qq"]
+        message_types[sg_type] = {
+            "type": cls,
+            "args": list(anns.keys())
+        }
 
-    def get_raw(self) -> dict:
-        return self.content
+        return cls
 
-    def __str__(self) -> str:
-        return f"@{self.content['data']['qq']} "
-
-    def __repr__(self) -> str:
-        return str(self.content)
+    return inner_builder
 
 
-class Reply:
-    def __init__(self, message_id: str):
-        self.content = {"type": "reply", "data": {"id": message_id}}
+class Base:
+    def to_json(self): ...
 
-    def set(self, message_id: str) -> None:
-        self.__init__(message_id)
 
-    def get(self) -> str:
-        return self.content["data"]["id"]
-
-    def get_raw(self) -> dict:
-        return self.content
+@segment_builder("text")
+class Text(Base):
+    text: str
 
     def __str__(self) -> str:
-        return f"[回复{self.content['data']['id']}]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
+        return self.text
 
 
-class Face:
-    def __init__(self, face_id: str):
-        self.content = {"type": "face", "data": {"id": face_id}}
-
-    def set(self, face_id: str) -> None:
-        self.__init__(face_id)
-
-    def get(self) -> str:
-        return self.content["data"]["id"]
-
-    def get_raw(self) -> dict:
-        return self.content
+@segment_builder("image")
+class Image(Base):
+    file: str
+    summary: str = "[图片]"
 
     def __str__(self) -> str:
-        return "[表情]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
+        return self.summary
 
 
-class Location:
-    def __init__(self, lat: str, lon: str):
-        self.content = {"type": "location", "data": {"lat": lat, "lon": lon}}
-
-    def set(self, lat: str, lon: str) -> None:
-        self.__init__(lat, lon)
-
-    def get(self) -> tuple[str, str]:
-        return self.content["data"]["lat"], self.content["data"]["lon"]
-
-    def get_raw(self) -> dict:
-        return self.content
+@segment_builder("at")
+class At(Base):
+    qq: str
 
     def __str__(self) -> str:
-        return f"[位置{self.content['data']['lat']}, {self.content['data']['lon']}]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
+        return f"@{self.qq}"
 
 
-class Record:
-    def __init__(self, record: str):
-        self.content = {"type": "record", "data": {"file": record}}
+@segment_builder("reply")
+class Reply(Base):
+    id: str
 
-    def set(self, record: str) -> None:
-        self.__init__(record)
+    def __str__(self) -> str:
+        return ""
 
-    def get(self) -> str:
-        return self.content["data"]["file"]
 
-    def get_raw(self) -> dict:
-        return self.content
+@segment_builder("face")
+class Faces(Base):
+    id: str
+
+    def __str__(self) -> str:
+        return f"[{self.id}]"
+
+
+@segment_builder("location")
+class Location(Base):
+    lat: str
+    lon: str
+
+    def __str__(self) -> str:
+        return f"[位置 {self.lat},{self.lon}]"
+
+
+@segment_builder("record")
+class Record(Base):
+    file: str
 
     def __str__(self) -> str:
         return "[语音]"
 
-    def __repr__(self) -> str:
-        return str(self.content)
 
-
-class Video:
-    def __init__(self, video: str):
-        self.content = {"type": "video", "data": {"file": video}}
-
-    def set(self, video: str) -> None:
-        self.__init__(video)
-
-    def get(self) -> str:
-        return self.content["data"]["file"]
-
-    def get_raw(self) -> dict:
-        return self.content
+@segment_builder("video")
+class Video(Base):
+    file: str
 
     def __str__(self) -> str:
         return "[视频]"
 
-    def __repr__(self) -> str:
-        return str(self.content)
 
-
-class Poke:
-    def __init__(self, poke_type: str, poke_id: str):
-        self.content = {"type": "poke", "data": {"type": poke_type, "id": poke_id}}
-
-    def set(self, poke_type: str, poke_id: str) -> None:
-        self.__init__(poke_type, poke_id)
-
-    def get(self) -> None:
-        raise NotSupportError("This type of message cannot use '.get()'")
-
-    def get_raw(self) -> dict:
-        return self.content
+@segment_builder("poke")
+class Poke(Base):
+    type: str
+    id: str
 
     def __str__(self) -> str:
-        return "[戳一戳]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
+        return "[拍一拍]"
 
 
-class Contact:
-    def __init__(self, platform: str, target_id: str):
-        self.content = {"type": "contact", "data": {"type": platform, "id": target_id}}
-
-    def set(self, platform: str, target_id: str) -> None:
-        self.__init__(platform, target_id)
-
-    def get(self) -> str:
-        raise NotSupportError("This type of message cannot use '.get()'")
-
-    def get_raw(self) -> dict:
-        return self.content
+@segment_builder("contact")
+class Contact(Base):
+    type: str
+    id: str
 
     def __str__(self) -> str:
-        return f"[推荐QQ{'用户' if self.content['data']['type'] == 'qq' else '群'}{self.content['data']['id']}]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
+        return f"[推荐{'群' if self.type == 'group' else '用户'}: {self.id}]"
 
 
-class Forward:
-    def __init__(self, res_id: str):
-        self.content = {"type": "forward", "data": {"id": res_id}}
-
-    def set(self, res_id: str) -> None:
-        self.__init__(res_id)
-
-    def get(self) -> str:
-        return self.content["data"]["id"]
-
-    def get_raw(self) -> dict:
-        return self.content
+@segment_builder("forward")
+class Forward(Base):
+    id: str
 
     def __str__(self) -> str:
-        return f"[转发消息]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
+        return "[转发消息]"
 
 
-class Node:
-    def __init__(self, node_id: str):
-        self.content = {"type": "node", "data": {"id": node_id}}
-
-    def set(self, node_id: str) -> None:
-        self.__init__(node_id)
-
-    def get(self) -> str:
-        return self.content["data"]["id"]
-
-    def get_raw(self) -> dict:
-        return self.content
+@segment_builder("node")
+class Node(Base):
+    id: str
 
     def __str__(self) -> str:
-        return f"[节点{self.content['data']['id']}]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
+        return "[转发消息]"
 
 
 class CustomNode:
@@ -248,20 +162,11 @@ class CustomNode:
         self.content = {"type": "node",
                         "data": {"user_id": user_id, "nick_name": nick_name, "content": content.get_sync()}}
 
-    def set(self, user_id: str, nick_name: str, content) -> None:
-        self.__init__(user_id, nick_name, content)
-
-    def get(self) -> list:
-        return self.content["data"]["content"]
-
-    def get_raw(self) -> dict:
+    def to_json(self) -> dict:
         return self.content
 
     def __str__(self) -> str:
         return f"[自定义节点]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
 
 
 class KeyBoardButton:
@@ -292,24 +197,11 @@ class KeyBoardButton:
             }
         }
 
-    def set(self,
-            text: str,
-            style: int = 1,
-            button_type: int = 2,
-            data: str = "Hello World",
-            enter: bool = False,
-            permission: int = 2,
-            specify_user_ids=None) -> None:
-        self.__init__(text, style, button_type, data, enter, permission, specify_user_ids)
-
     def get(self) -> dict:
         return self.content
 
     def __str__(self) -> str:
         return f"[按键{self.content['render_data']['label']}]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
 
 
 class KeyBoardRow:
@@ -336,20 +228,11 @@ class KeyBoard:
         self.content = {"type": "keyboard",
                         "data": {"content": {"rows": [i.get() for i in button_rows]}, "bot_appid": 0}}
 
-    def set(self, button_rows: list[KeyBoardRow]) -> None:
-        self.__init__(button_rows)
-
-    def get(self) -> dict:
-        return self.content["data"]["content"]
-
-    def get_raw(self) -> dict:
+    def to_json(self) -> dict:
         return self.content
 
     def __str__(self) -> str:
         return f"[自定按键版]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
 
 
 class MarkdownContent:
@@ -369,17 +252,11 @@ class MarkDown:
     def set(self, content: MarkdownContent) -> None:
         self.__init__(content)
 
-    def get(self) -> str:
-        return json.loads(self.content["data"]["content"])["content"]
-
-    def get_raw(self) -> dict:
+    def to_json(self) -> dict:
         return self.content
 
     def __str__(self) -> str:
         return f"[MarkDown]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
 
 
 class LongMessage:
@@ -389,17 +266,11 @@ class LongMessage:
     def set(self, res_id: str) -> None:
         self.__init__(res_id)
 
-    def get(self) -> str:
-        return self.content["data"]["id"]
-
-    def get_raw(self) -> dict:
+    def to_json(self) -> dict:
         return self.content
 
     def __str__(self) -> str:
         return f"[长消息{self.content['data']['id']}]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
 
 
 class Json:
@@ -409,10 +280,7 @@ class Json:
     def set(self, content: dict) -> None:
         self.__init__(content)
 
-    def get(self) -> dict:
-        return json.loads(self.content["data"]["data"])
-
-    def get_raw(self) -> dict:
+    def to_json(self) -> dict:
         return self.content
 
     def __str__(self) -> str:
@@ -422,148 +290,18 @@ class Json:
         return str(self.content)
 
 
+@segment_builder("mface")
 class MarketFace:
-    def __init__(self, face_id: str, tab_id: str, key: str):
-        self.content = {"type": "marketface", "data": {"face_id": face_id, "tab_id": tab_id, "key": key}}
-
-    def set(self, face_id: str, tab_id: str, key: str) -> None:
-        self.__init__(face_id, tab_id, key)
-
-    def get(self) -> str:
-        return self.content["data"]["face_id"]
-
-    def get_raw(self) -> dict:
-        return self.content
-
-    def __str__(self) -> str:
-        return ""
-
-    def __repr__(self) -> str:
-        return str(self.content)
+    face_id: str
+    tab_id: str
+    key: str
 
 
+@segment_builder("dice")
 class Dice:
-    def __init__(self):
-        self.content = {"type": "dice", "data": {}}
-
-    def get_raw(self) -> dict:
-        return self.content
-
-    def __str__(self) -> str:
-        return "[骰子]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
+    pass
 
 
+@segment_builder("rps")
 class Rps:
-    def __init__(self):
-        self.content = {"type": "rps", "data": {}}
-
-    def get_raw(self) -> dict:
-        return self.content
-
-    def __str__(self) -> str:
-        return "[猜拳]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
-
-
-message_types = {
-    "text": {
-        "type": Text,
-        "args": [
-            "text"
-        ]
-    },
-    "image": {
-        "type": Image,
-        "args": [
-            "file"
-        ]
-    },
-    "at": {
-        "type": At,
-        "args": [
-            "qq"
-        ]
-    },
-    "reply": {
-        "type": Reply,
-        "args": [
-            "id"
-        ]
-    },
-    "face": {
-        "type": Face,
-        "args": [
-            "id"
-        ]
-    },
-    "location": {
-        "type": Location,
-        "args": [
-            "lat",
-            "lon"
-        ]
-    },
-    "record": {
-        "type": Record,
-        "args": [
-            "file"
-        ]
-    },
-    "video": {
-        "type": Video,
-        "args": [
-            "file"
-        ]
-    },
-    "node": {
-        "type": Node,
-        "args": [
-            "id"
-        ]
-    },
-    "contact": {
-        "type": Contact,
-        "args": [
-            "type",
-            "id"
-        ]
-    },
-    "forward": {
-        "type": Forward,
-        "args": [
-            "id"
-        ]
-    },
-    "poke": {
-        "type": Poke,
-        "args": [
-            "type",
-            "id"
-        ]
-    },
-    "mface": {
-        "type": MarketFace,
-        "args": [
-            "face_id",
-            "tab_id",
-            "key"
-        ]
-    },
-    "dice": {
-        "type": Dice,
-        "args": []
-    },
-    "rps": {
-        "type": Rps,
-        "args": []
-    },
-    "json": {
-        "type": Json,
-        "args": ["data"]
-    }
-}
+    pass

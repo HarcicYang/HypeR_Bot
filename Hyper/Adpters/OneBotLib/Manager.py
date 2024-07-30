@@ -1,6 +1,8 @@
+import dataclasses
 from Hyper import Logic, Configurator, Logger
 from Hyper.Logger import levels
 from Hyper.Adpters.OneBotLib.Segments import *
+import inspect
 
 config = Configurator.Config("./config.json")
 logger = Logger.Logger()
@@ -21,13 +23,13 @@ class Message:
     async def get(self) -> list:
         ret = []
         for i in self.contents:
-            ret.append(i.get_raw())
+            ret.append(i.to_json())
         return ret
 
     def get_sync(self) -> list:
         ret = []
         for i in self.contents:
-            ret.append(i.get_raw())
+            ret.append(i.to_json())
         return ret
 
     def __len__(self) -> int:
@@ -95,9 +97,11 @@ class Event:
         self.post_type = data.get("post_type")
         self.user_id = data.get("user_id")
         self.group_id = data.get("group_id")
+
         self.is_owner = int(self.user_id) in config.owner
         self.servicing = True if self.user_id in servicing else False
         self.blocked = True if self.user_id in config.black_list or self.group_id in config.black_list else False
+        self.is_silent = self.user_id in config.silents or self.group_id in config.silents or 0 in config.silents
 
     def print_log(self, **kwargs) -> None:
         ...

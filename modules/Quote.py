@@ -1,6 +1,6 @@
 from Hyper import Segments
 from Hyper.Manager import gen_message, Message
-from Hyper.ModuleClass import Module, ModuleRegister
+from Hyper.ModuleClass import Module, ModuleInfo, ModuleRegister
 from PIL import Image, ImageDraw, ImageFont
 import os
 
@@ -34,10 +34,20 @@ def get_image(quote, ava_url, name):
 
 @ModuleRegister.register(["message"])
 class Quoter(Module):
+    @staticmethod
+    def info() -> ModuleInfo:
+        return ModuleInfo(
+            is_hidden=False,
+            module_name="Quoter",
+            author="Harcic#8042",
+            desc="生成对名言之伟大引用",
+            helps="引用你要生成的消息，然后在消息框中输入“.quote”，哇！中了！"
+        )
+
     async def handle(self):
         if ".quote" in str(self.event.message):
             if isinstance(self.event.message[0], Segments.Reply):
-                msg_id = self.event.message[0].get()
+                msg_id = self.event.message[0].id
             else:
                 return
 
