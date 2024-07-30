@@ -16,6 +16,7 @@ class Config:
         self.protocol: str = self.config_json["protocol"]
         self.owner: list[int] = self.config_json["owner"]
         self.black_list: list[int] = self.config_json["black_list"]
+        self.silents: list[int] = self.config_json["silents"]
         self.connection = Connection(
             self.config_json["Connection"]["host"],
             self.config_json["Connection"]["port"],
