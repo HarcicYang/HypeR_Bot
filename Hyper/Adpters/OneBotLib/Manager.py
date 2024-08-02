@@ -1,14 +1,37 @@
 import dataclasses
-from Hyper import Logic, Configurator, Logger
+from Hyper import Logic, Configurator, Logger, Network
 from Hyper.Logger import levels
 from Hyper.Adpters.OneBotLib.Segments import *
+from typing import Union
 import inspect
+import random
+
 
 config = Configurator.Config("./config.json")
 logger = Logger.Logger()
 logger.set_level(config.log_level)
 
 servicing = []
+
+
+class Packet:
+    def __init__(self, endpoint: str, **kwargs):
+        self.endpoint = endpoint
+        self.paras = kwargs
+        self.echo = f"{endpoint}_{random.randint(1000, 9999)}"
+
+    def send_to(self, connection: Union[Network.WebsocketConnection, Network.HTTPConnection]) -> None:
+        if isinstance(connection, Network.WebsocketConnection):
+            payload = {
+                "action": self.endpoint,
+                "params": self.paras,
+                "echo": self.echo,
+            }
+            connection.send(json.dumps(payload))
+
+        elif isinstance(connection, Network.HTTPConnection):
+            payload = self.paras
+            connection.send(self.endpoint, payload, self.echo)
 
 
 class Message:

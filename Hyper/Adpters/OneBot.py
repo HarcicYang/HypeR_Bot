@@ -3,9 +3,9 @@ import queue
 import threading
 import time
 import asyncio
-import websocket
 import sys
-from Hyper import Configurator, Errors, Logger, Logic, Manager
+from Hyper import Configurator, Errors, Logger, Logic, Manager, Network
+from typing import Union
 
 reports = queue.Queue()
 config = Configurator.Config("config.json")
@@ -15,12 +15,12 @@ random = Logic.Random(2333)
 
 
 class Actions:
-    def __init__(self, socket: websocket.WebSocket):
-        self.ws = socket
+    def __init__(self, cnt: Union[Network.WebsocketConnection, Network.HTTPConnection]):
+        self.connection = cnt
 
         class CustomAction:
-            def __init__(self, socket_app: websocket.WebSocket):
-                self.ws = socket_app
+            def __init__(self, cnt_i: Union[Network.WebsocketConnection, Network.HTTPConnection]):
+                self.connection = cnt_i
 
             def __getattr__(self, item) -> callable:
                 def wrapper(no_return: bool, **kwargs) -> Manager.Ret:
@@ -29,7 +29,7 @@ class Actions:
                             "action": str(item),
                             "params": kwargs
                         }
-                        self.ws.send(json.dumps(payload))
+                        self.connection.send(json.dumps(payload))
                         return Manager.Ret({"status": None, "ret_code": None})
                     else:
                         echo = get_echo(str(item))
@@ -38,217 +38,154 @@ class Actions:
                             "params": kwargs,
                             "echo": echo
                         }
-                        self.ws.send(json.dumps(payload))
+                        self.connection.send(json.dumps(payload))
                         return get_ret(echo)
 
                 return wrapper
 
-        self.custom = CustomAction(self.ws)
+        self.custom = CustomAction(self.connection)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().send, logger)
     async def send(self, message: Manager.Message, group_id: int = None, user_id: int = None) -> Manager.Ret:
-        echo = get_echo("send_msg")
         if group_id is not None:
-            payload = {
-                "action": "send_msg",
-                "params": {
-                    "group_id": group_id,
-                    "message": await message.get(),
-                },
-                "echo": echo,
-            }
+            packet = Manager.Packet(
+                "send_msg",
+                group_id=group_id,
+                message=await message.get()
+            )
         elif user_id is not None:
-            payload = {
-                "action": "send_msg",
-                "params": {
-                    "user_id": user_id,
-                    "message": await message.get(),
-                },
-                "echo": echo,
-            }
+            packet = Manager.Packet(
+                "send_msg",
+                user_id=user_id,
+                message=await message.get()
+            )
         else:
             raise Errors.ArgsInvalidError("'send' API requires 'group_id' or 'user_id' but none of them are provided.")
-        self.ws.send(json.dumps(payload))
-        return get_ret(echo)
+        packet.send_to(self.connection)
+        return get_ret(packet.echo)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().recall, logger)
     async def del_message(self, message_id: int) -> None:
-        payload = {
-            "action": "delete_msg",
-            "params": {
-                "message_id": message_id,
-            },
-        }
-        self.ws.send(json.dumps(payload))
+        packet = Manager.Packet(
+            "delete_msg",
+            message_id=message_id,
+        )
+        packet.send_to(self.connection)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().kick, logger)
     async def set_group_kick(self, group_id: int, user_id: int) -> None:
-        payload = {
-            "action": "set_group_kick",
-            "params": {
-                "group_id": group_id,
-                "user_id": user_id,
-            },
-        }
-        self.ws.send(json.dumps(payload))
+        Manager.Packet(
+            "set_group_kick",
+            group_id=group_id,
+            user_id=user_id,
+        ).send_to(self.connection)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().mute, logger)
     async def set_group_ban(self, group_id: int, user_id: int, duration: int = 60) -> None:
-        payload = {
-            "action": "set_group_ban",
-            "params": {
-                "group_id": group_id,
-                "user_id": user_id,
-                "duration": duration,
-            },
-        }
-        self.ws.send(json.dumps(payload))
+        Manager.Packet(
+            "set_group_ban",
+            group_id=group_id,
+            user_id=user_id,
+            duration=duration,
+        ).send_to(self.connection)
 
     @Logic.Cacher().cache_async
     async def get_login_info(self) -> Manager.Ret:
-        echo = get_echo("get_login_info")
-        payload = {
-            "action": "get_login_info",
-            "params": {},
-            "echo": echo,
-        }
-        self.ws.send(json.dumps(payload))
-        return get_ret(echo)
+        packet = Manager.Packet("get_login_info")
+        packet.send_to(self.connection)
+        return get_ret(packet.echo)
 
     @Logic.Cacher().cache_async
     async def get_version_info(self) -> Manager.Ret:
-        echo = get_echo("get_version_info")
-        payload = {
-            "action": "get_version_info",
-            "params": {},
-            "echo": echo,
-        }
-        self.ws.send(json.dumps(payload))
-        return get_ret(echo)
+        packet = Manager.Packet("get_version_info")
+        packet.send_to(self.connection)
+        return get_ret(packet.echo)
 
     async def send_forward_msg(self, message: Manager.Message) -> Manager.Ret:
-        echo = get_echo("send_forward_msg")
-        payload = {
-            "action": "send_forward_msg",
-            "params": {
-                "messages": await message.get(),
-            },
-            "echo": echo,
-        }
-        self.ws.send(json.dumps(payload))
-        return get_ret(echo)
+        packet = Manager.Packet(
+            "send_forward_msg",
+            messages=await message.get()
+        )
+        packet.send_to(self.connection)
+        return get_ret(packet.echo)
 
     async def send_group_forward_msg(self, group_id: int, message: Manager.Message) -> Manager.Ret:
-        echo = get_echo("send_group_forward_msg")
-        payload = {
-            "action": "send_group_forward_msg",
-            "params": {
-                "group_id": group_id,
-                "message": await message.get(),
-            },
-        }
-        self.ws.send(json.dumps(payload))
-        return get_ret(echo)
+        packet = Manager.Packet(
+            "send_group_forward_msg",
+            group_id=group_id,
+            messages=await message.get()
+        )
+        packet.send_to(self.connection)
+        return get_ret(packet.echo)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().set_req, logger)
     async def set_group_add_request(self, flag: str, sub_type: str, approve: bool, reason: str = "Refused") -> None:
-        payload = {
-            "action": "set_group_add_request",
-            "params": {
-                "flag": flag,
-                "sub_type": sub_type,
-                "approve": approve,
-                "reason": reason,
-            },
-        }
-        self.ws.send(json.dumps(payload))
+        Manager.Packet(
+            "set_group_add_request",
+            flag=flag,
+            sub_type=sub_type,
+            approve=approve,
+            reason=reason
+        ).send_to(self.connection)
 
     @Logic.Cacher().cache_async
     async def get_stranger_info(self, user_id: int) -> Manager.Ret:
-        echo = get_echo("get_stranger_info")
-        payload = {
-            "action": "get_stranger_info",
-            "params": {
-                "user_id": user_id,
-                "no_cache": True,
-            },
-            "echo": echo,
-        }
-        self.ws.send(json.dumps(payload))
-        return get_ret(echo)
+        packet = Manager.Packet(
+            "get_stranger_info",
+            user_id=user_id,
+            no_cache=True,
+        )
+        packet.send_to(self.connection)
+        return get_ret(packet.echo)
 
     @Logic.Cacher().cache_async
     async def get_group_member_info(self, group_id: int, user_id: int) -> Manager.Ret:
-        echo = get_echo("get_group_member_info")
-        payload = {
-            "action": "get_group_member_info",
-            "params": {
-                "group_id": group_id,
-                "user_id": user_id,
-                "no_cache": True,
-            },
-            "echo": echo,
-        }
-        self.ws.send(json.dumps(payload))
-        return get_ret(echo)
+        packet = Manager.Packet(
+            "get_group_member_info",
+            group_id=group_id,
+            user_id=user_id,
+            no_cache=True
+        )
+        packet.send_to(self.connection)
+        return get_ret(packet.echo)
 
     @Logic.Cacher().cache_async
     async def get_group_info(self, group_id: int) -> Manager.Ret:
-        echo = get_echo("get_group_info")
-        payload = {
-            "action": "get_group_member_info",
-            "params": {
-                "group_id": group_id,
-                "no_cache": True,
-            },
-            "echo": echo,
-        }
-        self.ws.send(json.dumps(payload))
-        return get_ret(echo)
+        packet = Manager.Packet(
+            "get_group_info",
+            group_id=group_id,
+            no_cache=True
+        )
+        packet.send_to(self.connection)
+        return get_ret(packet.echo)
 
     async def get_status(self) -> Manager.Ret:
-        echo = get_echo("get_status")
-        payload = {
-            "action": "get_status",
-            "params": {},
-            "echo": echo,
-        }
-        self.ws.send(json.dumps(payload))
-        return get_ret(echo)
+        packet = Manager.Packet("get_status")
+        packet.send_to(self.connection)
+        return get_ret(packet.echo)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().set_ess, logger)
     async def set_essence_msg(self, message_id: int) -> None:
-        payload = {
-            "action": "set_essence_msg",
-            "params": {
-                "message_id": message_id,
-            },
-        }
-        self.ws.send(json.dumps(payload))
-        logger.log(f"将消息 {message_id} 设为精华")
+        Manager.Packet(
+            "set_essence_msg",
+            message_id=message_id
+        ).send_to(self.connection)
 
     async def set_group_special_title(self, group_id: int, user_id: int, title: str) -> None:
-        payload = {
-            "action": "set_group_special_title",
-            "params": {
-                "group_id": group_id,
-                "user_id": user_id,
-                "special_title": title,
-            },
-        }
-        self.ws.send(json.dumps(payload))
+        Manager.Packet(
+            "set_group_special_title",
+            group_id=group_id,
+            user_id=user_id,
+            special_title=title,
+        ).send_to(self.connection)
 
     async def get_msg(self, msg_id: int) -> Manager.Ret:
-        echo = get_echo("get_msg")
-        payload = {
-            "action": "get_msg",
-            "params": {
-                "message_id": int(msg_id)
-            },
-            "echo": echo,
-        }
-        self.ws.send(json.dumps(payload))
-        return get_ret(echo)
+        packet = Manager.Packet(
+            "get_msg",
+            message_id=msg_id
+        )
+        packet.send_to(self.connection)
+        return get_ret(packet.echo)
 
 
 async def tester(message_data: Manager.Event, actions: Actions) -> None:
@@ -262,7 +199,6 @@ async def __handler(data: dict, actions: Actions) -> None:
         pass
     else:
         task = asyncio.create_task(handler(Manager.build_event(data), actions))
-        Manager.servicing.append(data.get("user_id"))
         timed = 0
 
         while not task.done():
@@ -270,13 +206,12 @@ async def __handler(data: dict, actions: Actions) -> None:
             timed += 0.1
             if timed >= 30:
                 task.cancel()
+                logger.log(f"处理{task.get_name()}超时", level=Logger.levels.ERROR)
                 break
-
-        Manager.servicing.remove(data.get("user_id"))
 
 
 handler: callable = tester
-ws: callable = tester
+connection: callable = tester
 
 
 def reg(func: callable):
@@ -301,15 +236,22 @@ def get_ret(echo: str) -> Manager.Ret:
 
 
 def run():
-    global ws
+    global connection
     try:
         if handler is tester:
             raise Errors.ListenerNotRegisteredError("No handler registered")
-        ws = websocket.WebSocket()
+        # connection = websocket.WebSocket()
+        if isinstance(config.connection, Configurator.WSConnectionC):
+            connection = Network.WebsocketConnection(f"ws://{config.connection.host}:{config.connection.port}")
+        elif isinstance(config.connection, Configurator.HTTPConnectionC):
+            connection = Network.HTTPConnection(
+                url=f"http://{config.connection.host}:{config.connection.port}",
+                listener_url=f"http://{config.connection.listener_host}:{config.connection.listener_port}"
+            )
         retried = 0
         while True:
             try:
-                ws.connect(f"ws://{config.connection.host}:{config.connection.port}")
+                connection.connect()
             except ConnectionRefusedError or TimeoutError:
                 if retried >= config.connection.retries:
                     logger.log(f"重试次数达到最大值({config.connection.retries})，退出", level=Logger.levels.CRITICAL)
@@ -322,10 +264,10 @@ def run():
                 continue
             logger.log("成功建立连接", level=Logger.levels.INFO)
             retried = 0
-            actions = Actions(ws)
+            actions = Actions(connection)
             while True:
                 try:
-                    data = json.loads(ws.recv())
+                    data = connection.recv()
                 except ConnectionResetError:
                     logger.log("连接断开", level=Logger.levels.ERROR)
                     break
@@ -335,7 +277,7 @@ def run():
     except KeyboardInterrupt:
         logger.log("正在退出(Ctrl+C)", level=Logger.levels.WARNING)
         try:
-            ws.close()
+            connection.close()
         except:
             pass
         sys.exit()

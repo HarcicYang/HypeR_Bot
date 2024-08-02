@@ -113,7 +113,6 @@ class AutoLog:
         for i in args:
             if f"<{i}>" in log:
                 log = log.replace(f"<{i}>", str(args[i]))
-
         return log
 
     @classmethod

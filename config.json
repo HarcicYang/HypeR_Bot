@@ -3,13 +3,17 @@
     2488529467
   ],
   "black_list": [],
+  "silents": [894446744],
   "Connection": {
+    "mode": "FWS",
     "host": "127.0.0.1",
     "port": 5004,
+    "listener_host": "127.0.0.1",
+    "listener_port": 5003,
     "retries": 5
   },
   "Log_level": "INFO",
-  "protocol": "Inner",
+  "protocol": "OneBot",
   "Others": {
     "Chat": {
       "Qwen": {
