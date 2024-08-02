@@ -1,11 +1,12 @@
 import json
+import typing
 import uuid
 from Hyper.Errors import *
 
 message_types = {}
 
 
-def segment_builder(sg_type: str):
+def segment_builder(sg_type: str, summary_tmp: str = None):
     # print(inspect.get_annotations(cls))
     def inner_builder(cls):
         var = dict(vars(cls))
@@ -26,7 +27,8 @@ def segment_builder(sg_type: str):
                 for i in anns.keys():
                     if i not in arg.keys():
                         if i not in var.keys():
-                            raise TypeError
+                            new_arg[i] = None
+                            continue
                         new_arg[i] = var[i]
 
             for i in new_arg:
@@ -43,6 +45,24 @@ def segment_builder(sg_type: str):
 
         cls.to_json = to_json
 
+        def to_str(self) -> str:
+            text = summary_tmp
+            if text is None:
+                text = "[]"
+            if "<" not in text and ">" not in text:
+                return text
+
+            for i in anns:
+                if f"<{i}>" in summary_tmp:
+                    try:
+                        v = self.__getattribute__(i)
+                    except AttributeError:
+                        v = None
+                    text = text.replace(f"<{i}>", str(v))
+
+            return text
+        cls.__str__ = to_str if cls().__str__() == "__not_set__" else cls.__str__
+
         message_types[sg_type] = {
             "type": cls,
             "args": list(anns.keys())
@@ -54,85 +74,60 @@ def segment_builder(sg_type: str):
 
 
 class Base:
-    def to_json(self): ...
+    def __init__(self, *args, **kwargs): ...
 
-    def __str__(self) -> str:
-        return ""
+    def to_json(self) -> dict: ...
+
+    def __str__(self) -> str: return "__not_set__"
 
 
-@segment_builder("text")
+@segment_builder("text", "<text>")
 class Text(Base):
     text: str
 
-    def __str__(self) -> str:
-        return self.text
 
-
-@segment_builder("image")
+@segment_builder("image", "[图片]")
 class Image(Base):
     file: str
+    url: str = ""
     summary: str = "[图片]"
 
-    def __str__(self) -> str:
-        return self.summary or "[图片]"
 
-
-@segment_builder("at")
+@segment_builder("at", f"@<qq>")
 class At(Base):
     qq: str
 
-    def __str__(self) -> str:
-        return f"@{self.qq}"
 
-
-@segment_builder("reply")
+@segment_builder("reply", "")
 class Reply(Base):
     id: str
 
-    def __str__(self) -> str:
-        return ""
 
-
-@segment_builder("face")
+@segment_builder("face", "[表情: <id>]")
 class Faces(Base):
     id: str
 
-    def __str__(self) -> str:
-        return f"[{self.id}]"
 
-
-@segment_builder("location")
+@segment_builder("location", "[位置: <lat>, <lon>]")
 class Location(Base):
     lat: str
     lon: str
 
-    def __str__(self) -> str:
-        return f"[位置 {self.lat},{self.lon}]"
 
-
-@segment_builder("record")
+@segment_builder("record", "[语音]")
 class Record(Base):
     file: str
 
-    def __str__(self) -> str:
-        return "[语音]"
 
-
-@segment_builder("video")
+@segment_builder("video", "[视频]")
 class Video(Base):
     file: str
 
-    def __str__(self) -> str:
-        return "[视频]"
 
-
-@segment_builder("poke")
+@segment_builder("poke", "[拍一拍]")
 class Poke(Base):
     type: str
     id: str
-
-    def __str__(self) -> str:
-        return "[拍一拍]"
 
 
 @segment_builder("contact")
@@ -144,20 +139,14 @@ class Contact(Base):
         return f"[推荐{'群' if self.type == 'group' else '用户'}: {self.id}]"
 
 
-@segment_builder("forward")
+@segment_builder("forward", "[转发消息]")
 class Forward(Base):
     id: str
 
-    def __str__(self) -> str:
-        return "[转发消息]"
 
-
-@segment_builder("node")
+@segment_builder("node", "[转发消息]")
 class Node(Base):
     id: str
-
-    def __str__(self) -> str:
-        return "[转发消息]"
 
 
 class CustomNode:
@@ -262,49 +251,28 @@ class MarkDown:
         return f"[MarkDown]"
 
 
-class LongMessage:
-    def __init__(self, res_id: str):
-        self.content = {"type": "longmsg", "data": {"id": res_id}}
-
-    def set(self, res_id: str) -> None:
-        self.__init__(res_id)
-
-    def to_json(self) -> dict:
-        return self.content
-
-    def __str__(self) -> str:
-        return f"[长消息{self.content['data']['id']}]"
+@segment_builder("longmsg", "[<id>]")
+class LongMessage(Base):
+    id: str
 
 
-class Json:
-    def __init__(self, content: dict):
-        self.content = {"type": "json", "data": {"data": json.dumps(content, ensure_ascii=False).replace("'", r'/"')}}
-
-    def set(self, content: dict) -> None:
-        self.__init__(content)
-
-    def to_json(self) -> dict:
-        return self.content
-
-    def __str__(self) -> str:
-        return f"[Json]"
-
-    def __repr__(self) -> str:
-        return str(self.content)
+@segment_builder("json", "[Json]")
+class Json(Base):
+    data: typing.Union[dict, list, str]
 
 
-@segment_builder("mface")
-class MarketFace:
+@segment_builder("mface", "[表情]")
+class MarketFace(Base):
     face_id: str
     tab_id: str
     key: str
 
 
-@segment_builder("dice")
-class Dice:
+@segment_builder("dice", "[骰子]")
+class Dice(Base):
     pass
 
 
-@segment_builder("rps")
-class Rps:
+@segment_builder("rps", "[猜拳]")
+class Rps(Base):
     pass

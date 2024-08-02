@@ -21,23 +21,24 @@ class Test(ModuleClass.Module):
                        " \n ```python\nprint('Hello World')```"
                        " \n - 1"
                        " \n - 2")
-            forward_result = await self.actions.send_forward_msg(
-                message=Message(
-                    [
-                        CustomNode(user_id=f"{self.event.self_id}", nick_name="Hyper Bot", content=Message(
-                            [
-                                MarkDown(MarkdownContent(content))
-                            ]
-                        ))
-                    ]
-                )
-            )
-            res_id: str = forward_result.data
-            message = Message(
-                [
-                    LongMessage(res_id)
-                ]
-            )
+            # forward_result = await self.actions.send_forward_msg(
+            #     message=Message(
+            #         [
+            #             CustomNode(user_id=f"{self.event.self_id}", nick_name="Hyper Bot", content=Message(
+            #                 [
+            #                     MarkDown(MarkdownContent(content))
+            #                 ]
+            #             ))
+            #         ]
+            #     )
+            # )
+            # res_id: str = forward_result.data
+            # message = Message(
+            #     [
+            #         LongMessage(res_id)
+            #     ]
+            # )
+            message = Message([MarkDown(MarkdownContent(content))])
             await self.actions.send(
                 message=message,
                 group_id=self.event.group_id,

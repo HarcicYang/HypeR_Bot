@@ -100,10 +100,13 @@ class Module(ModuleClass.Module):
                         else:
                             texts.append(j)
                 elif type(i) is Segments.Image:
-                    response = httpx.get(i.get())
-                    with open(f"img{img_num}.jpg", "wb") as f:
+                    if str(i.file).startswith("http"):
+                        response = httpx.get(i.file)
+                    else:
+                        response = httpx.get(i.url)
+                    with open(f"./temps/img{img_num}.jpg", "wb") as f:
                         f.write(response.content)
-                    images.append(f"img{img_num}.jpg")
+                    images.append(f"./temps/img{img_num}.jpg")
                     img_num += 1
             has_error = False
 
@@ -145,9 +148,9 @@ class Module(ModuleClass.Module):
 
             else:
                 content = result.getvalue()
-                with open("meme.png", "wb") as f:
+                with open("./temps/meme.png", "wb") as f:
                     f.write(content)
-                content_text = f"file://{os.path.abspath('meme.png')}"
+                content_text = f"file://{os.path.abspath('./temps/meme.png')}"
 
                 await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
                                         message=Manager.Message(
