@@ -25,13 +25,13 @@ class Config:
         self.owner: list[int] = self.config_json["owner"]
         self.black_list: list[int] = self.config_json["black_list"]
         self.silents: list[int] = self.config_json["silents"]
-        if self.config_json["Connection"] == "FWS":
+        if self.config_json["Connection"]["mode"] == "FWS":
             self.connection = WSConnectionC(
                 self.config_json["Connection"]["host"],
                 self.config_json["Connection"]["port"],
                 self.config_json["Connection"]["retries"]
             )
-        elif self.config_json["Connection"] == "HTTP":
+        elif self.config_json["Connection"]["mode"] == "HTTP":
             self.connection = HTTPConnectionC(
                 self.config_json["Connection"]["host"],
                 self.config_json["Connection"]["port"],
