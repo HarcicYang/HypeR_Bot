@@ -7,13 +7,13 @@ with open("quick.json", "r", encoding="utf-8") as f:
     quicks = json.load(f)
 
 
-@ModuleClass.ModuleRegister.register(NoticeEvent, RequestEvent)
+@ModuleClass.ModuleRegister.register(GroupAddInviteEvent, GroupMemberDecreaseEvent, GroupMemberIncreaseEvent)
 class Module(ModuleClass.Module):
     async def handle(self):
         if self.event.blocked or self.event.servicing:
             return
-        if self.event.post_type == "notice":
-            if self.event.notice_type == "group_increase":
+        if isinstance(self.event, NoticeEvent):
+            if isinstance(self.event, GroupMemberIncreaseEvent):
                 text = str(random.choice(quicks["group_increase"])).split("<user>")
                 await self.actions.send(group_id=self.event.group_id, message=Manager.Message(
                     [
@@ -22,7 +22,7 @@ class Module(ModuleClass.Module):
                         Segments.Text(text[1])
                     ]
                 ))
-            elif self.event.notice_type == "group_decrease":
+            elif isinstance(self.event, GroupMemberDecreaseEvent):
                 try:
                     text = str(random.choice(quicks["group_decrease"][self.event.sub_type])).replace("<user>", str(self.event.user_id))
                     await self.actions.send(group_id=self.event.group_id, message=Manager.Message(
@@ -36,8 +36,8 @@ class Module(ModuleClass.Module):
             else:
                 return None
 
-        elif self.event.post_type == "request":
-            if self.event.request_type == "group":
+        elif isinstance(self.event, RequestEvent):
+            if isinstance(self.event, GroupAddInviteEvent):
                 if self.event.sub_type == "add":
                     await self.actions.set_group_add_request(flag=self.event.flag, sub_type=self.event.sub_type,
                                                              approve=True)
