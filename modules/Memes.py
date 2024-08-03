@@ -1,12 +1,11 @@
 import os.path
 import traceback
 from io import BytesIO
-
 import httpx
 from Hyper import Manager, ModuleClass, Segments
+from Hyper.Events import *
 import meme_generator
 from meme_generator import exception
-
 from Hyper.ModuleClass import ModuleInfo
 
 cmd = ".meme"
@@ -25,7 +24,7 @@ def get_meme(key: str) -> meme_generator.Meme:
     return list(res)[0]
 
 
-@ModuleClass.ModuleRegister.register(["message"])
+@ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
 class Module(ModuleClass.Module):
     @staticmethod
     def info() -> ModuleInfo:

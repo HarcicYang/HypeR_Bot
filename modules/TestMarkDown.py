@@ -1,11 +1,11 @@
 from Hyper.Segments import *
 from Hyper.Manager import Message, logger
 from Hyper import ModuleClass, Logger
+from Hyper.Events import *
 import json
-import time
 
 
-@ModuleClass.ModuleRegister.register(["message"])
+@ModuleClass.ModuleRegister.register(GroupMessageEvent)
 class Test(ModuleClass.Module):
     async def handle(self):
         if len(self.event.message) != 0 and isinstance(self.event.message[0], Json):

@@ -2,9 +2,10 @@ from Hyper.ModuleClass import ModuleInfo
 from Hyper.Segments import *
 from Hyper.Manager import Message
 from Hyper import ModuleClass
+from Hyper.Events import *
 
 
-@ModuleClass.ModuleRegister.register(["message"])
+@ModuleClass.ModuleRegister.register(GroupMessageEvent)
 class UserTitle(ModuleClass.Module):
     @staticmethod
     def info() -> ModuleInfo:

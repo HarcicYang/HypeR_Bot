@@ -1,9 +1,9 @@
 from Hyper import Manager, ModuleClass, Segments, DataBase
-
+from Hyper.Events import *
 data_set = DataBase.Dataset()
 
 
-@ModuleClass.ModuleRegister.register(["message"])
+@ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
 class Module(ModuleClass.Module):
     async def handle(self):
         if self.event.blocked:

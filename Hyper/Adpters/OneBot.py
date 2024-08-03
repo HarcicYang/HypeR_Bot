@@ -4,7 +4,8 @@ import threading
 import time
 import asyncio
 import os
-from Hyper import Configurator, Errors, Logger, Logic, Manager, Network
+from Hyper import Configurator, Errors, Logger, Logic, Manager, Network, Events
+from Hyper.Events import *
 from typing import Union
 
 reports = queue.Queue()
@@ -187,7 +188,7 @@ class Actions:
         return get_ret(packet.echo)
 
 
-async def tester(message_data: Manager.Event, actions: Actions) -> None:
+async def tester(message_data: Event, actions: Actions) -> None:
     ...
 
 
@@ -197,7 +198,7 @@ async def __handler(data: dict, actions: Actions) -> None:
     elif data.get("post_type") == "meta_event" or data.get("user_id") == data.get("self_id"):
         pass
     else:
-        task = asyncio.create_task(handler(Manager.build_event(data), actions))
+        task = asyncio.create_task(handler(Events.em.new(data), actions))
         timed = 0
 
         while not task.done():

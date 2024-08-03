@@ -1,7 +1,7 @@
 import os.path
 import json
 import time
-
+from Hyper.Events import *
 from Hyper import Manager, ModuleClass, Segments, WordSafety
 
 
@@ -203,7 +203,7 @@ def string_similarity(s1: str, s2: str) -> float:
     return similarity
 
 
-@ModuleClass.ModuleRegister.register(["message"])
+@ModuleClass.ModuleRegister.register(GroupMessageEvent)
 class Module(ModuleClass.Module):
     async def handle(self):
         if self.event.is_owner and str(self.event.message) == ".dump":

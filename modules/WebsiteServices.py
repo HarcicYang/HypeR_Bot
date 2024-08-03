@@ -1,4 +1,5 @@
 from Hyper import Manager, ModuleClass, Segments, WordSafety, Logic
+from Hyper.Events import *
 import re
 from bilibili_api import video
 import os
@@ -171,7 +172,7 @@ def github_safety_check(url: str) -> GithubSafetyResult:
     return ret
 
 
-@ModuleClass.ModuleRegister.register(["message"])
+@ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
 class Module(ModuleClass.Module):
     async def handle(self):
         if self.event.blocked or self.event.servicing or self.event.is_silent:

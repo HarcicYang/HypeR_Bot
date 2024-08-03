@@ -1,4 +1,5 @@
 from Hyper import Manager, ModuleClass, Segments, DataBase, Configurator
+from Hyper.Events import *
 import dashscope
 from dashscope import Generation
 from dashscope import MultiModalConversation
@@ -82,7 +83,7 @@ class LLM:
 mode = "qwen"
 
 
-@ModuleClass.ModuleRegister.register(["message"])
+@ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
 class Module(ModuleClass.Module):
     async def handle(self):
         if self.event.blocked or self.event.servicing:

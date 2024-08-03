@@ -1,9 +1,10 @@
 from Hyper.Manager import Message
 from Hyper.ModuleClass import Module, ModuleInfo, ModuleRegister
 from Hyper.Segments import *
+from Hyper.Events import *
 
 
-@ModuleRegister.register(["message"])
+@ModuleRegister.register(GroupMessageEvent)
 class Ess(Module):
     @staticmethod
     def info() -> ModuleInfo:

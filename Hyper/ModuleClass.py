@@ -1,4 +1,4 @@
-from Hyper import Manager, Listener, Logger, Configurator
+from Hyper import Events, Listener, Logger, Configurator
 import dataclasses
 
 config = Configurator.Config("config.json")
@@ -17,7 +17,7 @@ class ModuleInfo:
 
 
 class Module:
-    def __init__(self, actions: Listener.Actions, event: Manager.Event):
+    def __init__(self, actions, event):
         self.actions = actions
         self.event = event
 
@@ -30,9 +30,9 @@ class Module:
 
 
 class InnerHandler:
-    def __init__(self, module: Module, allowed_post_types: list):
+    def __init__(self, module: Module, allowed: list):
         self.module = module
-        self.allowed_post_types = allowed_post_types
+        self.allowed = allowed
 
 
 register_modules: list[InnerHandler] = []
@@ -41,13 +41,23 @@ register_modules: list[InnerHandler] = []
 class ModuleRegister:
     @staticmethod
     def register(*args):
-        def decorator(func):
-            if len(args) not in [1, 2]:
-                raise TypeError("register() expects either 1 or 2 arguments")
-            allowed_post_types = args[0] if len(args) == 1 else ["message", "notice", "request"]
-            register_modules.append(InnerHandler(func, allowed_post_types))
+        def decorator(cls):
+            if len(args) < 1:
+                allowed = [Events.Event]
+            else:
+                allowed = list(args)
 
-            return func
+            from typing import Union
+
+            def init(self, actions: Listener.Actions, event: Union[*allowed]):
+                self.actions = actions
+                self.event = event
+
+            cls.__init__ = init
+
+            register_modules.append(InnerHandler(cls, allowed))
+
+            return cls
 
         return decorator
 

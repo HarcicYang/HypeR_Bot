@@ -1,7 +1,8 @@
 from Hyper import Manager, ModuleClass, Segments
+from Hyper.Events import *
 
 
-@ModuleClass.ModuleRegister.register(["message"])
+@ModuleClass.ModuleRegister.register(GroupMessageEvent)
 class Module(ModuleClass.Module):
     async def handle(self):
         if self.event.blocked or self.event.servicing:

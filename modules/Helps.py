@@ -1,14 +1,14 @@
 from Hyper.Manager import Message
 from Hyper.Segments import *
 from Hyper.ModuleClass import Module, ModuleInfo, ModuleRegister, InnerHandler
-import typing
+from Hyper.Events import *
 
 
 def searcher(checker, iter_obj: list) -> list[InnerHandler]:
     return list(filter(checker, iter_obj))
 
 
-@ModuleRegister.register(["message"])
+@ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
 class Helper(Module):
     async def handle(self):
         if str(self.event.message).startswith(".help"):

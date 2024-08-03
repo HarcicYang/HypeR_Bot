@@ -1,9 +1,9 @@
 from Hyper import Segments
-from Hyper.Manager import gen_message, Message
+from Hyper.Manager import Message
+from Hyper.Events import *
 from Hyper.ModuleClass import Module, ModuleInfo, ModuleRegister
 from PIL import Image, ImageDraw, ImageFont
 import os
-
 from modules.WebsiteServices import open_from_url, square_scale
 
 
@@ -32,7 +32,7 @@ def get_image(quote, ava_url, name):
     nbg.save("quote.png")
 
 
-@ModuleRegister.register(["message"])
+@ModuleRegister.register(GroupMessageEvent)
 class Quoter(Module):
     @staticmethod
     def info() -> ModuleInfo:

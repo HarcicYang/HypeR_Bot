@@ -1,4 +1,5 @@
 from Hyper import Manager, ModuleClass, Segments
+from Hyper.Events import *
 import random
 import json
 
@@ -6,7 +7,7 @@ with open("quick.json", "r", encoding="utf-8") as f:
     quicks = json.load(f)
 
 
-@ModuleClass.ModuleRegister.register(["notice", "request"])
+@ModuleClass.ModuleRegister.register(NoticeEvent, RequestEvent)
 class Module(ModuleClass.Module):
     async def handle(self):
         if self.event.blocked or self.event.servicing:
