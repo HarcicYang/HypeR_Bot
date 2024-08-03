@@ -13,14 +13,8 @@ class WebsocketConnection:
         self.ws = websocket.WebSocket()
         self.url = url
 
-    def connect(self) -> bool:
-        try:
-            self.ws.connect(self.url)
-        except:
-            traceback.print_exc()
-            return False
-
-        return True
+    def connect(self) -> None:
+        self.ws.connect(self.url)
 
     def send(self, message: str) -> None:
         self.ws.send(message)
@@ -47,26 +41,17 @@ class HTTPConnection:
         logging.getLogger("werkzeug").setLevel(logging.ERROR)
         self.reports = queue.Queue()
 
-    def connect(self) -> bool:
+    def connect(self) -> None:
         @self.app.route("/", methods=["POST"])
         def listener():
             self.reports.put(flask.request.json)
             return {}
 
-        try:
             # self.app.run(host=self.listener_url, port=self.port)
-            threading.Thread(target=lambda: self.app.run(host=self.listener_url, port=self.port)).start()
-        except:
-            traceback.print_exc()
-            return False
-        finally:
-            try:
-                httpx.post(self.url)
-            except:
-                traceback.print_exc()
-                return False
 
-        return True
+        threading.Thread(target=lambda: self.app.run(host=self.listener_url, port=self.port)).start()
+        httpx.post(self.url)
+        traceback.print_exc()
 
     def recv(self) -> dict:
         return self.reports.get()
@@ -76,3 +61,10 @@ class HTTPConnection:
         res = response.json()
         res["echo"] = echo
         self.reports.put(res)
+
+    @staticmethod
+    def close() -> None:
+        shutdown_func = flask.request.environ.get('werkzeug.server.shutdown')
+        if shutdown_func is None:
+            raise RuntimeError('Not running with the Werkzeug Server')
+        shutdown_func()

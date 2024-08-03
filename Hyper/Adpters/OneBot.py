@@ -3,7 +3,7 @@ import queue
 import threading
 import time
 import asyncio
-import sys
+import os
 from Hyper import Configurator, Errors, Logger, Logic, Manager, Network
 from typing import Union
 
@@ -66,11 +66,10 @@ class Actions:
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().recall, logger)
     async def del_message(self, message_id: int) -> None:
-        packet = Manager.Packet(
+        Manager.Packet(
             "delete_msg",
             message_id=message_id,
-        )
-        packet.send_to(self.connection)
+        ).send_to(self.connection)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().kick, logger)
     async def set_group_kick(self, group_id: int, user_id: int) -> None:
@@ -280,4 +279,4 @@ def run():
             connection.close()
         except:
             pass
-        sys.exit()
+        os._exit(0)

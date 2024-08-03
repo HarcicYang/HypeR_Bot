@@ -1,7 +1,7 @@
 import dataclasses
 from Hyper import Logic, Configurator, Logger, Network
 from Hyper.Logger import levels
-from Hyper.Adpters.OneBotLib.Segments import *
+from Hyper.Segments import *
 from typing import Union
 import inspect
 import random

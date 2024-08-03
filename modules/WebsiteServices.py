@@ -205,5 +205,5 @@ class Module(ModuleClass.Module):
             with open("./temps/github.png", "wb") as f:
                 f.write(httpx.get(content).content)
             await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Manager.Message(
-                [Segments.Image(f"file://{os.path.abspath('./temps/github.png')}", f"{safety.address}")]
+                [Segments.Image(f"file://{os.path.abspath('./temps/github.png')}", summary=f"{safety.address}")]
             ))

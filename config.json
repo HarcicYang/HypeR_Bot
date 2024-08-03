@@ -2,7 +2,7 @@
   "owner": [
     2488529467
   ],
-  "black_list": [],
+  "black_list": [3497623764],
   "silents": [894446744],
   "Connection": {
     "mode": "FWS",
