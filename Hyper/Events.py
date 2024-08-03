@@ -26,8 +26,8 @@ class EventManager:
         try:
             return self.event_lis[data["post_type"]][data[f"{data['post_type']}_type"]](data)
         except KeyError:
-            typ = f"{data['post_type']}_type"
-            logger.log(f"不存在的事件类型：{data['post_type']}.{typ}")
+            typ = data[f"{data['post_type']}_type"]
+            logger.log(f"不存在的事件类型：{data['post_type']}.{typ}", levels.WARNING)
             return Event(data)
 
 
