@@ -86,7 +86,7 @@ class Text(Base):
     text: str
 
 
-@segment_builder("image", "<summary>")
+@segment_builder("image", "[图片]")
 class Image(Base):
     file: str
     url: str = ""

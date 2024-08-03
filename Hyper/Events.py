@@ -23,7 +23,12 @@ class EventManager:
         return wrapper
 
     def new(self, data: dict) -> "Event":
-        return self.event_lis[data["post_type"]][data[f"{data['post_type']}_type"]](data)
+        try:
+            return self.event_lis[data["post_type"]][data[f"{data['post_type']}_type"]](data)
+        except KeyError:
+            typ = f"{data['post_type']}_type"
+            logger.log(f"不存在的事件类型：{data['post_type']}.{typ}")
+            return Event(data)
 
 
 em = EventManager()
@@ -106,12 +111,10 @@ class PrivateMessageEvent(MessageEvent):
         super().__init__(data)
         self.sender = PrivateSender(data.get("sender"))
 
-        data["message"] = self.message
-        self.print_log(**data)
+        self.print_log()
 
-    @Logger.AutoLog.register(Logger.AutoLog.templates().on_message, logger)
-    def print_log(self, **kwargs) -> None:
-        pass
+    def print_log(self) -> None:
+        logger.log(f"收到 {self.user_id} 的消息：{self.message}")
 
 
 @em.reg("message", "group")
@@ -121,12 +124,10 @@ class GroupMessageEvent(MessageEvent):
         self.sender = GroupSender(data.get("sender"))
         self.anonymous = GroupAnonymous(data.get("anonymous"))
 
-        data["message"] = self.message
-        self.print_log(**data)
+        self.print_log()
 
-    @Logger.AutoLog.register(Logger.AutoLog.templates().on_message, logger)
-    def print_log(self, **kwargs) -> None:
-        pass
+    def print_log(self) -> None:
+        logger.log(f"收到来自群 {self.group_id} 中 {self.user_id} 的消息： {self.message}")
 
 
 class NoticeEvent(Event):
@@ -141,11 +142,10 @@ class GroupFileUploadEvent(NoticeEvent):
         super().__init__(data)
         self.file = data.get("file")
 
-        self.print_log(**data)
+        self.print_log()
 
-    @Logger.AutoLog.register(Logger.AutoLog.templates().on_notice, logger)
-    def print_log(self, **kwargs) -> None:
-        pass
+    def print_log(self) -> None:
+        logger.log(f"{self.user_id} 在 {self.group_id} 上传了文件 {self.file}")
 
 
 @em.reg("notice", "group_admin")
@@ -154,11 +154,10 @@ class GroupAdminEvent(NoticeEvent):
         super().__init__(data)
         self.sub_type = data.get("sub_type")
 
-        self.print_log(**data)
+        self.print_log()
 
-    @Logger.AutoLog.register(Logger.AutoLog.templates().on_notice, logger)
-    def print_log(self, **kwargs) -> None:
-        pass
+    def print_log(self) -> None:
+        logger.log(f"用户 {self.user_id} 在群 {self.group_id} 被{'设置' if self.sub_type == 'set' else '取消'}管理员身份")
 
 
 @em.reg("notice", "group_decrease")
@@ -168,11 +167,10 @@ class GroupMemberDecreaseEvent(NoticeEvent):
         self.sub_type = data.get("sub_type")
         self.operator_id = data.get("operator_id")
 
-        self.print_log(**data)
+        self.print_log()
 
-    @Logger.AutoLog.register(Logger.AutoLog.templates().on_notice, logger)
-    def print_log(self, **kwargs) -> None:
-        pass
+    def print_log(self) -> None:
+        logger.log(f"{self.user_id} 离开群 {self.group_id}， [{self.sub_type}, {self.operator_id}]")
 
 
 @em.reg("notice", "group_increase")
@@ -182,11 +180,10 @@ class GroupMemberIncreaseEvent(NoticeEvent):
         self.sub_type = data.get("sub_type")
         self.operator_id = data.get("operator_id")
 
-        self.print_log(**data)
+        self.print_log()
 
-    @Logger.AutoLog.register(Logger.AutoLog.templates().on_notice, logger)
-    def print_log(self, **kwargs) -> None:
-        pass
+    def print_log(self) -> None:
+        logger.log(f"{self.user_id} 加入群 {self.group_id}， [{self.sub_type}, {self.operator_id}]")
 
 
 @em.reg("notice", "group_ban")
@@ -197,11 +194,10 @@ class GroupMuteEvent(NoticeEvent):
         self.operator_id = data.get("operator_id")
         self.duration = data.get("duration")
 
-        self.print_log(**data)
+        self.print_log()
 
-    @Logger.AutoLog.register(Logger.AutoLog.templates().on_notice, logger)
-    def print_log(self, **kwargs) -> None:
-        pass
+    def print_log(self) -> None:
+        logger.log(f"{self.user_id} 在群 {self.group_id} 被{'' if self.sub_type == 'ban' else '解除'}禁言， 时长为{self.duration}")
 
 
 @em.reg("notice", "friend_add")
@@ -209,11 +205,10 @@ class FriendAddEvent(NoticeEvent):
     def __init__(self, data: dict):
         super().__init__(data)
 
-        self.print_log(**data)
+        self.print_log()
 
-    @Logger.AutoLog.register(Logger.AutoLog.templates().on_notice, logger)
-    def print_log(self, **kwargs) -> None:
-        pass
+    def print_log(self) -> None:
+        logger.log(f"收到 {self.user_id} 的好友请求")
 
 
 @em.reg("notice", "group_recall")
@@ -223,40 +218,31 @@ class GroupRecallEvent(NoticeEvent):
         self.operator_id = data.get("operator_id")
         self.message_id = data.get("message_id")
 
-        self.print_log(**data)
+        self.print_log()
 
-    @Logger.AutoLog.register(Logger.AutoLog.templates().on_notice, logger)
-    def print_log(self, **kwargs) -> None:
-        pass
+    def print_log(self) -> None:
+        logger.log(f"{self.operator_id} 在群 {self.group_id} 中撤回了 {self.user_id} 的消息 {self.message_id}")
 
 
 @em.reg("notice", "friend_recall")
 class FriendRecallEvent(NoticeEvent):
     def __init__(self, data: dict):
         super().__init__(data)
-        self.operator_id = data.get("operator_id")
         self.message_id = data.get("message_id")
 
-        self.print_log(**data)
+        self.print_log()
 
-    @Logger.AutoLog.register(Logger.AutoLog.templates().on_notice, logger)
-    def print_log(self, **kwargs) -> None:
-        pass
+    def print_log(self) -> None:
+        logger.log(f"{self.user_id} 撤回了一条消息")
 
 
 @em.reg("notice", "notify")
-class NotifyEvent(Event):
+class NotifyEvent(NoticeEvent):
     def __init__(self, data: dict):
         super().__init__(data)
         self.sub_type = data.get("sub_type")
         self.target_id = data.get("target_id")
         self.honor_type = data.get("honor_type")
-
-        self.print_log(**data)
-
-    @Logger.AutoLog.register(Logger.AutoLog.templates().on_notice, logger)
-    def print_log(self, **kwargs) -> None:
-        pass
 
 
 class RequestEvent(Event):
@@ -271,12 +257,6 @@ class FriendAddEvent(RequestEvent):
     def __init__(self, data: dict):
         super().__init__(data)
 
-        self.print_log(**data)
-
-    @Logger.AutoLog.register(Logger.AutoLog.templates().on_notice, logger)
-    def print_log(self, **kwargs) -> None:
-        pass
-
 
 @em.reg("request", "group")
 class GroupAddInviteEvent(RequestEvent):
@@ -284,10 +264,5 @@ class GroupAddInviteEvent(RequestEvent):
         super().__init__(data)
         self.sub_type = data.get("sub_type")
 
-        self.print_log(**data)
-
-    @Logger.AutoLog.register(Logger.AutoLog.templates().on_notice, logger)
-    def print_log(self, **kwargs) -> None:
-        pass
 
 

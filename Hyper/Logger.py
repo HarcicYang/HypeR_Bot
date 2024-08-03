@@ -68,7 +68,7 @@ class AutoLog:
         self.level = level
 
     @staticmethod
-    def templates(lang: str = "en"):
+    def templates(lang: str = "zh_CN"):
         class Base:
             on_message: str
             on_notice: str
