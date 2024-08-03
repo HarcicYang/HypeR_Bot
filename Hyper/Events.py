@@ -104,7 +104,7 @@ class MessageEvent(Event):
 class PrivateMessageEvent(MessageEvent):
     def __init__(self, data: dict):
         super().__init__(data)
-        self.sender = PrivateSender(data["sender"])
+        self.sender = PrivateSender(data.get("sender"))
 
         data["message"] = self.message
         self.print_log(**data)
@@ -118,8 +118,8 @@ class PrivateMessageEvent(MessageEvent):
 class GroupMessageEvent(MessageEvent):
     def __init__(self, data: dict):
         super().__init__(data)
-        self.sender = GroupSender(data["sender"])
-        self.anonymous = GroupAnonymous(data["anonymous"])
+        self.sender = GroupSender(data.get("sender"))
+        self.anonymous = GroupAnonymous(data.get("anonymous"))
 
         data["message"] = self.message
         self.print_log(**data)
