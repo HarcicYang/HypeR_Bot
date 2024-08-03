@@ -29,7 +29,7 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
                         if i not in var.keys():
                             new_arg[i] = None
                             continue
-                        new_arg[i] = var[i]
+                        new_arg[i] = anns[i](var[i])
 
             for i in new_arg:
                 setattr(self, i, new_arg[i])
