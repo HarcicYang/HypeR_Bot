@@ -1,7 +1,12 @@
 import os
-# import importlib
+import sys
 
-for i in os.listdir("modules"):
+if getattr(sys, "frozen", False):
+    path = "./_Internal/modules"
+else:
+    path = "modules"
+
+for i in os.listdir(path):
     if "__init__" in i:
         continue
 
