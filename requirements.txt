@@ -2,3 +2,5 @@ bilibili-api-python==16.1.1
 dashscope
 Pillow
 websocket
+flask
+pyppeteer

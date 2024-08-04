@@ -11,25 +11,6 @@
 ## 概览
 HypeR Bot是一个适配OneBot协议的机器人框架，旨在提供一个简洁、高效、可扩展的机器人运行结构。
 
-## 文件结构
-```tree
-├── main.py
-├── modules
-│   ├── __init__.py
-│   ├── ...
-│   
-├── lagrange
-│ 
-├── lib
-│   ├── Configuratior.py
-│   ├── DataBase.py
-│   ├── Listener.py
-│   ├── Loogger.py
-│   ├── Manager.py
-│   ├── Segements.py
-│   
-├── config.json
-```
 
 ## 配置文件
 `config.json`:
