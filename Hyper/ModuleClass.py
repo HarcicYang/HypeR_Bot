@@ -1,7 +1,8 @@
 from Hyper import Events, Listener, Logger, Configurator
+
 import dataclasses
 
-config = Configurator.Config("config.json")
+config = Configurator.cm.get_cfg()
 logger = Logger.Logger()
 logger.set_level(config.log_level)
 

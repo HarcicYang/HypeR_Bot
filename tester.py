@@ -29,3 +29,5 @@ new.content.age = 16
 print(new.content.age)
 print(new)
 print(type(new.raw))
+
+print(None or list())

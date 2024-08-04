@@ -1,3 +1,5 @@
+import typing
+
 from Hyper import Logic
 
 
@@ -18,26 +20,64 @@ class HTTPConnectionC:
 
 
 class Config:
-    def __init__(self, file: str):
-        self.config_json = Logic.FileManager.read_as_json(file)
+    def __init__(
+            self,
+            file: str = None,
+            protocol: str = "OneBot",
+            owner: list[int] = None,
+            black_list: list[int] = None,
+            silents: list[int] = None,
+            connection: typing.Union[WSConnectionC, HTTPConnectionC] = None,
+            log_level: str = "INFO",
+            others: dict = None
+    ):
+        self.inited = False
+        if file is not None:
+            self.file = file
+        else:
+            self.protocol: str = protocol
+            self.owner: list[int] = owner or list()
+            self.black_list: list[int] = black_list or list()
+            self.silents: list[int] = silents or list
+            self.connection = connection
+            self.log_level = log_level
+            self.others = others or dict()
+            self.inited = True
 
-        self.protocol: str = self.config_json["protocol"]
-        self.owner: list[int] = self.config_json["owner"]
-        self.black_list: list[int] = self.config_json["black_list"]
-        self.silents: list[int] = self.config_json["silents"]
-        if self.config_json["Connection"]["mode"] == "FWS":
+    def load_from_file(self):
+        config_json = Logic.FileManager.read_as_json(self.file)
+
+        self.protocol: str = config_json["protocol"]
+        self.owner: list[int] = config_json["owner"]
+        self.black_list: list[int] = config_json["black_list"]
+        self.silents: list[int] = config_json["silents"]
+        if config_json["Connection"]["mode"] == "FWS":
             self.connection = WSConnectionC(
-                self.config_json["Connection"]["host"],
-                self.config_json["Connection"]["port"],
-                self.config_json["Connection"]["retries"]
+                config_json["Connection"]["host"],
+                config_json["Connection"]["port"],
+                config_json["Connection"]["retries"]
             )
-        elif self.config_json["Connection"]["mode"] == "HTTP":
+        elif config_json["Connection"]["mode"] == "HTTP":
             self.connection = HTTPConnectionC(
-                self.config_json["Connection"]["host"],
-                self.config_json["Connection"]["port"],
-                self.config_json["Connection"]["listener_host"],
-                self.config_json["Connection"]["listener_port"],
-                self.config_json["Connection"]["retries"]
+                config_json["Connection"]["host"],
+                config_json["Connection"]["port"],
+                config_json["Connection"]["listener_host"],
+                config_json["Connection"]["listener_port"],
+                config_json["Connection"]["retries"]
             )
-        self.log_level = self.config_json["Log_level"]
-        self.others = self.config_json["Others"]
+        self.log_level = config_json["Log_level"]
+        self.others = config_json["Others"]
+
+        self.inited = True
+        return self
+
+
+class ConfigManager:
+    def __init__(self, config: Config):
+        self.config: Config = config
+
+    def get_cfg(self) -> Config:
+        return self.config
+
+
+cm: ConfigManager

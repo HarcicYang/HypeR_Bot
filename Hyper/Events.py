@@ -2,7 +2,7 @@ from Hyper import Configurator, Logger, Manager
 from Hyper.Segments import message_types
 from Hyper.Logger import levels
 
-config = Configurator.Config("config.json")
+config = Configurator.cm.get_cfg()
 logger = Logger.Logger()
 logger.set_level(config.log_level)
 

@@ -118,3 +118,19 @@ class Test(ModuleClass.Module):
         elif str(self.event.message) == ".test4":
             await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
                                     message=Message([Dice()]))
+
+        elif str(self.event.message) == ".test5":
+            message = Manager.Message(
+                [
+                    Music(
+                        type="custom",
+                        url="https://harcicyang.github.io/schools",
+                        audio="https://harcicyang.github.io/ctrl.m4a",
+                        title="Test"
+                    )
+                ]
+            )
+            await self.actions.send(
+                group_id=self.event.group_id,
+                message=message
+            )

@@ -1,6 +1,7 @@
 import json
 import typing
 import uuid
+
 from Hyper.Errors import *
 
 message_types = {}
@@ -276,3 +277,13 @@ class Dice(Base):
 @segment_builder("rps", "[猜拳]")
 class Rps(Base):
     pass
+
+
+@segment_builder("music", "[音乐]")
+class Music(Base):
+    type: str
+    id: str = None
+    url: str = None
+    audio: str = None
+    title: str = None
+

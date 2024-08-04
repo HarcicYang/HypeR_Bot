@@ -4,15 +4,15 @@ import threading
 import time
 import asyncio
 import os
-from Hyper import Configurator, Errors, Logger, Logic, Manager, Network, Events
-from Hyper.Events import *
 from typing import Union
 
+from Hyper import Configurator, Errors, Logger, Logic, Manager, Network, Events
+from Hyper.Events import *
+
 reports = queue.Queue()
-config = Configurator.Config("config.json")
+config = Configurator.cm.get_cfg()
 logger = Logger.Logger()
 logger.set_level(config.log_level)
-random = Logic.Random(2333)
 
 
 class Actions:
@@ -24,23 +24,20 @@ class Actions:
                 self.connection = cnt_i
 
             def __getattr__(self, item) -> callable:
-                def wrapper(no_return: bool, **kwargs) -> Manager.Ret:
+                def wrapper(no_return: bool, **kwargs) -> Manager.Ret | None:
                     if no_return:
-                        payload = {
-                            "action": str(item),
-                            "params": kwargs
-                        }
-                        self.connection.send(json.dumps(payload))
-                        return Manager.Ret({"status": None, "ret_code": None})
+                        Manager.Packet(
+                            str(item),
+                            **kwargs
+                        ).send_to(self.connection)
+                        return None
                     else:
-                        echo = get_echo(str(item))
-                        payload = {
-                            "action": str(item),
-                            "params": kwargs,
-                            "echo": echo
-                        }
-                        self.connection.send(json.dumps(payload))
-                        return get_ret(echo)
+                        packet = Manager.Packet(
+                            str(item),
+                            **kwargs
+                        )
+                        packet.send_to(self.connection)
+                        return get_ret(packet.echo)
 
                 return wrapper
 
@@ -219,8 +216,6 @@ def reg(func: callable):
     handler = func
 
 
-def get_echo(action_name: str) -> str:
-    return f"{action_name}_{random()}"
 
 
 def get_ret(echo: str) -> Manager.Ret:

@@ -8,7 +8,7 @@ dataset = DataBase.Dataset()
 with open("sys_prompt.txt", "r", encoding="utf-8") as f:
     sys_prompt = f.read()
 
-config = Configurator.Config("config.json")
+config = Configurator.cm.get_cfg()
 dashscope.api_key = config.others["Chat"]["Qwen"]["key"]
 
 

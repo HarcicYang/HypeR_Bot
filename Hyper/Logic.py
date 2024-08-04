@@ -1,8 +1,9 @@
 import json
 import os
 import shutil
-from Hyper import Logger
 import traceback
+
+from Hyper import Logger
 
 
 class Cacher:

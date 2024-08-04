@@ -1,10 +1,15 @@
-import asyncio
-from Hyper import Listener, Events, Configurator, Logger, ModuleClass, Logic
+from Hyper import Configurator
 
-from modules import *
+Configurator.cm = Configurator.ConfigManager(Configurator.Config(file="config.json").load_from_file())
+
+if True:
+    import asyncio
+    from Hyper import Listener, Events, Logger, ModuleClass, Logic
+
+    from modules import *
 
 handler_list = ModuleClass.ModuleRegister.get_registered()
-config = Configurator.Config("config.json")
+config = Configurator.cm.get_cfg()
 logger = Logger.Logger()
 logger.set_level(config.log_level)
 
