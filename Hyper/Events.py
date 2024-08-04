@@ -81,7 +81,7 @@ def gen_message(data: dict) -> Manager.Message:
 
 class Event:
     def __init__(self, data: dict):
-        self.data = data
+        self.data = data.copy()
         self.time = data.get("time")
         self.self_id = data.get("self_id")
         self.post_type = data.get("post_type")

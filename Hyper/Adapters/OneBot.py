@@ -216,8 +216,6 @@ def reg(func: callable):
     handler = func
 
 
-
-
 def get_ret(echo: str) -> Manager.Ret:
     old = None
     while True:

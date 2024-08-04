@@ -29,7 +29,7 @@ def get_image(quote, ava_url, name):
     draw.text((862 if len(name) >= 7 else 1000, 465), f"——{name}", font=desc_font, fill=(112, 112, 112))
     nbg = Image.new('RGB', mask.size, (0, 0, 0))
     nbg.paste(background, (0, 0))
-    nbg.save("quote.png")
+    nbg.save("./temps/quote.png")
 
 
 @ModuleRegister.register(GroupMessageEvent)
@@ -62,6 +62,6 @@ class Quoter(Module):
             await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Message(
                 [
                     Segments.Reply(self.event.message_id),
-                    Segments.Image(f"file://{os.path.abspath('quote.png')}")
+                    Segments.Image(f"file://{os.path.abspath('./temps/quote.png')}")
                 ]
             ))

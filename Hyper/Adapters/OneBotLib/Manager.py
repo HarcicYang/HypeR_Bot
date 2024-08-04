@@ -34,9 +34,11 @@ class Packet:
 
 
 class Message:
-    def __init__(self, contents: list = None):
+    def __init__(self, contents: list = None, *args):
         if contents is None:
             contents = []
+        if len(args) > 0:
+            contents += list(args)
         self.contents = contents
 
     def add(self, content) -> None:
