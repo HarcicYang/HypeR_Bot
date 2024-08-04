@@ -21,7 +21,10 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
 
             if len(kwargs) > 0:
                 for i in kwargs:
-                    arg[i] = kwargs[i]
+                    try:
+                        arg[i] = anns[i](kwargs[i])
+                    except TypeError:
+                        arg[i] = kwargs[i]
             new_arg = arg.copy()
 
             if len(anns) > len(arg):
@@ -30,7 +33,10 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
                         if i not in var.keys():
                             new_arg[i] = None
                             continue
-                        new_arg[i] = anns[i](var[i])
+                        try:
+                            new_arg[i] = anns[i](var[i])
+                        except TypeError:
+                            new_arg[i] = var[i]
 
             for i in new_arg:
                 setattr(self, i, new_arg[i])
@@ -40,7 +46,7 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
         def to_json(self) -> dict:
             base = {"type": sg_type, "data": {}}
             for i in anns:
-                base["data"][i] = anns[i](getattr(self, i))
+                base["data"][i] = getattr(self, i)
             return base
 
         cls.to_json = to_json
