@@ -29,4 +29,4 @@ class Module(ModuleClass.Module):
                 code
             )
             await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
-                                    message=Manager.Message([Segments.Text(message)]))
+                                    message=Manager.Message(Segments.Text(message)))

@@ -189,7 +189,7 @@ class Module(ModuleClass.Module):
         if bv_id:
             info = await video_info(bv=bv_id)
             path = await get_image(info)
-            result = Manager.Message([Segments.Image(f"file://{os.path.abspath(path)}", f"{info.title}")])
+            result = Manager.Message(Segments.Image(f"file://{os.path.abspath(path)}", f"{info.title}"))
 
             await self.actions.send(group_id=self.event.group_id, message=result)
 
@@ -205,6 +205,10 @@ class Module(ModuleClass.Module):
             content = url.replace("github.com/", "opengraph.githubassets.com/Yenai/")
             with open("./temps/github.png", "wb") as f:
                 f.write(httpx.get(content).content)
-            await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Manager.Message(
-                [Segments.Image(f"file://{os.path.abspath('./temps/github.png')}", summary=f"{safety.address}")]
-            ))
+            await self.actions.send(
+                group_id=self.event.group_id,
+                user_id=self.event.user_id,
+                message=Manager.Message(
+                    Segments.Image(f"file://{os.path.abspath('./temps/github.png')}", summary=f"{safety.address}")
+                )
+            )

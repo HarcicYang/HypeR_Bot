@@ -286,14 +286,13 @@ class Module(ModuleClass.Module):
             if user.need_mute:
                 await self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
                                                  duration=int(120 * user.violation_level))
-                await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                                        message=Manager.Message(
-                                            [
-                                                Segments.At(str(self.event.user_id)),
-                                                Segments.Text("请勿发送违禁词")
-                                            ]
-                                        )
-                                        )
+                await self.actions.send(
+                    user_id=self.event.user_id,
+                    group_id=self.event.group_id,
+                    message=Manager.Message(
+                        Segments.At(str(self.event.user_id)), Segments.Text("请勿发送违禁词")
+                    )
+                )
                 user.clr_unsafe_times()
 
         # data.dump_to("group.json")

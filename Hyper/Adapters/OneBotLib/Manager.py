@@ -37,7 +37,7 @@ class Message:
     def __init__(self, *args):
         if len(args) == 1 and isinstance(args[0], list):
             contents = args[0]
-        elif len(args) > 1:
+        elif len(args) >= 1:
             contents = list(args)
         else:
             contents = []

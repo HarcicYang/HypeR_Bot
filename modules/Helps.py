@@ -41,9 +41,5 @@ class Helper(Module):
             await self.actions.send(
                 group_id=self.event.group_id,
                 user_id=self.event.user_id,
-                message=Message(
-                    [
-                        Text(help_info)
-                    ]
-                ),
+                message=Message(Text(help_info)),
             )

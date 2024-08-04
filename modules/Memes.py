@@ -53,28 +53,28 @@ class Module(ModuleClass.Module):
                 meme = get_meme(str(message).split()[1].replace("[图片]", ""))
             except:
                 if len(str(message).split()) > 1:
-                    await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                                            message=Manager.Message(
-                                                [
-                                                    Segments.Reply(self.event.message_id),
-                                                    Segments.Text(
-                                                        f"找不到{str(message).split()[1].replace('[图片]', '')}这一模板，详见：\n"
-                                                        f"https://github.com/MeetWq/meme-generator/wiki/%E8%A1%A8%E6%83%85%E5%88%97%E8%A1%A8"
-                                                    )
-                                                ]
-                                            )
-                                            )
+                    await self.actions.send(
+                        user_id=self.event.user_id,
+                        group_id=self.event.group_id,
+                        message=Manager.Message(
+                            Segments.Reply(self.event.message_id),
+                            Segments.Text(
+                                f"找不到{str(message).split()[1].replace('[图片]', '')}这一模板，详见：\n"
+                                f"https://github.com/MeetWq/meme-generator/wiki/%E8%A1%A8%E6%83%85%E5%88%97%E8%A1%A8"
+                            )
+                        )
+                    )
                 else:
-                    await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                                            message=Manager.Message(
-                                                [
-                                                    Segments.Reply(self.event.message_id),
-                                                    Segments.Text(
-                                                        "https://github.com/MeetWq/meme-generator/wiki/%E8%A1%A8%E6%83%85%E5%88%97%E8%A1%A8"
-                                                    )
-                                                ]
-                                            )
-                                            )
+                    await self.actions.send(
+                        user_id=self.event.user_id,
+                        group_id=self.event.group_id,
+                        message=Manager.Message(
+                            Segments.Reply(self.event.message_id),
+                            Segments.Text(
+                                "https://github.com/MeetWq/meme-generator/wiki/%E8%A1%A8%E6%83%85%E5%88%97%E8%A1%A8"
+                            )
+                        )
+                    )
                 return None
             texts = []
             images = []
@@ -135,12 +135,10 @@ class Module(ModuleClass.Module):
 
             if has_error:
                 message = Manager.Message(
-                    [
-                        Segments.Reply(self.event.message_id),
-                        Segments.Text(text),
-                        Segments.Text(
-                            "\n详见: https://github.com/MeetWq/meme-generator/wiki/%E8%A1%A8%E6%83%85%E5%88%97%E8%A1%A8")
-                    ]
+                    Segments.Reply(self.event.message_id),
+                    Segments.Text(text),
+                    Segments.Text(
+                        "\n详见: https://github.com/MeetWq/meme-generator/wiki/%E8%A1%A8%E6%83%85%E5%88%97%E8%A1%A8")
                 )
                 await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id, message=message)
                 return
@@ -151,12 +149,11 @@ class Module(ModuleClass.Module):
                     f.write(content)
                 content_text = f"file://{os.path.abspath('./temps/meme.png')}"
 
-                await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                                        message=Manager.Message(
-                                            [
-                                                Segments.Reply(self.event.message_id),
-                                                # Segments.Image("file://" + os.path.abspath("result.png"))
-                                                Segments.Image(content_text)
-                                            ]
-                                        )
-                                        )
+                await self.actions.send(
+                    user_id=self.event.user_id,
+                    group_id=self.event.group_id,
+                    message=Manager.Message(
+                        Segments.Reply(self.event.message_id),
+                        Segments.Image(content_text)
+                    )
+                )

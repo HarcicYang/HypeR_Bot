@@ -59,9 +59,11 @@ class Quoter(Module):
             message = gen_message({"message": message})
             text = str(message)
             get_image(text, f"http://q2.qlogo.cn/headimg_dl?dst_uin={uin}&spec=640", name)
-            await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Message(
-                [
+            await self.actions.send(
+                group_id=self.event.group_id,
+                user_id=self.event.user_id,
+                message=Message(
                     Segments.Reply(self.event.message_id),
                     Segments.Image(f"file://{os.path.abspath('./temps/quote.png')}")
-                ]
-            ))
+                )
+            )
