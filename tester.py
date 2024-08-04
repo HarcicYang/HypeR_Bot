@@ -30,4 +30,5 @@ print(new.content.age)
 print(new)
 print(type(new.raw))
 
-print(None or list())
+while 1:
+    pass

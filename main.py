@@ -4,6 +4,8 @@ Configurator.cm = Configurator.ConfigManager(Configurator.Config(file="config.js
 
 if True:
     import asyncio
+    import gc
+
     from Hyper import Listener, Events, Logger, ModuleClass, Logic
 
     from modules import *
@@ -25,6 +27,8 @@ async def handler(event: Events.Event, actions: Listener.Actions) -> None:
         if event.post_type in i.allowed:
             tasks.append(asyncio.create_task(i.module(actions, event).handle()))
     await asyncio.gather(*tasks)
+    del tasks
+    gc.collect()
 
 
 Listener.run()

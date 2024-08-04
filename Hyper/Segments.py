@@ -40,8 +40,8 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
         def to_json(self) -> dict:
             base = {"type": sg_type, "data": {}}
             for i in anns:
-                base["data"][i] = getattr(self, i)
-
+                base["data"][i] = anns[i](getattr(self, i))
+            print(base)
             return base
 
         cls.to_json = to_json
