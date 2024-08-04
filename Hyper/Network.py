@@ -41,7 +41,9 @@ class HTTPConnection:
         logging.getLogger("werkzeug").setLevel(logging.ERROR)
         self.reports = queue.Queue()
 
-    def connect(self) -> None:
+        self.listener_started = False
+
+    def __start_listener(self) -> None:
         @self.app.route("/", methods=["POST"])
         def listener():
             self.reports.put(flask.request.json)
@@ -50,6 +52,11 @@ class HTTPConnection:
             # self.app.run(host=self.listener_url, port=self.port)
 
         threading.Thread(target=lambda: self.app.run(host=self.listener_url, port=self.port)).start()
+        self.listener_started = True
+
+    def connect(self) -> None:
+        if not self.listener_started:
+            self.__start_listener()
         httpx.post(self.url)
         traceback.print_exc()
 
