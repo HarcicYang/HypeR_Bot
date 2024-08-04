@@ -39,6 +39,8 @@ class Module(ModuleClass.Module):
                   "args：参数：\n\n"
                   "参数的传递： {arg1=value1,arg2=value2,...}\n"
                   "布尔值可以使用bool.1/bool.0表示，其他内容均被视为字符串"
+                  "\n"
+                  "\n可用的模板及关键词信息详见：https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html"
         )
 
     async def handle(self):
@@ -60,7 +62,7 @@ class Module(ModuleClass.Module):
                             Segments.Reply(self.event.message_id),
                             Segments.Text(
                                 f"找不到{str(message).split()[1].replace('[图片]', '')}这一模板，详见：\n"
-                                f"https://github.com/MeetWq/meme-generator/wiki/%E8%A1%A8%E6%83%85%E5%88%97%E8%A1%A8"
+                                f"https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html"
                             )
                         )
                     )
@@ -71,7 +73,7 @@ class Module(ModuleClass.Module):
                         message=Manager.Message(
                             Segments.Reply(self.event.message_id),
                             Segments.Text(
-                                "https://github.com/MeetWq/meme-generator/wiki/%E8%A1%A8%E6%83%85%E5%88%97%E8%A1%A8"
+                                "https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html"
                             )
                         )
                     )
@@ -138,7 +140,7 @@ class Module(ModuleClass.Module):
                     Segments.Reply(self.event.message_id),
                     Segments.Text(text),
                     Segments.Text(
-                        "\n详见: https://github.com/MeetWq/meme-generator/wiki/%E8%A1%A8%E6%83%85%E5%88%97%E8%A1%A8")
+                        "\n详见: https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html")
                 )
                 await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id, message=message)
                 return

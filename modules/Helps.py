@@ -24,7 +24,7 @@ class Helper(Module):
                     if m_info.is_hidden:
                         continue
                     help_info += f"\n{m_info.module_name} - {m_info.desc}"
-                help_info += "\n\n使用命令“.help <module name>”获得更多信息"
+                help_info += "\n\n使用命令“.help <module name>”获得更多信息\n\nHypeR Bot操作手册：https://harcicyang.github.io/hyper-bot/usage/qq_usage/"
 
             else:
                 def check(x: InnerHandler):
