@@ -11,6 +11,7 @@
 ## 概览
 HypeR Bot是一个适配OneBot协议的机器人框架，旨在提供一个简洁、高效、可扩展的机器人运行结构。
 
+[点我跳转详细文档](https://harcicyang.github.io/hyper-bot/)
 
 ## 配置文件
 `config.json`:
