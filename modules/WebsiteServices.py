@@ -1,5 +1,7 @@
-from Hyper import Manager, ModuleClass, Segments, WordSafety, Logic
+from Hyper import Manager, ModuleClass, Segments, Logic
+from modules import WordSafety
 from Hyper.Events import *
+
 import re
 from bilibili_api import video
 import os
