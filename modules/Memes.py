@@ -133,7 +133,8 @@ class Module(ModuleClass.Module):
                 has_error = True
 
             except exception.TextOverLength as e:
-                text = f"文本“{e.text}”过长"
+                text = f"文本过长: {e}"
+                has_error = True
 
             if has_error:
                 message = Manager.Message(
