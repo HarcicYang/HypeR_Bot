@@ -88,8 +88,10 @@ async def get_image(info) -> str:
     with open("./temps/bilibili.html", "w", encoding="utf-8") as f:
         f.write(html_tmp)
 
+    res = await html2img(f"file://{os.path.abspath('./temps/bilibili.html')}", size)
     os.remove("./temps/cover.png")
-    return await html2img(f"file://{os.path.abspath('./temps/bilibili.html')}", size)
+    os.remove("./temps/bilibili.html")
+    return res
 
 
 @Logic.Cacher().cache
