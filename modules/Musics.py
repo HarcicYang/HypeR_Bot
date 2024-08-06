@@ -58,6 +58,8 @@ def search(name: str, num: int = 15) -> list:
 async def download(song_id: int) -> tuple[bool, str, str]:
     res = apis.track.GetTrackAudioV1([song_id])
     url = res["data"][0]["url"]
+    if url is None:
+        return False, "无法获取歌曲URL，这可能是一个付费歌曲或该歌曲不存在", ""
     md5 = res["data"][0]["md5"]
     suffix = res["data"][0]["type"]
     did = 0

@@ -46,7 +46,10 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
         def to_json(self) -> dict:
             base = {"type": sg_type, "data": {}}
             for i in anns:
-                base["data"][i] = getattr(self, i)
+                try:
+                    base["data"][i] = anns[i](getattr(self, i))
+                except TypeError:
+                    base["data"][i] = getattr(self, i)
             return base
 
         cls.to_json = to_json
@@ -67,6 +70,7 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
                     text = text.replace(f"<{i}>", str(v))
 
             return text
+
         cls.__str__ = to_str if cls().__str__() == "__not_set__" else cls.__str__
 
         message_types[sg_type] = {
@@ -291,4 +295,3 @@ class Music(Base):
     url: str = None
     audio: str = None
     title: str = None
-
