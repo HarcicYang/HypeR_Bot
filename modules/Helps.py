@@ -13,7 +13,7 @@ class Helper(Module):
     async def handle(self):
         if str(self.event.message).startswith(".help"):
             try:
-                name = str(self.event.message).split(" ")[1]
+                name = str(self.event.message).split(" ", maxsplit=1)[1]
             except IndexError:
                 name = None
 

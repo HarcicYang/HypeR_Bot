@@ -2,6 +2,10 @@ import json
 import os
 import shutil
 import traceback
+import asyncio
+import aiohttp
+import time
+import requests
 
 from Hyper import Logger
 
@@ -165,3 +169,169 @@ class FileManager:
             return True
         except (FileNotFoundError | OSError | IOError):
             return False
+
+
+class ProgressBar:
+    def __init__(self, p_iter,
+                 total: int = 0, num_per_time: int = 1,
+                 desc: str = "", on_done: str = "Done",
+                 empty: str = "\033[38;5;243m━\033[0m", full: str = "\033[31m━\033[0m", done: str = "\033[32m━\033[0m"):
+        self.iter = p_iter
+        self.total = total
+        self.num_per_time = num_per_time
+        self.desc = desc
+        self.start_time = 0
+        self.empty = empty
+        self.full = full
+        self.done = done
+        self.on_done = on_done
+
+    def __update(self, progress: int):
+        time_spent = time.time() - self.start_time
+        if self.total == 0:
+            progress_percents = ""
+            eta = "unknown"
+            speed = "unknown"
+        else:
+            progress_percents = str(float(format(progress / self.total, ".3f")) * 100)[:5]
+            if time_spent == 0:
+                speed = 1
+            else:
+                speed = progress / time_spent
+            eta = str(format((self.total - progress) / speed, ".2f"))[:5]
+
+        if float(progress_percents) >= 100.0:
+            progress_percents = "100.0"
+            bar = f"|{self.done * 25}|"
+        else:
+            bar = f"|{self.full * int(float(progress_percents) * 0.25)}{self.empty * (25 - int(float(progress_percents) * 0.25))}|"
+        if speed == "unknown":
+            speed_text = ""
+        elif speed > 100:
+            speed_text = f"\033[36m{int(speed)}\033[0m it/s "
+        elif 100 >= speed >= 50:
+            speed_text = f"\033[32m{int(speed)}\033[0m it/s "
+        elif 50 > speed >= 20:
+            speed_text = f"\033[33m{int(speed)}\033[0m it/s "
+        else:
+            speed_text = f"\033[31m{int(speed)}\033[0m it/s "
+        print(
+            f"\r{self.desc}: {bar} {progress_percents}% [{speed_text}\033[31m{int(time_spent)}s\033[0m spent, \033[36m{eta}s\033[0m eta]",
+            end="")
+
+    def __iter__(self):
+        self.start_time = time.time()
+        progress = 0
+        for i in self.iter:
+            progress += self.num_per_time
+            yield i
+            self.__update(progress)
+        print(f"\n{self.on_done}")
+
+    async def __aiter__(self):
+        self.start_time = time.time()
+        progress = 0
+        async for i in self.iter:
+            progress += self.num_per_time
+            yield i
+            self.__update(progress)
+        print(f"\n{self.on_done}")
+
+
+class TempDownloader:
+    def __init__(self, url: str, part: list[int], index: int, silent: bool = False):
+        self.url = url
+        self.part = part
+        self.index = index
+        self.silent = silent
+
+    async def get_bytes(self) -> dict[str, bytes]:
+        result_to_re = {}
+        this: bytes = bytes()
+        headers = {"Range": f"bytes={self.part[0]}-{self.part[1]}"}
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(self.url, headers=headers) as resp:
+                if not self.silent:
+                    async for chunk in ProgressBar(resp.content.iter_chunked(1024 * 64),
+                                                   total=self.part[1] - self.part[0],
+                                                   num_per_time=1024 * 64,
+                                                   desc=f"In thread {self.index}"
+                                                   ):
+                        this += chunk
+                else:
+                    async for chunk in resp.content.iter_chunked(1024 * 64):
+                        this += chunk
+
+        result_to_re[str(self.index)] = this
+        return result_to_re
+
+
+class Downloader:
+    def __init__(self, url: str, path_to: str, threads: int = 1, silent: bool = False):
+        self.url = url
+        self.path = path_to
+        self.threads = threads
+        self.silent = silent
+
+    def check(self) -> bool:
+        if not isinstance(self.threads, int) or not self.threads >= 1:
+            return False
+
+        return True
+
+    def __get_file_size(self) -> int:
+        response = requests.head(self.url)
+        size = response.headers["Content-Length"]
+        return int(size)
+
+    def __get_parts(self) -> list[list[int]]:
+        size = self.__get_file_size()
+        step = size // self.threads
+        arr = list(range(0, size, step))
+        result: list = []
+        for i in range(len(arr) - 1):
+            s_pos, e_pos = arr[i], arr[i + 1] - 1
+            result.append([s_pos, e_pos])
+        result[-1][-1] = size - 1
+        return result
+
+    async def download(self):
+        if not self.check():
+            raise Exception
+        response = requests.get(self.url, stream=True, verify=False)
+        if response.status_code != 200:
+            raise ConnectionError
+
+        if self.threads == 1:
+            with open(self.path, "wb") as f:
+                if not self.silent:
+                    for chunk in ProgressBar(response.iter_content(chunk_size=1024 * 64),
+                                             total=int(response.headers.get("Content-Length")),
+                                             num_per_time=1024 * 64
+                                             ):
+                        if chunk:
+                            f.write(chunk)
+                else:
+                    for chunk in response.iter_content(chunk_size=1024 * 64):
+                        if chunk:
+                            f.write(chunk)
+        else:
+            with open(self.path, "wb"):
+                pass
+            with open(self.path, "rb+") as f:
+                parts = self.__get_parts()
+                result = {}
+                tasks = []
+                for i in parts:
+                    _ = TempDownloader(url=self.url, part=i, index=parts.index(i), silent=self.silent)
+
+                    tasks.append(asyncio.create_task(_.get_bytes()))
+
+                await asyncio.gather(*tasks)
+                for i in tasks:
+                    result[list(i.result().keys())[0]] = i.result()[list(i.result().keys())[0]]
+                r: bytes = bytes()
+                for i in range(0, len(result)):
+                    r += result[str(i)]
+                f.write(r)

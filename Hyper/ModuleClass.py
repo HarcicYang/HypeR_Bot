@@ -18,7 +18,7 @@ class ModuleInfo:
 
 
 class Module:
-    def __init__(self, actions, event):
+    def __init__(self, actions: Listener.Actions, event):
         self.actions = actions
         self.event = event
 
