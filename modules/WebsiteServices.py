@@ -88,6 +88,7 @@ async def get_image(info) -> str:
     with open("./temps/bilibili.html", "w", encoding="utf-8") as f:
         f.write(html_tmp)
 
+    os.remove("./temps/cover.png")
     return await html2img(f"file://{os.path.abspath('./temps/bilibili.html')}", size)
 
 
@@ -194,6 +195,7 @@ class Module(ModuleClass.Module):
             result = Manager.Message(Segments.Image(f"file://{os.path.abspath(path)}", f"{info.title}"))
 
             await self.actions.send(group_id=self.event.group_id, message=result)
+            os.remove(path)
 
         pa = r"(http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+\b)"
         try:
@@ -214,3 +216,4 @@ class Module(ModuleClass.Module):
                     Segments.Image(f"file://{os.path.abspath('./temps/github.png')}", summary=f"{safety.address}")
                 )
             )
+            os.remove("./temps/github.png")

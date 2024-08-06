@@ -80,3 +80,4 @@ class Quoter(Module):
                     Segments.Image(f"file://{os.path.abspath('./temps/quote.png')}")
                 )
             )
+            os.remove("./temps/quote.png")

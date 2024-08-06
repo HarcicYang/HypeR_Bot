@@ -159,3 +159,6 @@ class Module(ModuleClass.Module):
                         Segments.Image(content_text)
                     )
                 )
+                os.remove("./temps/meme.png")
+                for i in images:
+                    os.remove(i)
