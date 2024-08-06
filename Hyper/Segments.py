@@ -33,9 +33,9 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
                         if i not in var.keys():
                             new_arg[i] = None
                             continue
-                        try:
+                        if not isinstance(var[i], anns[i]):
                             new_arg[i] = anns[i](var[i])
-                        except TypeError:
+                        else:
                             new_arg[i] = var[i]
 
             for i in new_arg:
@@ -46,10 +46,14 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
         def to_json(self) -> dict:
             base = {"type": sg_type, "data": {}}
             for i in anns:
-                try:
+                if not isinstance(getattr(self, i), anns[i]):
                     base["data"][i] = anns[i](getattr(self, i))
-                except TypeError:
+                else:
                     base["data"][i] = getattr(self, i)
+                # try:
+                #     base["data"][i] = anns[i](getattr(self, i))
+                # except TypeError:
+                #     base["data"][i] = getattr(self, i)
             return base
 
         cls.to_json = to_json
