@@ -1,16 +1,21 @@
-from Hyper import Manager, Segments, ModuleClass
+from typing import Union
+
+from Hyper import Events, Manager, Segments, ModuleClass
 from Hyper.Events import *
 
 
 @ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
 class Module(ModuleClass.Module):
-    async def handle(self):
-        try:
-            cmds = str(self.event.message)
-        except AttributeError:
-            return
+    @staticmethod
+    def filter(event: Union[*Events.em.events], allowed: list) -> bool:
+        if isinstance(event, GroupMessageEvent) or isinstance(event, PrivateMessageEvent):
+            if event.is_owner and str(event.message).startswith(".alert"):
+                return True
 
-        if cmds.startswith(".alert"):
-            target = cmds.split(" ")[1]
-            cmds = cmds.replace(target, "", 1).replace(".alert", "", 1)
-            await self.actions.send(group_id=int(target), message=Manager.Message(Segments.Text(cmds)))
+        return False
+
+    async def handle(self):
+        cmds = str(self.event.message)
+        target = cmds.split(" ")[1]
+        cmds = cmds.replace(target, "", 1).replace(".alert", "", 1)
+        await self.actions.send(group_id=int(target), message=Manager.Message(Segments.Text(cmds)))

@@ -1,3 +1,6 @@
+from typing import Union
+
+from Hyper import Events
 from Hyper.Manager import Message
 from Hyper.ModuleClass import Module, ModuleInfo, ModuleRegister
 from Hyper.Segments import *
@@ -15,12 +18,19 @@ class Ess(Module):
             helps="引用你要设置的消息，然后在消息框中输入“.ess”，哇！中了！"
         )
 
+    @staticmethod
+    def filter(event: Union[*Events.em.events], allowed: list) -> bool:
+        if isinstance(event, GroupMessageEvent):
+            if len(event.message) < 1:
+                return False
+            if isinstance(event.message.contents[0], Reply) and ".ess" in str(event.message):
+                return True
+
+        return False
+
     async def handle(self):
-        if len(self.event.message) < 1:
-            return
-        if isinstance(self.event.message.contents[0], Reply) and ".ess" in str(self.event.message):
-            msg_id = (await self.event.message.get())[0]["data"]["id"]
-            await self.actions.set_essence_msg(int(msg_id))
-            msg = Message(Reply(self.event.message_id), Text("成功"))
-            await self.actions.send(group_id=self.event.group_id, message=msg)
+        msg_id = (await self.event.message.get())[0]["data"]["id"]
+        await self.actions.set_essence_msg(int(msg_id))
+        msg = Message(Reply(self.event.message_id), Text("成功"))
+        await self.actions.send(group_id=self.event.group_id, message=msg)
 
