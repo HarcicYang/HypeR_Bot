@@ -1,5 +1,4 @@
 import json
-import queue
 import threading
 import time
 import asyncio
@@ -7,9 +6,9 @@ import os
 from typing import Union
 
 from Hyper import Configurator, Errors, Logger, Logic, Manager, Network, Events
+from Hyper.Manager import reports
 from Hyper.Events import *
 
-reports = queue.Queue()
 config = Configurator.cm.get_cfg()
 logger = Logger.Logger()
 logger.set_level(config.log_level)
@@ -24,20 +23,13 @@ class Actions:
                 self.connection = cnt_i
 
             def __getattr__(self, item) -> callable:
-                def wrapper(no_return: bool, **kwargs) -> Manager.Ret | None:
-                    if no_return:
-                        Manager.Packet(
-                            str(item),
-                            **kwargs
-                        ).send_to(self.connection)
-                        return None
-                    else:
-                        packet = Manager.Packet(
-                            str(item),
-                            **kwargs
-                        )
-                        packet.send_to(self.connection)
-                        return get_ret(packet.echo)
+                def wrapper(**kwargs) -> str:
+                    packet = Manager.Packet(
+                        str(item),
+                        **kwargs
+                    )
+                    packet.send_to(self.connection)
+                    return packet.echo
 
                 return wrapper
 
@@ -60,7 +52,7 @@ class Actions:
         else:
             raise Errors.ArgsInvalidError("'send' API requires 'group_id' or 'user_id' but none of them are provided.")
         packet.send_to(self.connection)
-        return get_ret(packet.echo)
+        return Manager.Ret.fetch(packet.echo)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().recall, logger)
     async def del_message(self, message_id: int) -> None:
@@ -90,13 +82,13 @@ class Actions:
     async def get_login_info(self) -> Manager.Ret:
         packet = Manager.Packet("get_login_info")
         packet.send_to(self.connection)
-        return get_ret(packet.echo)
+        return Manager.Ret.fetch(packet.echo)
 
     @Logic.Cacher().cache_async
     async def get_version_info(self) -> Manager.Ret:
         packet = Manager.Packet("get_version_info")
         packet.send_to(self.connection)
-        return get_ret(packet.echo)
+        return Manager.Ret.fetch(packet.echo)
 
     async def send_forward_msg(self, message: Manager.Message) -> Manager.Ret:
         packet = Manager.Packet(
@@ -104,7 +96,7 @@ class Actions:
             messages=await message.get()
         )
         packet.send_to(self.connection)
-        return get_ret(packet.echo)
+        return Manager.Ret.fetch(packet.echo)
 
     async def send_group_forward_msg(self, group_id: int, message: Manager.Message) -> Manager.Ret:
         packet = Manager.Packet(
@@ -113,7 +105,7 @@ class Actions:
             messages=await message.get()
         )
         packet.send_to(self.connection)
-        return get_ret(packet.echo)
+        return Manager.Ret.fetch(packet.echo)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().set_req, logger)
     async def set_group_add_request(self, flag: str, sub_type: str, approve: bool, reason: str = "Refused") -> None:
@@ -133,7 +125,7 @@ class Actions:
             no_cache=True,
         )
         packet.send_to(self.connection)
-        return get_ret(packet.echo)
+        return Manager.Ret.fetch(packet.echo)
 
     @Logic.Cacher().cache_async
     async def get_group_member_info(self, group_id: int, user_id: int) -> Manager.Ret:
@@ -144,7 +136,7 @@ class Actions:
             no_cache=True
         )
         packet.send_to(self.connection)
-        return get_ret(packet.echo)
+        return Manager.Ret.fetch(packet.echo)
 
     @Logic.Cacher().cache_async
     async def get_group_info(self, group_id: int) -> Manager.Ret:
@@ -154,12 +146,12 @@ class Actions:
             no_cache=True
         )
         packet.send_to(self.connection)
-        return get_ret(packet.echo)
+        return Manager.Ret.fetch(packet.echo)
 
     async def get_status(self) -> Manager.Ret:
         packet = Manager.Packet("get_status")
         packet.send_to(self.connection)
-        return get_ret(packet.echo)
+        return Manager.Ret.fetch(packet.echo)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().set_ess, logger)
     async def set_essence_msg(self, message_id: int) -> None:
@@ -182,7 +174,7 @@ class Actions:
             message_id=msg_id
         )
         packet.send_to(self.connection)
-        return get_ret(packet.echo)
+        return Manager.Ret.fetch(packet.echo)
 
 
 async def tester(message_data: Event, actions: Actions) -> None:
@@ -191,7 +183,7 @@ async def tester(message_data: Event, actions: Actions) -> None:
 
 async def __handler(data: dict, actions: Actions) -> None:
     if data.get("echo") is not None:
-        reports.put(Manager.Ret(data))
+        reports.put(data)
     elif data.get("post_type") == "meta_event" or data.get("user_id") == data.get("self_id"):
         pass
     else:
@@ -214,18 +206,6 @@ connection: callable = tester
 def reg(func: callable):
     global handler
     handler = func
-
-
-def get_ret(echo: str) -> Manager.Ret:
-    old = None
-    while True:
-        content: Manager.Ret = reports.get()
-        if old is not None:
-            reports.put(old)
-        if content.echo == echo:
-            return content
-        else:
-            old = content
 
 
 def run():

@@ -3,9 +3,11 @@ from Hyper.Logger import levels
 from Hyper.Segments import *
 
 from typing import Union
+import queue
 import inspect
 import random
 
+reports = queue.Queue()
 config = Configurator.cm.get_cfg()
 logger = Logger.Logger()
 logger.set_level(config.log_level)
@@ -93,5 +95,18 @@ class Ret:
     def __init__(self, json_data: dict):
         self.status = json_data["status"]
         self.ret_code = json_data["retcode"]
-        self.data = json_data.get("data")
+        self.data = Logic.ObjectedDict(json_data.get("data"))
         self.echo = json_data.get("echo")
+
+    @classmethod
+    def fetch(cls, echo: str) -> "Ret":
+        old = None
+        while True:
+            content = reports.get()
+            if old is not None:
+                reports.put(old)
+            if content.echo == echo:
+                return cls(content)
+            else:
+                old = content
+
