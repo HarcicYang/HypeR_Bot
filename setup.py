@@ -9,6 +9,6 @@ setup(
     author="Harcic",
     author_email="harcic@outlook.com",
     url="https://github.com/HarcicYang/HypeR_Bot",
-    packages=["Hyper", "Hyper.Adapters", "Hyper.Adapters.OneBotLib"],
+    packages=["Hyper", "Hyper.Adapters", "Hyper.Adapters.OneBotLib", "Hyper.Utils"],
     include_package_data=True,
 )

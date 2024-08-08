@@ -1,6 +1,6 @@
 import typing
 
-from Hyper import Logic
+from Hyper.Utils import Logic
 
 
 class WSConnectionC:

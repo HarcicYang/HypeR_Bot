@@ -14,10 +14,12 @@ class EventManager:
             "notice": {},
             "request": {}
         }
+        self.events = []
 
     def reg(self, type_of: str, str_eql: str) -> callable:
         def wrapper(cls):
             self.event_lis[type_of][str_eql] = cls
+            self.events.append(cls)
             return cls
 
         return wrapper

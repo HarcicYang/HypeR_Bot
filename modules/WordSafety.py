@@ -1,7 +1,7 @@
 import logging
 from jieba import lcut, set_dictionary
 
-from Hyper import Logic
+from Hyper.Utils import Logic
 
 logging.getLogger("jieba").setLevel(logging.ERROR)
 try:

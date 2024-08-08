@@ -1,11 +1,11 @@
-from Hyper import Logic, Configurator, Logger, Network
-from Hyper.Logger import levels
-from Hyper.Segments import *
+import Hyper.Utils.TypeExt
+from Hyper import Configurator, Logger, Network, Segments
+from Hyper.Utils import Logic
 
 from typing import Union
 import queue
-import inspect
 import random
+import json
 
 reports = queue.Queue()
 config = Configurator.cm.get_cfg()
@@ -35,7 +35,30 @@ class Packet:
             connection.send(self.endpoint, payload, self.echo)
 
 
+class MessageBuilder:
+    def __init__(self):
+        self.sgs = []
+
+    def __getattr__(self, item):
+        if item == "build":
+            def build() -> Message:
+                return Message(*self.sgs)
+
+            return build
+
+        elif item in Segments.message_types.keys():
+            def wrapper(*args, **kwargs):
+                self.sgs.append(Segments.message_types[item]["type"](*args, **kwargs))
+                return self
+
+            return wrapper
+        else:
+            return None
+
+
 class Message:
+    builder = MessageBuilder()
+
     def __init__(self, *args):
         if len(args) == 1 and isinstance(args[0], list):
             contents = args[0]
@@ -95,7 +118,7 @@ class Ret:
     def __init__(self, json_data: dict):
         self.status = json_data["status"]
         self.ret_code = json_data["retcode"]
-        self.data = Logic.ObjectedDict(json_data.get("data"))
+        self.data = Hyper.Utils.TypeExt.ObjectedDict(json_data.get("data"))
         self.echo = json_data.get("echo")
 
     @classmethod
@@ -109,4 +132,3 @@ class Ret:
                 return cls(content)
             else:
                 old = content
-

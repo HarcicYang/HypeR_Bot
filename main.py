@@ -6,7 +6,8 @@ if True:
     import asyncio
     import gc
 
-    from Hyper import Listener, Events, Logger, ModuleClass, Logic
+    from Hyper import Listener, Events, Logger, ModuleClass
+    from Hyper.Utils import Logic
 
     from modules import *
 
@@ -21,11 +22,9 @@ logger.set_level(config.log_level)
 async def handler(event: Events.Event, actions: Listener.Actions) -> None:
     tasks = []
     for i in handler_list:
-        for j in i.allowed:
-            if isinstance(event, j):
-                tasks.append(asyncio.create_task(i.module(actions, event).handle()))
-        if event.post_type in i.allowed:
+        if i.module.filter(event, i.allowed):
             tasks.append(asyncio.create_task(i.module(actions, event).handle()))
+
     await asyncio.gather(*tasks)
     del tasks
     gc.collect()

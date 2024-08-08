@@ -2,12 +2,11 @@ from Hyper.Events import GroupMessageEvent
 from Hyper.ModuleClass import ModuleInfo, ModuleRegister, Module
 from Hyper.Segments import *
 from Hyper.Manager import Message
-from Hyper.Logic import Downloader
+from Hyper.Utils.Logic import Downloader
 
 from pyncm import apis
 import os
 import hashlib
-import asyncio
 
 
 def distance(s1: str, s2: str) -> int:
@@ -105,6 +104,8 @@ class Musics(Module):
         )
 
     async def handle(self):
+        if len(self.event.message) == 0:
+            return
         if (
                 str(self.event.message).startswith(".music") or
                 (
@@ -120,7 +121,7 @@ class Musics(Module):
                 res_word = "搜索结果：\n\n" + "\n".join(res_list) + "\n\n冒号前为该歌曲的id，若要播放，请使用如下命令：\n.music play 歌曲id"
 
                 msg = Message(Reply(self.event.message_id), Text(res_word))
-                msg_id = (await self.actions.send(group_id=self.event.group_id, message=msg)).data["message_id"]
+                await self.actions.send(group_id=self.event.group_id, message=msg)
                 custom_row = []
                 for i in rec_list:
                     custom_row.append(

@@ -5,7 +5,8 @@ import asyncio
 import os
 from typing import Union
 
-from Hyper import Configurator, Errors, Logger, Logic, Manager, Network, Events
+from Hyper import Errors, Network, Events
+from Hyper.Utils import Logic
 from Hyper.Manager import reports
 from Hyper.Events import *
 

@@ -1,5 +1,6 @@
 from Hyper import Events, Listener, Logger, Configurator
 
+from typing import Union
 import dataclasses
 
 config = Configurator.cm.get_cfg()
@@ -18,7 +19,7 @@ class ModuleInfo:
 
 
 class Module:
-    def __init__(self, actions: Listener.Actions, event):
+    def __init__(self, actions: Listener.Actions, event: Union[*Events.em.events]):
         self.actions = actions
         self.event = event
 
@@ -28,6 +29,14 @@ class Module:
     @staticmethod
     def info() -> ModuleInfo:
         return ModuleInfo()
+
+    @staticmethod
+    def filter(event: Union[*Events.em.events], allowed: list) -> bool:
+        for i in allowed:
+            if isinstance(event, i):
+                return True
+
+        return False
 
 
 class InnerHandler:
@@ -47,8 +56,6 @@ class ModuleRegister:
                 allowed = [Events.Event]
             else:
                 allowed = list(args)
-
-            from typing import Union
 
             def init(self, actions: Listener.Actions, event: Union[*allowed]):
                 self.actions = actions
