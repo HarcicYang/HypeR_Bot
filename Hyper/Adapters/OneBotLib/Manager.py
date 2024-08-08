@@ -105,7 +105,7 @@ class Ret:
             content = reports.get()
             if old is not None:
                 reports.put(old)
-            if content.echo == echo:
+            if content["echo"] == echo:
                 return cls(content)
             else:
                 old = content
