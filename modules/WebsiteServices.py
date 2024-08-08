@@ -118,8 +118,17 @@ def get_bv(text: str):
 @Logic.Cacher().cache_async
 async def video_info(bv: str):
     try:
-        v = video.Video(bvid=bv)
-        info = await v.get_info()
+        retried = 0
+        while 1:
+            try:
+                v = video.Video(bvid=bv)
+                info = await v.get_info()
+                break
+            except Exception as e:
+                retried += 1
+                if retried == 5:
+                    raise e
+
     except Exception as err:
         info = {
             "pic": "https://i0.hdslb.com/bfs/new_dyn/7afd4c057eba6152836a52fbb4b126e9686607596.png",
