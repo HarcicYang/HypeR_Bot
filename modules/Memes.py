@@ -2,11 +2,13 @@ import os.path
 import traceback
 from io import BytesIO
 import httpx
-from Hyper import Manager, ModuleClass, Segments
-from Hyper.Events import *
 import meme_generator
 from meme_generator import exception
+
+from Hyper import Manager, ModuleClass, Segments
+from Hyper.Events import *
 from Hyper.ModuleClass import ModuleInfo
+from Hyper.Utils.TypeExt import String
 
 cmd = ".meme"
 
@@ -32,12 +34,12 @@ class Module(ModuleClass.Module):
             is_hidden=False,
             module_name="Memes",
             desc="制作表情包",
-            helps="命令： .meme <keyword> <texts/images...> {args...}"
+            helps="命令： .meme <keyword> <texts/images/args...>"
                   "\n"
                   "keyword：表情包模板对应的关键词；\n"
                   "texts/images：表情包生成需要的文字、图片素材；\n"
                   "args：参数：\n\n"
-                  "参数的传递： {arg1=value1,arg2=value2,...}\n"
+                  "参数的传递： arg1=value1 arg2=value2 ...\n"
                   "布尔值可以使用bool.1/bool.0表示，其他内容均被视为字符串"
                   "\n"
                   "\n可用的模板及关键词信息详见：https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html"
@@ -82,24 +84,10 @@ class Module(ModuleClass.Module):
             images = []
             args = {}
             img_num = 0
+            n_msg = Manager.Message()
             for i in self.event.message:
                 if type(i) is Segments.Text:
-                    i = str(i).replace(f"{cmd} ", "", 1).replace(str(message).split()[1], "")
-                    listed = i.split()
-                    for j in listed:
-                        if "{" in j and "}" in j:
-                            j = j.replace("{", "").replace("}", "")
-                            argv = j.split("=")
-                            if "bool" in argv[1]:
-                                if "1" in argv[1] or "true" in argv[1].lower():
-                                    value = True
-                                else:
-                                    value = False
-                            else:
-                                value = argv[1]
-                            args[argv[0]] = value
-                        else:
-                            texts.append(j)
+                    n_msg.add(i)
                 elif type(i) is Segments.Image:
                     if str(i.file).startswith("http"):
                         response = httpx.get(i.file)
@@ -109,6 +97,20 @@ class Module(ModuleClass.Module):
                         f.write(response.content)
                     images.append(f"./temps/img{img_num}.jpg")
                     img_num += 1
+
+            for i in String(
+                    str(n_msg).replace(f".meme {str(message).split()[1].replace('[图片]', '')}", "")
+            ).cmdl_parse():
+                if isinstance(i, String):
+                    texts.append(i)
+                elif isinstance(i, dict):
+                    arg = list(i.values())[0]
+                    if "bool.1" in arg:
+                        arg = True
+                    elif "bool.0" in arg:
+                        arg = False
+                    args[list(i.keys())[0]] = arg
+
             has_error = False
 
             try:

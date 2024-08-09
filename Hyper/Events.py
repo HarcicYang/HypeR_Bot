@@ -105,6 +105,7 @@ class MessageEvent(Event):
         self.sub_type = data.get("sub_type")
         self.message_id = str(data.get("message_id"))
         self.message = gen_message(data=data)
+        self.msg_str = str(self.message)
 
 
 @em.reg("message", "private")

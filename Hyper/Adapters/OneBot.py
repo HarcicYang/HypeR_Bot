@@ -52,8 +52,17 @@ class Actions:
             )
         else:
             raise Errors.ArgsInvalidError("'send' API requires 'group_id' or 'user_id' but none of them are provided.")
-        packet.send_to(self.connection)
-        return Manager.Ret.fetch(packet.echo)
+        retried = 0
+        while 1:
+            packet.send_to(self.connection)
+            result = Manager.Ret.fetch(packet.echo)
+            if result.ret_code != 0:
+                retried += 1
+                if retried >= 5:
+                    return result
+                await asyncio.sleep(1)
+            else:
+                return result
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().recall, logger)
     async def del_message(self, message_id: int) -> None:
