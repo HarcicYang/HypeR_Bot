@@ -3,6 +3,8 @@ import os
 import shutil
 import traceback
 import asyncio
+from typing import Union
+
 import aiohttp
 import time
 import requests
@@ -109,7 +111,7 @@ class FileManager:
         try:
             with open(path, "w") as f:
                 f.write("")
-        except (FileExistsError | OSError | IOError):
+        except (FileExistsError, OSError, IOError):
             return False
 
         return True
@@ -131,7 +133,7 @@ class FileManager:
 
     @staticmethod
     @Cacher(7).cache
-    def read_as_json(path: str, encoding: str = "utf-8") -> dict | list:
+    def read_as_json(path: str, encoding: str = "utf-8") -> Union[list, dict]:
         with open(path, "r", encoding=encoding) as f:
             return json.load(f)
 
@@ -146,7 +148,7 @@ class FileManager:
         try:
             os.remove(path)
             return True
-        except (FileNotFoundError | OSError | IOError):
+        except (FileNotFoundError, OSError, IOError):
             return False
 
     @staticmethod
@@ -154,7 +156,7 @@ class FileManager:
         try:
             shutil.copy(path1, path2)
             return True
-        except (FileNotFoundError | OSError | IOError):
+        except (FileNotFoundError, OSError, IOError):
             return False
 
 

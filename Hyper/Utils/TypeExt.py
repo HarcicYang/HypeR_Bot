@@ -142,3 +142,12 @@ class String(str):
         lines.append(temp_line)
 
         return String("\n".join(lines))
+
+
+class List(list):
+    def __getitem__(self, item):
+        try:
+            return super().__getitem__(item)
+        except IndexError:
+            return None
+

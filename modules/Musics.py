@@ -108,6 +108,7 @@ class Musics(Module):
             return
         if (
                 str(self.event.message).startswith(".music") or
+                str(self.event.message).startswith("音乐") or
                 (
                         isinstance(self.event.message[0], At) and
                         str(self.event.message[0].qq) == str(self.event.self_id)
@@ -115,7 +116,7 @@ class Musics(Module):
         ):
             cmd = str(self.event.message).split(" ", maxsplit=2)
             action = cmd[1]
-            if action == "search":
+            if action in ["搜索", "search"]:
                 res_list = search(cmd[2])
                 rec_list = res_list[:5]
                 res_word = "搜索结果：\n\n" + "\n".join(res_list) + "\n\n冒号前为该歌曲的id，若要播放，请使用如下命令：\n.music play 歌曲id"
@@ -138,7 +139,7 @@ class Musics(Module):
 
                 await self.actions.send(group_id=self.event.group_id, message=Message(KeyBoard(custom_row)))
 
-            elif action == "play" or "ncm_qa_play":
+            elif action in ["播放", "play", "ncm_qa_play"]:
                 song_id = int(cmd[2])
                 msg_res = await self.actions.send(
                     group_id=self.event.group_id,

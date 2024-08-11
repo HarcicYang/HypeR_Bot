@@ -14,6 +14,9 @@ class Test(ModuleClass.Module):
             # with open(f"debug/{int(time.time())}.json", "w", encoding="utf-8") as f:
             #     f.write(str(text))
 
+        if not self.event.is_owner:
+            return
+
         if str(self.event.message) == ".test_h":
             content = ("# Markdown"
                        " \n [测试](https://github.com)"
@@ -21,24 +24,25 @@ class Test(ModuleClass.Module):
                        " \n ```python\nprint('Hello World')```"
                        " \n - 1"
                        " \n - 2")
-            # forward_result = await self.actions.send_forward_msg(
-            #     message=Message(
-            #         [
-            #             CustomNode(user_id=f"{self.event.self_id}", nick_name="Hyper Bot", content=Message(
-            #                 [
-            #                     MarkDown(MarkdownContent(content))
-            #                 ]
-            #             ))
-            #         ]
-            #     )
-            # )
-            # res_id: str = forward_result.data
-            # message = Message(
-            #     [
-            #         LongMessage(res_id)
-            #     ]
-            # )
-            message = Message([MarkDown(MarkdownContent(content))])
+            forward_result = await self.actions.send_forward_msg(
+                message=Message(
+                    [
+                        CustomNode(user_id=f"{self.event.self_id}", nick_name="Hyper Bot", content=Message(
+                            [
+                                MarkDown(MarkdownContent(content))
+                            ]
+                        ))
+                    ]
+                )
+            )
+            res_id: str = forward_result.data
+            message = Message(
+                CustomNode(
+                    user_id=f"{self.event.self_id}",
+                    nick_name="Hyper Bot",
+                    content=Message(LongMessage(res_id))
+                )
+            )
             await self.actions.send(
                 message=message,
                 group_id=self.event.group_id,

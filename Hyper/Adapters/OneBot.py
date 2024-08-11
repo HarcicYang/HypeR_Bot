@@ -56,7 +56,7 @@ class Actions:
         while 1:
             packet.send_to(self.connection)
             result = Manager.Ret.fetch(packet.echo)
-            if result.ret_code != 0:
+            if result.ret_code != 0 or (4 <= len(str(result.data.message_id)) <= 7):
                 retried += 1
                 if retried >= 5:
                     return result

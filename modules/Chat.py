@@ -1,126 +1,131 @@
-from Hyper import Manager, ModuleClass, Segments, DataBase, Configurator
-from Hyper.Events import *
-import dashscope
-from dashscope import Generation
-from dashscope import MultiModalConversation
+from Hyper.Events import GroupMessageEvent, PrivateMessageEvent
+from Hyper.Manager import Message
+from Hyper.ModuleClass import ModuleInfo, ModuleRegister, Module
+from Hyper.Segments import *
+from Hyper.Configurator import cm
 
-dataset = DataBase.Dataset()
-with open("sys_prompt.txt", "r", encoding="utf-8") as f:
-    sys_prompt = f.read()
+from modules.GoogleAI import genai, Context, Parts, Roles
 
-config = Configurator.cm.get_cfg()
-dashscope.api_key = config.others["Chat"]["Qwen"]["key"]
+import traceback
+import os
+import httpx
 
 
-class LLM:
-    def __init__(self, user_id: int, message: str, raw_message: Manager.Message):
-        self.user_id = user_id
-        self.message = message
-        self.raw_message = raw_message
-        self.sys_prompt = sys_prompt
-        self.mapping = {
-            "qwen": self.ask_qwen,
-            "qwenvl": self.ask_qwenvl,
+class Tools:
+    @staticmethod
+    def read_url(url: str) -> dict[str, str]:
+        """
+        读取网页链接内容
+        :param url:
+        :return: dict, "text"键对应链接内容
+        """
+        url = f"https://r.jina.ai/{url}"
+        try:
+            response = httpx.get(url).text
+        except Exception as e:
+            response = str(e)
+        return {
+            "text": response
         }
 
-    def handle(self) -> str:
-        global mode
-        if mode in self.mapping:
-            result = self.mapping[mode]()
-            # print(result)
-            return result
-        else:
-            return "错误的模式"
 
-    def ask_qwen(self) -> str:
-        new = [{"role": "system", "content": self.sys_prompt}]
-        history = dataset.get(item={"user": self.user_id}).get("QwenPayload")
-        if history is None:
-            history = []
-        history.append({"role": "user", "content": self.message})
-        response = Generation.call(
-            "qwen2-1.5b-instruct",
-            messages=new + history,
-            result_format='message'
-        )
+generation_config = {
+    "temperature": 1,
+    "top_p": 0.95,
+    "top_k": 64,
+    "max_output_tokens": 8192,
+    "response_mime_type": "text/plain",
+}
+
+sys_prompt = "None"
+
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    generation_config=generation_config,
+    system_instruction=sys_prompt,
+    tools=[Tools.read_url]
+)
+
+key = cm.get_cfg().others["gemini_key"]
+genai.configure(api_key=key)
+os.environ["GOOGLE_API_KEY"] = key
+tools = [Tools.read_url]
+
+
+class ContextManager:
+    def __init__(self):
+        self.groups: dict[int, dict[int, Context]] = {}
+
+    def get_context(self, uin: int, gid: int):
         try:
-            # response = response
-            history.append(response["output"]["choices"][0]["message"])
-            item_id = dataset.queue({"user": self.user_id})
-            dataset.set(item_id, "QwenPayload", history)
-            return response["output"]["choices"][0]["message"]["content"]
-        except:
-            return response["message"]
-
-    def ask_qwenvl(self) -> str:
-        messages = []
-        for i in self.raw_message:
-            if type(i) is Segments.Text:
-                messages.append({"text": str(i.get()).replace(".chat ", "", 1)})
-            elif type(i) is Segments.Image:
-                messages.append({"image": i.get()})
+            return self.groups[gid][uin]
+        except KeyError:
+            if self.groups.get(gid):
+                self.groups[gid][uin] = Context(key, model, tools=tools)
+                return self.groups[gid][uin]
             else:
-                messages.append({"text": str(i)})
-
-        history = dataset.get(item={"user": self.user_id}).get("QwenVLPayload")
-        if history is None:
-            history = []
-        history.append({"role": "user", "content": messages})
-        response = MultiModalConversation.call(model=MultiModalConversation.Models.qwen_vl_chat_v1,
-                                               messages=history)
-        try:
-            history.append(
-                {"role": "assistant",
-                 "content": [{"text": str(response["output"]["choices"][0]["message"]["content"])}]})
-            item_id = dataset.queue({"user": self.user_id})
-            dataset.set(item_id, "QwenVLPayload", history)
-            result = response["output"]["choices"][0]["message"]["content"]
-            return result
-        except:
-            return response["message"]
+                self.groups[gid] = {}
+                self.groups[gid][uin] = Context(key, model, tools=tools)
+                return self.groups[gid][uin]
 
 
-mode = "qwen"
+cmc = ContextManager()
 
 
-@ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
-class Module(ModuleClass.Module):
+@ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
+class Chat(Module):
     async def handle(self):
-        if self.event.blocked or self.event.servicing:
-            return
-        dataset.load()
-        global sys_prompt, mode
-        # print(str(self.event.message))
+        if isinstance(self.event, GroupMessageEvent):
+            if not str(self.event.message).startswith(".chat "):
+                return
+            if not self.event.is_owner:
+                return
+            if self.event.blocked:
+                return
+        new = []
+
+        msg_id = (
+            await self.actions.send(
+                group_id=self.event.group_id,
+                user_id=self.event.user_id,
+                message=Message(
+                    Reply(self.event.message_id),
+                    Text("正在生成回复")
+                )
+            )
+        ).data.message_id
+
         try:
-            if str(self.event.message).startswith(".chat"):
-                message = str(self.event.message).replace(".chat ", "", 1)
-                # print(message)
-                llm = LLM(self.event.user_id, message, self.event.message)
-                text = llm.handle()
-                # print(text)
-                message = Manager.Message([Segments.Reply(self.event.message_id), Segments.Text(text)])
-                await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id, message=message)
+            for i in self.event.message:
+                if isinstance(i, Text):
+                    new.append(Parts.Text(i.text.replace(".chat ", "", 1)))
+                elif isinstance(i, Image):
+                    if i.file.startswith("http"):
+                        url = i.file
+                    else:
+                        url = i.url
+                    new.append(Parts.File.upload_from_url(url))
 
-            elif str(self.event.message).startswith(".sys") and self.event.is_owner:
-                sys_prompt = str(self.event.message).replace(".sys ", "", 1)
-                await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                                        message=Manager.Message(
-                                            [
-                                                Segments.Reply(self.event.message_id),
-                                                Segments.Text("成功"),
-                                            ]
-                                        )
-                                        )
+            new = Roles.User(*new)
+            result = cmc.get_context(self.event.user_id, self.event.group_id).gen_content(new)
+            await self.actions.send(
+                group_id=self.event.group_id,
+                user_id=self.event.user_id,
+                message=Message(
+                    Reply(self.event.message_id),
+                    Text(result[:len(result) - 1])
+                )
+            )
 
-            elif str(self.event.message).startswith(".mode") and self.event.is_owner:
-                mode = str(self.event.message).replace(".mode ", "", 1)
-                await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-                                        message=Manager.Message(
-                                            [
-                                                Segments.Reply(self.event.message_id),
-                                                Segments.Text("成功"),
-                                            ]
-                                        )
-                                        )
-        except AttributeError:
-            return None
+        except:
+            err = traceback.format_exc()
+            await self.actions.send(
+                group_id=self.event.group_id,
+                user_id=self.event.user_id,
+                message=Message(
+                    Reply(self.event.message_id),
+                    Text(err)
+                )
+            )
+
+        await self.actions.del_message(msg_id)
