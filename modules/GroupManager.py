@@ -183,22 +183,18 @@ class InfoManager:
 data = InfoManager()
 
 
-def distance(s1: str, s2: str) -> int:
+def string_similarity(s1: str, s2: str) -> float:
     if s2 > s1:
         s1, s2 = s2, s1
 
-    difference = 0
+    diff = 0
     s2 += " " * (len(s1) - len(s2))
     for i in range(len(s1)):
         if s1[i] != s2[i]:
-            difference += 1
+            diff += 1
 
-    return difference
-
-
-def string_similarity(s1: str, s2: str) -> float:
     try:
-        similarity = 1 - distance(s1, s2) / max(len(s1), len(s2))
+        similarity = 1 - diff / len(s1)
     except:
         return 1.0
     return similarity
@@ -220,20 +216,20 @@ class Module(ModuleClass.Module):
         sim = string_similarity(user.last_message, str(self.event.message))
 
         if self.event.time - user.last_time < 2:
-            user.inc_violations(2)
+            user.inc_violations(3.2)
         elif 2 < self.event.time - user.last_time < 10:
-            user.inc_violations(1)
+            user.inc_violations(2)
         elif 10 < self.event.time - user.last_time < 20:
-            user.inc_violations(0.2)
+            user.inc_violations(0.7)
         else:
             pass
 
         if sim < 0.66:
             pass
         elif 0.75 >= sim >= 0.66:
-            user.inc_violations(0.5)
+            user.inc_violations(0.7)
         elif 1 > sim >= 0.75:
-            user.inc_violations(1)
+            user.inc_violations(1.7)
         elif sim == 1:
             if str(self.event.message) == "[图片]":
                 if self.event.time - user.last_time <= 5:
@@ -243,7 +239,7 @@ class Module(ModuleClass.Module):
                 else:
                     user.inc_violations(0.5)
             else:
-                user.inc_violations(2)
+                user.inc_violations(3)
 
         if len(str(self.event.message)) < 50:
             pass
@@ -262,27 +258,11 @@ class Module(ModuleClass.Module):
         if user.need_mute:
             await self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
                                              duration=int(120 * user.violation_level))
-            # await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-            #                         message=Manager.Message(
-            #                             [
-            #                                 Segments.At(str(self.event.user_id)),
-            #                                 Segments.Text("请勿刷屏")
-            #                             ]
-            #                         )
-            #                         )
             user.punish(int(120 * user.violation_level))
 
         safety = WordSafety.check(text=str(self.event.message))
         if not safety.result:
             await self.actions.del_message(self.event.message_id)
-            # await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id,
-            #                         message=Manager.Message(
-            #                             [
-            #                                 Segments.At(str(self.event.user_id)),
-            #                                 Segments.Text(safety.message)
-            #                             ]
-            #                         )
-            #                         )
             user.inc_unsafe_times()
             if user.need_mute:
                 await self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,

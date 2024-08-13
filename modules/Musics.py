@@ -54,7 +54,7 @@ def search(name: str, num: int = 15) -> list:
     return result
 
 
-async def download(song_id: int) -> tuple[bool, str, str]:
+async def download(song_id: int) -> tuple[bool, str, str, str]:
     res = apis.track.GetTrackAudioV1([song_id])
     url = res["data"][0]["url"]
     if url is None:
@@ -80,12 +80,12 @@ async def download(song_id: int) -> tuple[bool, str, str]:
             else:
                 did += 1
     except Exception as e:
-        return False, f"出现错误：{e}", ""
+        return False, f"出现错误：{e}", "", str(url)
 
     if did >= 5:
-        return False, "下载校验不通过", ""
+        return False, "下载校验不通过", "", str(url)
 
-    return True, "", os.path.abspath(f"./temps/music_{song_id}.{suffix}")
+    return True, "", os.path.abspath(f"./temps/music_{song_id}.{suffix}"), url
 
 
 @ModuleRegister.register(GroupMessageEvent)
@@ -152,6 +152,10 @@ class Musics(Module):
                 res = await download(song_id)
                 if res[0]:
                     path = res[2]
+                    url = res[3]
+                    await self.actions.send(
+                        group_id=self.event.group_id, message=Message(Music(type="163", id=song_id))
+                    )
                     msg = Message(Record(path))
                     await self.actions.send(group_id=self.event.group_id, message=msg)
                     await self.actions.del_message(message_id=msg_id)

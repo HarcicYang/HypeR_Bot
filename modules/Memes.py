@@ -93,9 +93,9 @@ class Module(ModuleClass.Module):
                         response = httpx.get(i.file)
                     else:
                         response = httpx.get(i.url)
-                    with open(f"./temps/img{img_num}.jpg", "wb") as f:
+                    with open(f"./temps/img{img_num}_{self.event.user_id}", "wb") as f:
                         f.write(response.content)
-                    images.append(f"./temps/img{img_num}.jpg")
+                    images.append(f"./temps/img{img_num}_{self.event.user_id}.jpg")
                     img_num += 1
 
             for i in String(
@@ -150,9 +150,9 @@ class Module(ModuleClass.Module):
 
             else:
                 content = result.getvalue()
-                with open("./temps/meme.png", "wb") as f:
+                with open(f"./temps/meme_{self.event.user_id}.png", "wb") as f:
                     f.write(content)
-                content_text = f"file://{os.path.abspath('./temps/meme.png')}"
+                content_text = f"file://{os.path.abspath(f'./temps/meme_{self.event.user_id}.png')}"
 
                 await self.actions.send(
                     user_id=self.event.user_id,
@@ -162,6 +162,6 @@ class Module(ModuleClass.Module):
                         Segments.Image(content_text)
                     )
                 )
-                os.remove("./temps/meme.png")
+                os.remove(f"./temps/meme_{self.event.user_id}.png")
                 for i in images:
                     os.remove(i)
