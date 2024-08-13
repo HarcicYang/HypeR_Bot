@@ -93,7 +93,7 @@ class Module(ModuleClass.Module):
                         response = httpx.get(i.file)
                     else:
                         response = httpx.get(i.url)
-                    with open(f"./temps/img{img_num}_{self.event.user_id}", "wb") as f:
+                    with open(f"./temps/img{img_num}_{self.event.user_id}.jpg", "wb") as f:
                         f.write(response.content)
                     images.append(f"./temps/img{img_num}_{self.event.user_id}.jpg")
                     img_num += 1
