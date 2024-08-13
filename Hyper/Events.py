@@ -1,4 +1,5 @@
 from Hyper import Configurator, Logger, Manager
+from Hyper.Utils.TypeExt import Integer
 from Hyper.Segments import message_types
 from Hyper.Logger import levels
 
@@ -90,7 +91,7 @@ class Event:
         self.user_id = data.get("user_id")
         self.group_id = data.get("group_id")
 
-        self.is_owner = int(self.user_id) in config.owner
+        self.is_owner = Integer.convert_from(self.user_id) in config.owner
         self.servicing = False
         self.blocked = True if self.user_id in config.black_list or self.group_id in config.black_list else False
         self.is_silent = self.user_id in config.silents or self.group_id in config.silents or 0 in config.silents

@@ -151,3 +151,15 @@ class List(list):
         except IndexError:
             return None
 
+
+class Integer(int):
+    @classmethod
+    def convert_from(cls, target):
+        if isinstance(target, int):
+            return cls(target)
+
+        try:
+            return cls(int(target))
+        except:
+            return cls(-1)
+

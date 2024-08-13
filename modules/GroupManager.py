@@ -216,9 +216,9 @@ class Module(ModuleClass.Module):
         sim = string_similarity(user.last_message, str(self.event.message))
 
         if self.event.time - user.last_time < 2:
-            user.inc_violations(3.2)
+            user.inc_violations(2.5)
         elif 2 < self.event.time - user.last_time < 10:
-            user.inc_violations(2)
+            user.inc_violations(1.7)
         elif 10 < self.event.time - user.last_time < 20:
             user.inc_violations(0.7)
         else:
