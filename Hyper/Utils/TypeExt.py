@@ -164,3 +164,14 @@ class Integer(int):
         except:
             return cls(-1)
 
+
+class Enum:
+    def __init__(self, *args):
+        self.items = list(args)
+
+    def __getattr__(self, item):
+        if item in self.items:
+            return self.items.index(item)
+        else:
+            return None
+

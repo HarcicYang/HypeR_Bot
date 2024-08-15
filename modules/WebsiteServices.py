@@ -61,13 +61,13 @@ async def html2img(url: str, size: tuple[int, int]) -> str:
 
 
 @Logic.Cacher(1).cache_async
-async def get_image(info) -> str:
+async def get_image(info, bv_id) -> str:
     cover = open_from_url(info.picture)
     if cover.size[0] < 1020 or cover.size[1] < 1080 or cover.size[1] > 1500 or cover.size[0] > 1250:
         cover = square_scale(cover, 1200)
     size = cover.size
-    cover.save("./temps/cover.png")
-    cover = f"file://{os.path.abspath('./temps/cover.png')}"
+    cover.save(f"./temps/cover_{bv_id}.png")
+    cover = f"file://{os.path.abspath(f'./temps/cover_{bv_id}.png')}"
     played_times = num_format(info.views)
     likes_text = num_format(info.likes)
     coins_text = num_format(info.coins)
@@ -76,6 +76,7 @@ async def get_image(info) -> str:
     with open("./assets/bilibili/bili.html", encoding="utf-8") as f:
         html_tmp = f.read()
 
+    html_tmp = html_tmp.replace("{[bv]}", bv_id)
     html_tmp = html_tmp.replace("{[cover]}", cover)
     html_tmp = html_tmp.replace("{[head_img]}", info.uploader_face)
     html_tmp = html_tmp.replace("{[name]}", info.uploader)
@@ -86,33 +87,36 @@ async def get_image(info) -> str:
     html_tmp = html_tmp.replace("{[title]}", info.title)
     html_tmp = html_tmp.replace("{[desc]}", info.desc)
 
-    with open("./temps/bilibili.html", "w", encoding="utf-8") as f:
+    with open(f"./temps/bilibili_{bv_id}.html", "w", encoding="utf-8") as f:
         f.write(html_tmp)
 
-    res = await html2img(f"file://{os.path.abspath('./temps/bilibili.html')}", size)
-    os.remove("./temps/cover.png")
-    os.remove("./temps/bilibili.html")
+    res = await html2img(f"file://{os.path.abspath(f'./temps/bilibili_{bv_id}.html')}", size)
+    os.remove(f"./temps/cover_{bv_id}.png")
+    os.remove(f"./temps/bilibili_{bv_id}.html")
     return res
 
 
 @Logic.Cacher().cache
 def get_bv(text: str):
     bv_pattern = r"BV[a-zA-Z0-9]{10,12}"
+    bv_list = []
     if "b23.tv" in text:
         pa = r"https:\/\/b23\.tv\/[a-zA-Z0-9\-_]+"
-        url = re.search(pa, text)
-        if not url:
+        urls = re.findall(pa, text)
+        if not len(urls):
             return None
         else:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36"
             }
-            response = httpx.get(url.group(), headers=headers)
-
-            bv = re.search(bv_pattern, response.text)
+            for i in urls:
+                response = httpx.get(i, headers=headers)
+                bv = re.search(bv_pattern, response.text).group()
+                bv_list.append(bv)
     else:
-        bv = re.search(bv_pattern, text)
-    return bv.group() if bv else None
+        bv = re.findall(bv_pattern, text)
+        bv_list += bv
+    return bv_list or None
 
 
 @Logic.Cacher().cache_async
@@ -171,15 +175,15 @@ class GithubSafetyResult:
 
 @Logic.Cacher().cache
 def github_safety_check(url: str) -> GithubSafetyResult:
-    urls = url.split("/")
+    url = url.split("/")
     base_index = None
-    for i in urls:
+    for i in url:
         if i == "github.com":
-            base_index = urls.index(i)
+            base_index = url.index(i)
             break
     if not base_index:
-        return GithubSafetyResult(False, urls[base_index])
-    repo = f"https://api.github.com/repos/{urls[base_index + 1]}/{urls[base_index + 2]}"
+        return GithubSafetyResult(False, url[base_index])
+    repo = f"https://api.github.com/repos/{url[base_index + 1]}/{url[base_index + 2]}"
     retired = 0
     response = None
     while retired <= 3:
@@ -188,9 +192,10 @@ def github_safety_check(url: str) -> GithubSafetyResult:
         except:
             retired += 1
             continue
-    desc = str(response.json()["description"])
+        break
+    desc = str(response.json().get("description"))
     result = WordSafety.check(text=desc)
-    ret = GithubSafetyResult(result.result, f"{urls[base_index + 1]}/{urls[base_index + 2]}")
+    ret = GithubSafetyResult(result.result, f"{url[base_index + 1]}/{url[base_index + 2]}")
     return ret
 
 
@@ -209,30 +214,34 @@ class Module(ModuleClass.Module):
             return
 
         if bv_id:
-            info = await video_info(bv=bv_id)
-            path = await get_image(info)
-            result = Manager.Message(Segments.Image(f"file://{os.path.abspath(path)}", f"{info.title}"))
+            for i in bv_id:
+                info = await video_info(bv=i)
+                path = await get_image(info, i)
+                result = Manager.Message(Segments.Image(f"file://{os.path.abspath(path)}", f"{info.title}"))
 
-            await self.actions.send(group_id=self.event.group_id, message=result)
-            os.remove(path)
+                await self.actions.send(group_id=self.event.group_id, message=result)
+                os.remove(path)
 
         pa = r"(http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+\b)"
         try:
-            url = re.search(pa, str(self.event.message)).group()
+            urls = re.findall(pa, str(self.event.message))
+            for i in urls:
+                if "github.com/" in i:
+                    safety = github_safety_check(url=i)
+                    if not safety.safe:
+                        return
+                    content = i.replace("github.com/", "opengraph.githubassets.com/Yenai/")
+                    with open("./temps/github.png", "wb") as f:
+                        f.write(httpx.get(content).content)
+                    await self.actions.send(
+                        group_id=self.event.group_id,
+                        user_id=self.event.user_id,
+                        message=Manager.Message(
+                            Segments.Image(f"file://{os.path.abspath('./temps/github.png')}",
+                                           summary=f"{safety.address}")
+                        )
+                    )
+                    os.remove("./temps/github.png")
         except:
             return
-        if "github.com/" in url:
-            safety = github_safety_check(url=url)
-            if not safety.safe:
-                return
-            content = url.replace("github.com/", "opengraph.githubassets.com/Yenai/")
-            with open("./temps/github.png", "wb") as f:
-                f.write(httpx.get(content).content)
-            await self.actions.send(
-                group_id=self.event.group_id,
-                user_id=self.event.user_id,
-                message=Manager.Message(
-                    Segments.Image(f"file://{os.path.abspath('./temps/github.png')}", summary=f"{safety.address}")
-                )
-            )
-            os.remove("./temps/github.png")
+
