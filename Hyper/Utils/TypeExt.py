@@ -38,11 +38,12 @@ class ObjectedDict:
 
 
 class Char(str):
-    def __init__(self, obj: Union[str, "String"]):
-        if len(self) != 1:
+    @classmethod
+    def convert_from(cls, obj: Union[str, "String"]):
+        if len(obj) != 1:
             raise TypeError("Char is not fxxking String!")
         else:
-            self = obj
+            return cls(obj)
 
     @property
     def width(self) -> int:
@@ -92,11 +93,11 @@ class String(str):
         res = []
 
         for i in args:
-            if ":" in i or "=" in i:
+            if "=" in i:
                 if " " in i:
                     continue
                 index = args.index(i)
-                new = args[index].split((":" if ":" in i else "="), 1)
+                new = args[index].split("=", 1)
                 args[index] = {new[0]: new[1]}
 
         for i in args:
@@ -123,7 +124,7 @@ class String(str):
         return json.loads(self)
 
     def format(self, w_p_l: int = 110) -> "String":
-        c_lis = list(map(Char, list(self)))
+        c_lis = list(map(Char.convert_from, list(self)))
         lines = []
         temp_line = ""
         temp_length = 0

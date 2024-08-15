@@ -4,10 +4,11 @@ from Hyper.Utils import Logic
 
 
 class WSConnectionC:
-    def __init__(self, host: str, port: int, retries: int = 0):
+    def __init__(self, host: str, port: int, retries: int = 0, satori_token: str = None):
         self.host: str = host
         self.port: int = port
         self.retries: int = retries
+        self.token: str = satori_token
 
 
 class HTTPConnectionC:
@@ -55,7 +56,8 @@ class Config:
             self.connection = WSConnectionC(
                 config_json["Connection"]["host"],
                 config_json["Connection"]["port"],
-                config_json["Connection"]["retries"]
+                config_json["Connection"]["retries"],
+                config_json["Connection"]["satori_token"]
             )
         elif config_json["Connection"]["mode"] == "HTTP":
             self.connection = HTTPConnectionC(

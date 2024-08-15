@@ -58,9 +58,12 @@ async def download(song_id: int) -> tuple[bool, str, str, str]:
     res = apis.track.GetTrackAudioV1([song_id])
     url = res["data"][0]["url"]
     if url is None:
-        return False, "无法获取歌曲URL，这可能是一个付费歌曲或该歌曲不存在", ""
+        return False, "无法获取歌曲URL，这可能是一个付费歌曲或该歌曲不存在", "", ""
     md5 = res["data"][0]["md5"]
     suffix = res["data"][0]["type"]
+    if os.path.exists(f"./temps/music_{song_id}.{suffix}"):
+        return True, "", os.path.abspath(f"./temps/music_{song_id}.{suffix}"), url
+
     did = 0
     try:
         while did <= 5:
@@ -156,10 +159,9 @@ class Musics(Module):
                     await self.actions.send(
                         group_id=self.event.group_id, message=Message(Music(type="163", id=song_id))
                     )
-                    msg = Message(Record(path))
+                    msg = Message(Record(f"file://{path}"))
                     await self.actions.send(group_id=self.event.group_id, message=msg)
                     await self.actions.del_message(message_id=msg_id)
-                    os.remove(path)
                 else:
                     err_msg = res[1]
                     await self.actions.del_message(message_id=msg_id)

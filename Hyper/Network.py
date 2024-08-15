@@ -1,3 +1,6 @@
+import asyncio
+import time
+
 import websocket
 import httpx
 import queue
@@ -75,3 +78,48 @@ class HTTPConnection:
         if shutdown_func is None:
             raise RuntimeError('Not running with the Werkzeug Server')
         shutdown_func()
+
+
+class SatoriConnection:
+    def __init__(self, host: str, port: int, token: str = None):
+        self.ws = websocket.WebSocket()
+        self.host = host
+        self.port = port
+        self.token = token
+        self.reports = queue.Queue()
+
+    def heart_beat(self) -> None:
+        while 1:
+            time.sleep(10)
+            self.ws.send(json.dumps({"op": 1, "body": {}}))
+
+    def connect(self) -> None:
+        self.ws.connect(f"ws://{self.host}:{self.port}/v1/events")
+        payload = {
+            "op": 3,
+            "body": {
+                "token": self.token
+            }
+        }
+        self.ws.send(json.dumps(payload))
+        res = json.loads(self.ws.recv())
+        if res["op"] == 4:
+            threading.Thread(target=self.heart_beat).start()
+        else:
+            raise ConnectionError("连接失败")
+
+    def send(self, payload: dict, echo: str = None) -> None:
+        response = httpx.post(f"http://{self.host}:{self.port}", json=payload)
+        try:
+            data = response.json()
+            data["echo"] = echo
+            self.reports.put(data)
+        except:
+            pass
+
+    def close(self) -> None:
+        pass
+
+    def recv(self) -> dict:
+        return json.loads(self.ws.recv())
+

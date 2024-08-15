@@ -21,6 +21,8 @@ class UserInfo:
 
     def inc_violations(self, num: int | float) -> None:
         self.violations += (num * self.k1)
+        if self.violations <= 1:
+            self.violations = 1.5
 
     def inc_unsafe_times(self) -> None:
         self.words_unsafe_times += 1
@@ -50,7 +52,7 @@ class UserInfo:
     def need_mute(self) -> bool:
         if time.time() - self.last_punished_p < self.last_punished_t:
             return False
-        elif self.violations >= (5 * self.k2) or self.words_unsafe_times >= 3:
+        elif self.violations >= (12 * self.k2) or self.words_unsafe_times >= 3:
             return True
 
     def update(self, last_msg, last_time) -> None:
@@ -215,31 +217,42 @@ class Module(ModuleClass.Module):
 
         sim = string_similarity(user.last_message, str(self.event.message))
 
-        if self.event.time - user.last_time < 2:
-            user.inc_violations(2.5)
-        elif 2 < self.event.time - user.last_time < 10:
-            user.inc_violations(1.7)
-        elif 10 < self.event.time - user.last_time < 20:
-            user.inc_violations(0.7)
-        else:
-            pass
+        # if self.event.time - user.last_time < 2:
+        #     user.inc_violations(2.5)
+        # elif 2 < self.event.time - user.last_time < 10:
+        #     user.inc_violations(1.7)
+        # elif 10 < self.event.time - user.last_time < 20:
+        #     user.inc_violations(0.7)
+        # else:
+        #     pass
+        user.inc_violations(-0.12 * (self.event.time - user.last_time) + 2.2)
 
         if sim < 0.66:
             pass
-        elif 0.75 >= sim >= 0.66:
-            user.inc_violations(0.7)
-        elif 1 > sim >= 0.75:
-            user.inc_violations(1.7)
-        elif sim == 1:
+        else:
             if str(self.event.message) == "[图片]":
-                if self.event.time - user.last_time <= 5:
-                    user.inc_violations(2)
-                elif self.event.time - user.last_time <= 12:
-                    user.inc_violations(1)
-                else:
-                    user.inc_violations(0.5)
+                # if self.event.time - user.last_time <= 5:
+                #     user.inc_violations(2)
+                # elif self.event.time - user.last_time <= 12:
+                #     user.inc_violations(1)
+                # else:
+                #     user.inc_violations(0.5)
+                user.inc_violations(-0.17 * sim + 2.4)
             else:
-                user.inc_violations(3)
+                user.inc_violations(-(1.3 / (sim - 1.3)) - 1.5)
+
+        # if 1 > sim >= 0.75:
+        #     user.inc_violations(1.7)
+        # elif sim == 1:
+        #     if str(self.event.message) == "[图片]":
+        #         if self.event.time - user.last_time <= 5:
+        #             user.inc_violations(2)
+        #         elif self.event.time - user.last_time <= 12:
+        #             user.inc_violations(1)
+        #         else:
+        #             user.inc_violations(0.5)
+        #     else:
+        #         user.inc_violations(3)
 
         if len(str(self.event.message)) < 50:
             pass

@@ -180,7 +180,14 @@ def github_safety_check(url: str) -> GithubSafetyResult:
     if not base_index:
         return GithubSafetyResult(False, urls[base_index])
     repo = f"https://api.github.com/repos/{urls[base_index + 1]}/{urls[base_index + 2]}"
-    response = httpx.get(repo, verify=False)
+    retired = 0
+    response = None
+    while retired <= 3:
+        try:
+            response = httpx.get(repo, verify=False)
+        except:
+            retired += 1
+            continue
     desc = str(response.json()["description"])
     result = WordSafety.check(text=desc)
     ret = GithubSafetyResult(result.result, f"{urls[base_index + 1]}/{urls[base_index + 2]}")

@@ -210,7 +210,6 @@ async def __handler(data: dict, actions: Actions) -> None:
 
 
 handler: callable = tester
-connection: callable = tester
 
 
 def reg(func: callable):
@@ -219,7 +218,6 @@ def reg(func: callable):
 
 
 def run():
-    global connection
     try:
         if handler is tester:
             raise Errors.ListenerNotRegisteredError("No handler registered")
