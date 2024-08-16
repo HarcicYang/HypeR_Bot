@@ -47,8 +47,8 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
         def to_json(self) -> dict:
             base = {"type": sg_type, "data": {}}
             for i in anns:
-                print(i)
-                print(getattr(self, i))
+                if getattr(self, i) is None:
+                    continue
                 if not isinstance(getattr(self, i), anns[i]):
                     base["data"][i] = anns[i](getattr(self, i))
                 else:
