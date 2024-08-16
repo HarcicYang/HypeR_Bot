@@ -2,7 +2,9 @@ from Hyper import ModuleClass, Segments
 from Hyper.Utils import Logic
 from modules import WordSafety
 from Hyper.Events import *
+from Hyper.Utils.Logic import Downloader
 
+from typing import Any
 import re
 from bilibili_api import video
 import os
@@ -120,12 +122,13 @@ def get_bv(text: str):
 
 
 @Logic.Cacher().cache_async
-async def video_info(bv: str):
+async def video_info(bv: str) -> tuple[Any, dict]:
     try:
         retried = 0
         while 1:
             try:
                 v = video.Video(bvid=bv)
+                d_urls = (await v.get_download_url(0, html5=True)).get("durl") or []
                 info = await v.get_info()
                 break
             except Exception as e:
@@ -150,6 +153,7 @@ async def video_info(bv: str):
             },
             "desc": err.__str__()
         }
+        d_urls = []
 
     class Info:
         def __init__(self):
@@ -164,7 +168,7 @@ async def video_info(bv: str):
             self.favorites = info["stat"]["favorite"]
             self.desc = info["desc"]
 
-    return Info()
+    return Info(), d_urls
 
 
 class GithubSafetyResult:
@@ -216,10 +220,27 @@ class Module(ModuleClass.Module):
         if bv_id:
             for i in bv_id:
                 info = await video_info(bv=i)
-                path = await get_image(info, i)
-                result = Manager.Message(Segments.Image(f"file://{os.path.abspath(path)}", f"{info.title}"))
+                path = await get_image(info[0], i)
+                result = Manager.Message(
+                    Segments.Image(f"file://{os.path.abspath(path)}", summary=f"{info[0].title}")
+                )
 
                 await self.actions.send(group_id=self.event.group_id, message=result)
+                if len(info[1]) != 0:
+                    url = info[1][0].get("url")
+                    size = info[1][0].get("size")
+                    if url:
+                        # if size > 1000000:
+                        if False:
+                            pass
+                        else:
+                            dlr = Downloader(url, f"./temps/b_video_{bv_id}.mp4", 1, True)
+                            ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+                            await dlr.download(ua)
+                            msg = Manager.Message(Segments.Video.build(f"./temps/b_video_{bv_id}.mp4"))
+                            await self.actions.send(group_id=self.event.group_id, message=msg)
+                            os.remove(f"./temps/b_video_{bv_id}.mp4")
+
                 os.remove(path)
 
         pa = r"(http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+\b)"
@@ -244,4 +265,3 @@ class Module(ModuleClass.Module):
                     os.remove("./temps/github.png")
         except:
             return
-

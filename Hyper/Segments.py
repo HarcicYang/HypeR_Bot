@@ -1,4 +1,5 @@
 import json
+import os.path
 import typing
 import uuid
 
@@ -12,9 +13,9 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
     def inner_builder(cls):
         var = dict(vars(cls))
         anns: dict = var.get("__annotations__", False) or dict()
-        arg = {}
 
         def init(self, *args, **kwargs):
+            arg = {}
             if len(args) > 0:
                 for i in args:
                     arg[list(anns.keys())[list(args).index(i)]] = i
@@ -46,6 +47,8 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
         def to_json(self) -> dict:
             base = {"type": sg_type, "data": {}}
             for i in anns:
+                print(i)
+                print(getattr(self, i))
                 if not isinstance(getattr(self, i), anns[i]):
                     base["data"][i] = anns[i](getattr(self, i))
                 else:
@@ -95,15 +98,34 @@ class Base:
     def __str__(self) -> str: return "__not_set__"
 
 
+class MediaSeg(Base):
+    @classmethod
+    def build(cls, file: str):
+        if file.startswith("http") or file.startswith("file:") or file.startswith("base64:"):
+            return cls(file=file)
+        else:
+            if os.path.isfile(file):
+                if os.path.isabs(file):
+                    res = cls()
+                    res.file = f"file://{file}"
+                    return res
+                else:
+                    res = cls()
+                    res.file = f"file://{os.path.abspath(file)}"
+                    return res
+            else:
+                return None
+
+
 @segment_builder("text", "<text>")
 class Text(Base):
     text: str
 
 
 @segment_builder("image", "[图片]")
-class Image(Base):
+class Image(MediaSeg):
     file: str
-    url: str = ""
+    url: str
     summary: str = "[图片]"
 
 
@@ -129,13 +151,15 @@ class Location(Base):
 
 
 @segment_builder("record", "[语音]")
-class Record(Base):
+class Record(MediaSeg):
     file: str
+    url: str
 
 
 @segment_builder("video", "[视频]")
-class Video(Base):
+class Video(MediaSeg):
     file: str
+    url: str
 
 
 @segment_builder("poke", "[拍一拍]")
@@ -296,6 +320,6 @@ class Rps(Base):
 class Music(Base):
     type: str
     id: str = None
-    url: str = None
+    url: str
     audio: str = None
     title: str = None

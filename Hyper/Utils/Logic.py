@@ -4,7 +4,6 @@ import shutil
 import traceback
 import asyncio
 from typing import Union
-
 import aiohttp
 import time
 import requests
@@ -234,10 +233,12 @@ class TempDownloader:
         self.index = index
         self.silent = silent
 
-    async def get_bytes(self) -> dict[str, bytes]:
+    async def get_bytes(self, ua: str = None) -> dict[str, bytes]:
         result_to_re = {}
         this: bytes = bytes()
         headers = {"Range": f"bytes={self.part[0]}-{self.part[1]}"}
+        if ua:
+            headers["User-Agent"] = ua
 
         async with aiohttp.ClientSession() as session:
             async with session.get(self.url, headers=headers) as resp:
@@ -285,10 +286,16 @@ class Downloader:
         result[-1][-1] = size - 1
         return result
 
-    async def download(self):
+    async def download(self, ua: str = None):
         if not self.check():
             raise Exception
-        response = requests.get(self.url, stream=True, verify=False)
+        if ua:
+            headers = {
+                "User-Agent": ua
+            }
+            response = requests.get(self.url, stream=True, verify=False, headers=headers)
+        else:
+            response = requests.get(self.url, stream=True, verify=False)
         if response.status_code != 200:
             raise ConnectionError
 
@@ -315,7 +322,7 @@ class Downloader:
                 for i in parts:
                     _ = TempDownloader(url=self.url, part=i, index=parts.index(i), silent=self.silent)
 
-                    tasks.append(asyncio.create_task(_.get_bytes()))
+                    tasks.append(asyncio.create_task(_.get_bytes(ua=ua)))
 
                 await asyncio.gather(*tasks)
                 for i in tasks:
@@ -324,5 +331,3 @@ class Downloader:
                 for i in range(0, len(result)):
                     r += result[str(i)]
                 f.write(r)
-
-
