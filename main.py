@@ -6,10 +6,11 @@ if True:
     import asyncio
     import gc
 
-    from Hyper import Listener, Events, Logger, ModuleClass
+    from Hyper import Listener, Events, Logger
+    import ModuleClass
     from Hyper.Utils import Logic
 
-    from modules import *
+ModuleClass.load()
 
 handler_list = ModuleClass.ModuleRegister.get_registered()
 config = Configurator.cm.get_cfg()

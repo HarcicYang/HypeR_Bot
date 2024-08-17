@@ -1,6 +1,6 @@
 from Hyper.Segments import *
 from Hyper.Manager import Message, logger
-from Hyper import ModuleClass, Logger
+import ModuleClass
 from Hyper.Events import *
 import json
 

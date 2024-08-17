@@ -1,6 +1,7 @@
 from typing import Union
 
-from Hyper import Events, Manager, ModuleClass, Segments
+from Hyper import Events, Segments
+import ModuleClass
 from Hyper.Events import *
 import datetime
 

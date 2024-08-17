@@ -1,13 +1,13 @@
 import os.path
-import traceback
 from io import BytesIO
 import httpx
 import meme_generator
 from meme_generator import exception
 
-from Hyper import Manager, ModuleClass, Segments
+from Hyper import Segments
+import ModuleClass
 from Hyper.Events import *
-from Hyper.ModuleClass import ModuleInfo
+from ModuleClass import ModuleInfo
 from Hyper.Utils.TypeExt import String
 
 cmd = ".meme"

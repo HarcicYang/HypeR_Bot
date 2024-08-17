@@ -1,5 +1,5 @@
 from Hyper.Events import GroupMessageEvent
-from Hyper.ModuleClass import ModuleInfo, ModuleRegister, Module
+from ModuleClass import ModuleInfo, ModuleRegister, Module
 from Hyper.Segments import *
 from Hyper.Manager import Message
 from Hyper.Utils.Logic import Downloader

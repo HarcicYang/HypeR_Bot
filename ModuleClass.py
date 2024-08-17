@@ -1,5 +1,7 @@
 from Hyper import Events, Listener, Logger, Configurator
 
+import importlib
+import gc
 from typing import Union
 import dataclasses
 
@@ -72,3 +74,16 @@ class ModuleRegister:
     @staticmethod
     def get_registered() -> list:
         return register_modules
+
+
+imported = None
+
+
+def load() -> None:
+    global imported, register_modules
+    register_modules = []
+    if imported is not None:
+        imported.reload()
+        imported = importlib.reload(imported)
+    else:
+        imported = importlib.import_module("modules")

@@ -1,7 +1,7 @@
 from Hyper import Segments
 from Hyper.Manager import Message
 from Hyper.Events import *
-from Hyper.ModuleClass import Module, ModuleInfo, ModuleRegister
+from ModuleClass import Module, ModuleInfo, ModuleRegister
 
 from PIL import Image, ImageDraw, ImageFont
 import os

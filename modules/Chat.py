@@ -1,13 +1,12 @@
 from Hyper.Events import GroupMessageEvent, PrivateMessageEvent
 from Hyper.Manager import Message
-from Hyper.ModuleClass import ModuleInfo, ModuleRegister, Module
+from ModuleClass import ModuleRegister, Module
 from Hyper.Segments import *
 from Hyper.Configurator import cm
 
 from modules.GoogleAI import genai, Context, Parts, Roles
 
 import random
-from typing import Union
 import subprocess
 import traceback
 import os

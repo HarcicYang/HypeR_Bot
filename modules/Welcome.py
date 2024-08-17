@@ -1,4 +1,5 @@
-from Hyper import Manager, ModuleClass, Segments
+from Hyper import Segments
+import ModuleClass
 from Hyper.Events import *
 import random
 import json

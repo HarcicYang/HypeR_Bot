@@ -1,4 +1,5 @@
-from Hyper import ModuleClass, Segments
+from Hyper import Segments
+import ModuleClass
 from Hyper.Utils import Logic
 from modules import WordSafety
 from Hyper.Events import *

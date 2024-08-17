@@ -2,7 +2,8 @@ import os.path
 import json
 import time
 from Hyper.Events import *
-from Hyper import Manager, ModuleClass, Segments
+from Hyper import Manager, Segments
+import ModuleClass
 from modules import WordSafety
 
 

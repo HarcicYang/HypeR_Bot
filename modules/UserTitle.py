@@ -1,7 +1,7 @@
-from Hyper.ModuleClass import ModuleInfo
+from ModuleClass import ModuleInfo
 from Hyper.Segments import *
 from Hyper.Manager import Message
-from Hyper import ModuleClass
+import ModuleClass
 from Hyper.Events import *
 
 
