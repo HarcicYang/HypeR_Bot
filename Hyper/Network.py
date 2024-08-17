@@ -1,6 +1,5 @@
 import asyncio
 import time
-import grpc
 import websocket
 import httpx
 import queue
@@ -9,9 +8,6 @@ import traceback
 import json
 import logging
 import threading
-
-from Hyper.Adapters.KritorLib.protos.auth.authentication_pb2_grpc import AuthenticationServiceStub
-from Hyper.Adapters.KritorLib.protos.auth.authentication_pb2 import AuthenticateRequest
 
 
 class WebsocketConnection:
