@@ -1,5 +1,9 @@
+import gc
 import os
 import sys
+import importlib
+
+imports = []
 
 if getattr(sys, "frozen", False):
     path = "./_Internal/modules"
@@ -11,9 +15,14 @@ for i in os.listdir(path):
         continue
 
     if i.endswith(".py"):
-        # importlib.import_module(f"modules.{i[:-3]}")
-        __import__(f"modules.{i[:-3]}")
+        imports.append(importlib.import_module(f"modules.{i[:-3]}"))
     elif i.endswith(".pyd") or i.endswith(".pyc"):
-        __import__(f"modules.{i[:-4]}")
+        imports.append(importlib.import_module(f"modules.{i[:-4]}"))
 
 del i
+
+
+def reload() -> None:
+    gc.collect()
+    for j in imports:
+        imports[imports.index(j)] = importlib.reload(j)

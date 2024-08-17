@@ -126,35 +126,35 @@ class SatoriConnection:
     def recv(self) -> dict:
         return json.loads(self.ws.recv())
 
-
-class KritorConnection:
-    def __init__(self, host: str, port: int, account: str, ticket: str):
-        self.channel = grpc.insecure_channel(f"{host}:{port}")
-        self.account = account
-        self.ticket = ticket
-
-    def connect(self) -> None:
-        auth_stub = AuthenticationServiceStub(self.channel)
-        response = auth_stub.Authenticate(
-            AuthenticateRequest(
-                account=self.account,
-                ticket=self.ticket
-            )
-        )
-        if response.AuthenticateResponseCode != 0:
-            raise ConnectionError("鉴权失败")
-
-    def send(self, stub, payload: dict, echo: str = None) -> None:
-        response = httpx.post(f"http://{self.host}:{self.port}", json=payload)
-        try:
-            data = response.json()
-            data["echo"] = echo
-            self.reports.put(data)
-        except:
-            pass
-
-    def close(self) -> None:
-        pass
-
-    def recv(self) -> dict:
-        return json.loads(self.ws.recv())
+#
+# class KritorConnection:
+#     def __init__(self, host: str, port: int, account: str, ticket: str):
+#         self.channel = grpc.insecure_channel(f"{host}:{port}")
+#         self.account = account
+#         self.ticket = ticket
+#
+#     def connect(self) -> None:
+#         auth_stub = AuthenticationServiceStub(self.channel)
+#         response = auth_stub.Authenticate(
+#             AuthenticateRequest(
+#                 account=self.account,
+#                 ticket=self.ticket
+#             )
+#         )
+#         if response.AuthenticateResponseCode != 0:
+#             raise ConnectionError("鉴权失败")
+#
+#     def send(self, stub, payload: dict, echo: str = None) -> None:
+#         response = httpx.post(f"http://{self.host}:{self.port}", json=payload)
+#         try:
+#             data = response.json()
+#             data["echo"] = echo
+#             self.reports.put(data)
+#         except:
+#             pass
+#
+#     def close(self) -> None:
+#         pass
+#
+#     def recv(self) -> dict:
+#         return json.loads(self.ws.recv())

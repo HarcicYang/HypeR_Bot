@@ -72,10 +72,7 @@ class Message:
         self.contents.append(content)
 
     async def get(self) -> list:
-        ret = []
-        for i in self.contents:
-            ret.append(i.to_json())
-        return ret
+        return self.get_sync()
 
     def get_sync(self) -> list:
         ret = []
