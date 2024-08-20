@@ -1,9 +1,9 @@
 from typing import Union
+import datetime
 
 from Hyper import Events, Segments
 import ModuleClass
 from Hyper.Events import *
-import datetime
 
 
 @ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
@@ -23,7 +23,7 @@ class Module(ModuleClass.Module):
         version = await self.actions.get_version_info()
         name = version.data["app_name"]
         code = version.data["app_version"]
-        message = ("HypeR Bot v0.7\n"
+        message = ("HypeR Bot v0.77\n"
                    "https://github.com/HarcicYang/HypeR_Bot\n"
                    "\n"
                    "时间：{}\n"

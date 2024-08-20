@@ -1,5 +1,6 @@
 message_types = {}
 
+
 def segment_builder(sg_type: str, summary_tmp: str = None):
     # print(inspect.get_annotations(cls))
     def inner_builder(cls):
@@ -72,6 +73,22 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
 
         cls.__str__ = to_str if cls().__str__() == "__not_set__" else cls.__str__
 
+        def eq(self, other) -> bool:
+            if type(self) is type(other) and self.to_json() == other.to_json():
+                return True
+            else:
+                return False
+
+        cls.__eq__ = eq
+
+        def ne(self, other) -> bool:
+            if type(self) is type(other) and self.to_json() == other.to_json():
+                return False
+            else:
+                return True
+
+        cls.__ne__ = ne
+
         message_types[sg_type] = {
             "type": cls,
             "args": list(anns.keys())
@@ -88,3 +105,7 @@ class Base:
     def to_json(self) -> dict: ...
 
     def __str__(self) -> str: return "__not_set__"
+
+    def __eq__(self, other) -> bool: ...
+
+    def __ne__(self, other) -> bool: ...

@@ -1,5 +1,8 @@
 from Hyper import Configurator
 
+import sys
+import os
+
 config = Configurator.cm.get_cfg()
 
 if config.protocol == "OneBot":
@@ -7,3 +10,10 @@ if config.protocol == "OneBot":
 elif config.protocol == "Satori":
     from Hyper.Adapters.Satori import *
 servicing = []
+
+
+def restart() -> None:
+    stop()
+    os.execv(sys.executable, ['python'] + sys.argv)
+    os._exit(1)
+

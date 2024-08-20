@@ -217,7 +217,11 @@ def reg(func: callable):
     handler = func
 
 
+connection: Union[Network.WebsocketConnection, Network.HTTPConnection]
+
+
 def run():
+    global connection
     try:
         if handler is tester:
             raise Errors.ListenerNotRegisteredError("No handler registered")
@@ -254,6 +258,7 @@ def run():
                     break
                 except json.decoder.JSONDecodeError:
                     logger.log("收到错误的JSON内容", level=Logger.levels.ERROR)
+                    continue
                 threading.Thread(target=lambda: asyncio.run(__handler(data, actions))).start()
     except KeyboardInterrupt:
         logger.log("正在退出(Ctrl+C)", level=Logger.levels.WARNING)
@@ -262,3 +267,11 @@ def run():
         except:
             pass
         os._exit(0)
+
+
+def stop() -> None:
+    try:
+        connection.close()
+    except:
+        pass
+    logger.log("停止运行监听器", level=Logger.levels.WARNING)
