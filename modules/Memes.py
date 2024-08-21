@@ -46,7 +46,7 @@ class Module(ModuleClass.Module):
         )
 
     async def handle(self):
-        if self.event.blocked or self.event.servicing:
+        if self.event.blocked:
             return
         try:
             message = str(self.event.message)

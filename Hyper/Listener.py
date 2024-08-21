@@ -9,7 +9,6 @@ if config.protocol == "OneBot":
     from Hyper.Adapters.OneBot import *
 elif config.protocol == "Satori":
     from Hyper.Adapters.Satori import *
-servicing = []
 
 
 def restart() -> None:

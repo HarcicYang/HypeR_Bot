@@ -1,9 +1,9 @@
 from Hyper import Events, Listener, Logger, Configurator
 
 import importlib
-import gc
 from typing import Union
 import dataclasses
+
 
 config = Configurator.cm.get_cfg()
 logger = Logger.Logger()
@@ -21,7 +21,26 @@ class ModuleInfo:
 
 
 class Module:
-    def __init__(self, actions: Listener.Actions, event: Union[*Events.em.events]):
+    def __init__(
+            self,
+            actions: Listener.Actions,
+            event: Union[
+                Events.GroupMessageEvent,
+                Events.PrivateMessageEvent,
+                Events.GroupFileUploadEvent,
+                Events.GroupAdminEvent,
+                Events.GroupMemberDecreaseEvent,
+                Events.GroupMemberIncreaseEvent,
+                Events.GroupMuteEvent,
+                Events.FriendAddEvent,
+                Events.GroupRecallEvent,
+                Events.FriendRecallEvent,
+                Events.NotifyEvent,
+                Events.GroupEssenceEvent,
+                Events.MessageReactionEvent,
+                Events.GroupAddInviteEvent
+            ]
+    ):
         self.actions = actions
         self.event = event
 
@@ -59,7 +78,7 @@ class ModuleRegister:
             else:
                 allowed = list(args)
 
-            def init(self, actions: Listener.Actions, event: Union[*allowed]):
+            def init(self, actions: Listener.Actions, event: Events.Event):
                 self.actions = actions
                 self.event = event
 

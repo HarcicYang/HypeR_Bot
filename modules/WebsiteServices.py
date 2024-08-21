@@ -3,7 +3,6 @@ import ModuleClass
 from Hyper.Utils import Logic
 from modules import WordSafety
 from Hyper.Events import *
-from Hyper.Utils.Logic import Downloader
 
 from typing import Any
 import re
@@ -207,7 +206,7 @@ def github_safety_check(url: str) -> GithubSafetyResult:
 @ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
 class Module(ModuleClass.Module):
     async def handle(self):
-        if self.event.blocked or self.event.servicing or self.event.is_silent:
+        if self.event.blocked or self.event.is_silent:
             return
         try:
             if len(self.event.message) != 0 and isinstance(self.event.message[0], Segments.Json):

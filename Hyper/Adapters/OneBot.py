@@ -24,7 +24,7 @@ class Actions:
                 self.connection = cnt_i
 
             def __getattr__(self, item) -> callable:
-                def wrapper(**kwargs) -> str:
+                async def wrapper(**kwargs) -> str:
                     packet = Manager.Packet(
                         str(item),
                         **kwargs

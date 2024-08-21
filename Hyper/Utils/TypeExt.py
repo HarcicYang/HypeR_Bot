@@ -3,7 +3,7 @@ import json
 from typing import Union
 
 
-class ObjectedDict:
+class ObjectedJson:
     def __init__(self, content: dict = None):
         if content is None:
             self.__content = dict()
@@ -14,11 +14,13 @@ class ObjectedDict:
         if attr == "_ObjectedDict__content" or attr == "raw":
             return self.__content
         else:
+            if isinstance(self.__content, list):
+                return None
             att = self.__content.get(attr)
-        if isinstance(att, dict):
-            return ObjectedDict(att)
-        else:
-            return att
+            if isinstance(att, dict):
+                return ObjectedJson(att)
+            else:
+                return att
 
     def __setattr__(self, attr, value):
         if attr == "_ObjectedDict__content":
@@ -27,11 +29,19 @@ class ObjectedDict:
             self.__content[attr] = value
 
     def __getitem__(self, item):
-        return self.__content.get(item)
+        if isinstance(self.__content, dict):
+            return self.__content.get(item)
+        elif isinstance(self.__content, list):
+            return self.__content[item]
+        else:
+            return None
 
     def __setitem__(self, key, value):
-        if self.__content.get(key):
-            self.__content[key] = value
+        self.__content[key] = value
+
+    def __iter__(self):
+        for i in self.__content:
+            yield i
 
     def __str__(self) -> str:
         return self.__content.__str__()

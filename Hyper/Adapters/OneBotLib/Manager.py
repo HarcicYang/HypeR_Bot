@@ -115,7 +115,7 @@ class Ret:
     def __init__(self, json_data: dict):
         self.status = json_data["status"]
         self.ret_code = json_data["retcode"]
-        self.data = Hyper.Utils.TypeExt.ObjectedDict(json_data.get("data"))
+        self.data = Hyper.Utils.TypeExt.ObjectedJson(json_data.get("data"))
         self.echo = json_data.get("echo")
 
     @classmethod

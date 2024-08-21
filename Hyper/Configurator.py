@@ -2,7 +2,6 @@ import json
 import typing
 
 from Hyper.Utils import Logic
-from Hyper.Utils import Errors
 
 
 class WSConnectionC:
@@ -76,7 +75,7 @@ class Config:
                 config_json["Connection"]["host"],
                 config_json["Connection"]["port"],
                 config_json["Connection"]["retries"],
-                config_json["Connection"]["satori_token"]
+                config_json["Connection"].get("satori_token")
             )
         elif config_json["Connection"]["mode"] == "HTTP":
             self.connection = HTTPConnectionC(
