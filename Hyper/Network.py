@@ -1,4 +1,3 @@
-import asyncio
 import time
 import websocket
 import httpx

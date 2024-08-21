@@ -2,9 +2,11 @@
 
 from setuptools import setup
 
+import Hyper
+
 setup(
     name="hyper-bot",
-    version="0.772",
+    version=Hyper.HYPER_BOT_VERSION,
     description="稳定高效、易于开发的QQ Bot框架",
     author="Harcic",
     author_email="harcic@outlook.com",
