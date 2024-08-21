@@ -102,7 +102,7 @@ class Context:
             g_c = self.model.start_chat(history=new, enable_automatic_function_calling=True)
             # res = self.model.generate_content(contents=new, safety_settings=self.safety)
             res = g_c.send_message(content.res(), safety_settings=self.safety)
-            self.history.append(Roles.Model(Parts.Text(str(res.text))))
+            self.history.append(Roles.Model(Parts.Text(str(res.text).rstrip())))
             del g_c
             return res.text
         except Exception as e:

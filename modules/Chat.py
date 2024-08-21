@@ -6,6 +6,8 @@ from Hyper.Configurator import cm
 
 from modules.GoogleAI import genai, Context, Parts, Roles
 
+from search_engines import Bing
+import html2text
 import random
 import subprocess
 import traceback
@@ -74,6 +76,37 @@ class Tools:
             "retcode": str(process.returncode)
         }
 
+    @staticmethod
+    def search_web(query: str) -> list:
+        """
+        在网络上搜索一个关键词（句）
+        :param query: 要搜索的关键词（句）
+        :return: 一个list，包含了搜索到的结果。
+        """
+        def read_url(url: str) -> str:
+            try:
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+                }
+                h = html2text.HTML2Text()
+                response = h.handle(httpx.get(url, headers=headers, verify=False).text)
+            except Exception as e:
+                response = str(e)
+            return response
+
+        engine = Bing()
+        results = engine.search(query, pages=1)
+        links = results.links()
+        titles = results.titles()
+        dic = []
+        for i in range(2):
+            try:
+                dic.append({"title": titles[i], "link": links[i], "content": read_url(links[i])})
+            except IndexError:
+                break
+
+        return dic
+
 
 generation_config = {
     "temperature": 1,
@@ -83,17 +116,17 @@ generation_config = {
     "response_mime_type": "text/plain",
 }
 
-sys_prompt = "你是由Google开发的大语言模型，你叫Gemini，具体型号是Gemini-1.5-Flash"
+sys_prompt = "你是HypeR Bot"
 
 model = genai.GenerativeModel(
     model_name="gemini-1.5-flash",
     generation_config=generation_config,
     system_instruction=sys_prompt or None,
-    tools=[Tools.read_url, Tools.get_wiki, Tools.run_python_code]
+    tools="code_execution"
 )
 
 key = cm.get_cfg().others["gemini_key"]
-genai.configure(api_key=key)
+genai.configure(api_key=key, transport="rest")
 os.environ["GOOGLE_API_KEY"] = key
 tools = [Tools.read_url]
 
@@ -162,7 +195,7 @@ class Chat(Module):
                 user_id=self.event.user_id,
                 message=Message(
                     Reply(self.event.message_id),
-                    Text(result[:len(result) - 1])
+                    Text(result)
                 )
             )
         except:

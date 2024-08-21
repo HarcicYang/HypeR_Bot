@@ -3,7 +3,7 @@ import os.path
 import typing
 import uuid
 
-from Hyper.Errors import *
+from Hyper.Utils.Errors import *
 from Hyper.Configurator import cm
 
 config = cm.get_cfg()

@@ -1,5 +1,5 @@
 from Hyper.Adapters.OneBot import *
-from Hyper.Errors import *
+from Hyper.Utils.Errors import *
 
 
 class Actions(Actions):
@@ -47,7 +47,11 @@ def reg(func: callable):
     handler = func
 
 
+connection: Union[Network.WebsocketConnection, Network.SatoriConnection]
+
+
 def run():
+    global connection
     try:
         if handler is tester:
             raise Errors.ListenerNotRegisteredError("No handler registered")
@@ -92,3 +96,10 @@ def run():
             pass
         os._exit(0)
 
+
+def stop() -> None:
+    try:
+        connection.close()
+    except:
+        pass
+    logger.log("停止运行监听器", level=Logger.levels.WARNING)

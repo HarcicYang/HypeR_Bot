@@ -1,4 +1,3 @@
-import textwrap
 import datetime
 import typing
 import inspect
@@ -48,7 +47,7 @@ class Logger:
 
     def log(self, message: str, level: str = levels.INFO):
         if levels.level_nums[level] < levels.level_nums[self.log_level]:
-            return None
+            return
         time = datetime.datetime.now()
         if "\n" in message:
             listed = message.split("\n")

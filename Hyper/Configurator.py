@@ -1,6 +1,8 @@
+import json
 import typing
 
 from Hyper.Utils import Logic
+from Hyper.Utils import Errors
 
 
 class WSConnectionC:
@@ -10,6 +12,14 @@ class WSConnectionC:
         self.retries: int = retries
         self.token: str = satori_token
 
+    def to_json(self) -> dict:
+        return dict(
+            host=self.host,
+            port=self.port,
+            retries=self.retries,
+            satori_token=self.token
+        )
+
 
 class HTTPConnectionC:
     def __init__(self, host: str, port: int, listener_host: str, listener_port: int, retries: int = 0):
@@ -18,6 +28,15 @@ class HTTPConnectionC:
         self.listener_host: str = listener_host
         self.listener_port: int = listener_port
         self.retries: int = retries
+
+    def to_json(self) -> dict:
+        return dict(
+            host=self.host,
+            port=self.port,
+            listener_host=self.listener_host,
+            listener_port=self.listener_port,
+            retries=self.retries
+        )
 
 
 class Config:
@@ -72,6 +91,21 @@ class Config:
 
         self.inited = True
         return self
+
+    def dump(self, file: str = None) -> None:
+        if file or self.file:
+            file = file or self.file
+            cfg = dict(
+                owner=self.owner,
+                black_list=self.black_list,
+                silents=self.silents,
+                Connection=self.connection.to_json(),
+                log_level=self.log_level,
+                protocol=self.protocol,
+                Others=self.others
+            )
+            with open(file, "w", encoding="utf-8") as f:
+                f.write(json.dumps(cfg, indent=2))
 
 
 class ConfigManager:

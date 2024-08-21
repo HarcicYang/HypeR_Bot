@@ -1,6 +1,6 @@
 from Hyper import Configurator, Logger, Manager
 from Hyper.Utils.TypeExt import Integer
-from Hyper.Segments import message_types
+from Hyper.Segments import message_types, At
 from Hyper.Logger import levels
 
 config = Configurator.cm.get_cfg()
@@ -31,6 +31,7 @@ class EventManager:
         except KeyError:
             typ = data[f"{data['post_type']}_type"]
             logger.log(f"不存在的事件类型：{data['post_type']}.{typ}", levels.WARNING)
+            logger.log(str(data), levels.DEBUG)
             return Event(data)
 
 
@@ -78,6 +79,7 @@ def gen_message(data: dict) -> Manager.Message:
             message.add(message_types[i["type"]]["type"](*args))
         else:
             logger.log(f"无法序列化的消息段 {i['type']}", levels.WARNING)
+            logger.log(str(i), levels.DEBUG)
 
     return message
 
@@ -127,6 +129,7 @@ class GroupMessageEvent(MessageEvent):
         super().__init__(data)
         self.sender = GroupSender(data.get("sender"))
         self.anonymous = GroupAnonymous(data.get("anonymous"))
+        self.is_mentioned = True if At(str(self.self_id)) in self.message else False
 
         self.print_log()
 
@@ -247,6 +250,33 @@ class NotifyEvent(NoticeEvent):
         self.sub_type = data.get("sub_type")
         self.target_id = data.get("target_id")
         self.honor_type = data.get("honor_type")
+
+
+@em.reg("notice", "essence")
+class GroupEssenceEvent(NoticeEvent):
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self.sub_type = data.get("sub_type")
+        self.sender_id = data.get("sender_id")
+        self.operator_id = data.get("operator_id")
+        self.message_id = data.get("message_id")
+
+        self.print_log()
+
+    def print_log(self) -> None:
+        action = "设置" if self.sub_type == "add" else "移除"
+        logger.log(f"{self.operator_id} 在群 {self.group_id} 中将 {self.sender_id} 的消息 {self.message_id} {action}精华")
+
+
+@em.reg("notice", "reaction")
+class MessageReactionEvent(NoticeEvent):
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self.message_id = data.get("message_id")
+        self.operator_id = data.get("operator_id")
+        self.sub_type = data.get("sub_type")
+        self.code = data.get("code")
+        self.count = data.get("count")
 
 
 class RequestEvent(Event):
