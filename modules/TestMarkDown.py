@@ -18,36 +18,37 @@ class Test(ModuleClass.Module):
             return
 
         if str(self.event.message) == ".test_h":
-            content = ("# Markdown"
-                       " \n [测试](https://github.com)"
-                       " \n `这是一个一个代码块114514`"
-                       " \n ```python\nprint('Hello World')```"
-                       " \n - 1"
-                       " \n - 2")
-            forward_result = await self.actions.send_forward_msg(
-                message=Message(
-                    [
-                        CustomNode(user_id=f"{self.event.self_id}", nick_name="Hyper Bot", content=Message(
-                            [
-                                MarkDown(MarkdownContent(content))
-                            ]
-                        ))
-                    ]
-                )
-            )
-            res_id: str = forward_result.data
-            message = Message(
-                CustomNode(
-                    user_id=f"{self.event.self_id}",
-                    nick_name="Hyper Bot",
-                    content=Message(LongMessage(res_id))
-                )
-            )
-            await self.actions.send(
-                message=message,
-                group_id=self.event.group_id,
-                user_id=self.event.user_id
-            )
+            return 
+            # content = ("# Markdown"
+            #            " \n [测试](https://github.com)"
+            #            " \n `这是一个一个代码块114514`"
+            #            " \n ```python\nprint('Hello World')```"
+            #            " \n - 1"
+            #            " \n - 2")
+            # forward_result = await self.actions.send_forward_msg(
+            #     message=Message(
+            #         [
+            #             CustomNode(user_id=f"{self.event.self_id}", nick_name="Hyper Bot", content=Message(
+            #                 [
+            #                     MarkDown(MarkdownContent(content))
+            #                 ]
+            #             ))
+            #         ]
+            #     )
+            # )
+            # res_id: str = forward_result.data
+            # message = Message(
+            #     CustomNode(
+            #         user_id=f"{self.event.self_id}",
+            #         nick_name="Hyper Bot",
+            #         content=Message(LongMessage(res_id))
+            #     )
+            # )
+            # await self.actions.send(
+            #     message=message,
+            #     group_id=self.event.group_id,
+            #     user_id=self.event.user_id
+            # )
 
             row = KeyBoardRow(
                 [
@@ -103,6 +104,25 @@ class Test(ModuleClass.Module):
             row = KeyBoardRow(
                 [
                     KeyBoardButton("Ciallo～(∠・ω< )⌒★", data="https://ciallo.cc", button_type=0)
+                ]
+            )
+
+            keyboard = KeyBoard([row])
+            forward_result = await self.actions.send_forward_msg(
+                message=Message(
+                    [
+                        CustomNode(user_id=str(self.event.self_id), nick_name="bot", content=Message([keyboard])
+                                   )
+                    ]
+                )
+            )
+            res_id: str = forward_result.data
+            await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
+                                    message=Message([LongMessage(res_id)]))
+        elif str(self.event.message) == "我们的小溯溯":
+            row = KeyBoardRow(
+                [
+                    KeyBoardButton("小溯溯真棒", data="👍", enter=True, style=0)
                 ]
             )
 

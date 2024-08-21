@@ -52,17 +52,8 @@ class Actions:
             )
         else:
             raise Errors.ArgsInvalidError("'send' API requires 'group_id' or 'user_id' but none of them are provided.")
-        retried = 0
-        while 1:
-            packet.send_to(self.connection)
-            result = Manager.Ret.fetch(packet.echo)
-            if result.ret_code != 0 or (4 <= len(str(result.data.message_id)) <= 6):
-                retried += 1
-                if retried >= 5:
-                    return result
-                await asyncio.sleep(1)
-            else:
-                return result
+        packet.send_to(self.connection)
+        return Manager.Ret.fetch(packet.echo)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().recall, logger)
     async def del_message(self, message_id: int) -> None:
@@ -191,22 +182,23 @@ async def tester(message_data: Event, actions: Actions) -> None:
     ...
 
 
-async def __handler(data: dict, actions: Actions) -> None:
+def __handler(data: dict, actions: Actions) -> None:
     if data.get("echo") is not None:
         reports.put(data)
     elif data.get("post_type") == "meta_event" or data.get("user_id") == data.get("self_id"):
         pass
     else:
-        task = asyncio.create_task(handler(Events.em.new(data), actions))
-        timed = 0
-
-        while not task.done():
-            await asyncio.sleep(0.1)
-            timed += 0.1
-            if timed >= 30:
-                task.cancel()
-                logger.log(f"处理{task.get_name()}超时", level=Logger.levels.ERROR)
-                break
+        # task = asyncio.create_task(handler(Events.em.new(data), actions))
+        asyncio.run(handler(Events.em.new(data), actions))
+        # timed = 0
+        #
+        # while not task.done():
+        #     time.sleep(0.1)
+        #     timed += 0.1
+        #     if timed >= 30:
+        #         task.cancel()
+        #         logger.log(f"处理{task.get_name()}超时", level=Logger.levels.ERROR)
+        #         break
 
 
 handler: callable = tester
@@ -259,7 +251,8 @@ def run():
                 except json.decoder.JSONDecodeError:
                     logger.log("收到错误的JSON内容", level=Logger.levels.ERROR)
                     continue
-                threading.Thread(target=lambda: asyncio.run(__handler(data, actions))).start()
+                # threading.Thread(target=lambda: asyncio.run(__handler(data, actions))).start()
+                threading.Thread(target=lambda: __handler(data, actions)).start()
     except KeyboardInterrupt:
         logger.log("正在退出(Ctrl+C)", level=Logger.levels.WARNING)
         try:

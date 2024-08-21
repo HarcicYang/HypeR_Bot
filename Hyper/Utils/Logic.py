@@ -21,11 +21,13 @@ class Cacher:
             if kwargs.get("no_cache", False):
                 kwargs.pop("no_cache")
                 return func(*args, **kwargs)
-            if f"{str(args)}{str(kwargs)}" not in self.cached:
+            if f"{str(args)}{str(kwargs)}" not in list(self.cached.keys()):
                 ret = func(*args, **kwargs)
                 self.cached[f"{str(args)}{str(kwargs)}"] = ret
                 if len(self.cached) >= self.cache_time:
-                    self.cached.pop(0)
+                    for i in self.cached:
+                        del self.cached[i]
+                        break
                 return ret
             else:
                 return self.cached[f"{str(args)}{str(kwargs)}"]
@@ -37,11 +39,13 @@ class Cacher:
             if kwargs.get("no_cache", False):
                 kwargs.pop("no_cache")
                 return await func(*args, **kwargs)
-            if f"{str(args)}{str(kwargs)}"not in self.cached:
+            if f"{str(args)}{str(kwargs)}"not in list(self.cached.keys()):
                 ret = await func(*args, **kwargs)
                 self.cached[f"{str(args)}{str(kwargs)}"] = ret
                 if len(self.cached) >= self.cache_time:
-                    self.cached.pop(0)
+                    for i in self.cached:
+                        del self.cached[i]
+                        break
                 return ret
             else:
                 return self.cached[f"{str(args)}{str(kwargs)}"]

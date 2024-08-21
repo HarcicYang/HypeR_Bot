@@ -4,7 +4,7 @@ from typing import Union
 
 
 class ObjectedJson:
-    def __init__(self, content: dict = None):
+    def __init__(self, content: Union[dict, list] = None):
         if content is None:
             self.__content = dict()
         else:
@@ -14,19 +14,23 @@ class ObjectedJson:
         if attr == "_ObjectedDict__content" or attr == "raw":
             return self.__content
         else:
-            if isinstance(self.__content, list):
+            try:
+                att = self.__content.get(attr)
+            except:
                 return None
-            att = self.__content.get(attr)
             if isinstance(att, dict):
                 return ObjectedJson(att)
             else:
                 return att
 
     def __setattr__(self, attr, value):
-        if attr == "_ObjectedDict__content":
+        if attr == "_ObjectedJson__content":
             super().__setattr__(attr, value)
         else:
-            self.__content[attr] = value
+            try:
+                self.__content[attr] = value
+            except:
+                pass
 
     def __getitem__(self, item):
         if isinstance(self.__content, dict):
