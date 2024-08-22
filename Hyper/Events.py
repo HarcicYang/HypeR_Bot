@@ -1,7 +1,10 @@
 from Hyper import Configurator, Logger, Manager
 from Hyper.Utils.TypeExt import Integer
 from Hyper.Segments import message_types, At
+from Hyper.Network import WebsocketConnection, HTTPConnection
 from Hyper.Logger import levels
+
+from typing import Union, Any
 
 config = Configurator.cm.get_cfg()
 logger = Logger.Logger()
@@ -163,7 +166,8 @@ class GroupAdminEvent(NoticeEvent):
         self.print_log()
 
     def print_log(self) -> None:
-        logger.log(f"用户 {self.user_id} 在群 {self.group_id} 被{'设置' if self.sub_type == 'set' else '取消'}管理员身份")
+        logger.log(
+            f"用户 {self.user_id} 在群 {self.group_id} 被{'设置' if self.sub_type == 'set' else '取消'}管理员身份")
 
 
 @em.reg("notice", "group_decrease")
@@ -203,7 +207,8 @@ class GroupMuteEvent(NoticeEvent):
         self.print_log()
 
     def print_log(self) -> None:
-        logger.log(f"{self.user_id} 在群 {self.group_id} 被{'' if self.sub_type == 'ban' else '解除'}禁言， 时长为{self.duration}")
+        logger.log(
+            f"{self.user_id} 在群 {self.group_id} 被{'' if self.sub_type == 'ban' else '解除'}禁言， 时长为{self.duration}")
 
 
 @em.reg("notice", "friend_add")
@@ -264,7 +269,8 @@ class GroupEssenceEvent(NoticeEvent):
 
     def print_log(self) -> None:
         action = "设置" if self.sub_type == "add" else "移除"
-        logger.log(f"{self.operator_id} 在群 {self.group_id} 中将 {self.sender_id} 的消息 {self.message_id} {action}精华")
+        logger.log(
+            f"{self.operator_id} 在群 {self.group_id} 中将 {self.sender_id} 的消息 {self.message_id} {action}精华")
 
 
 @em.reg("notice", "reaction")
@@ -296,6 +302,22 @@ class GroupAddInviteEvent(RequestEvent):
     def __init__(self, data: dict):
         super().__init__(data)
         self.sub_type = data.get("sub_type")
+
+
+class HyperNotify:
+    def __init__(self, time_now: int, notify_type: str):
+        self.time = time_now
+        self.type = notify_type
+
+
+class HyperListenerStartNotify(HyperNotify):
+    def __init__(self, time_now: int, notify_type: str, connection: Union[WebsocketConnection, HTTPConnection]):
+        super().__init__(time_now, notify_type)
+        self.connection = connection
+
+
+class HyperListenerStopNotify(HyperNotify):
+    pass
 
 
 

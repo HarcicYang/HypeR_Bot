@@ -38,7 +38,9 @@ class Module:
                 Events.NotifyEvent,
                 Events.GroupEssenceEvent,
                 Events.MessageReactionEvent,
-                Events.GroupAddInviteEvent
+                Events.GroupAddInviteEvent,
+                Events.HyperListenerStartNotify,
+                Events.HyperListenerStopNotify
             ]
     ):
         self.actions = actions

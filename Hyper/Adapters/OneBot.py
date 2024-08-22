@@ -178,27 +178,31 @@ class Actions:
         return Manager.Ret.fetch(packet.echo)
 
 
-async def tester(message_data: Event, actions: Actions) -> None:
+async def tester(message_data: Union[Event, HyperNotify], actions: Actions) -> None:
     ...
 
 
-def __handler(data: dict, actions: Actions) -> None:
-    if data.get("echo") is not None:
-        reports.put(data.get("echo"), data)
-    elif data.get("post_type") == "meta_event" or data.get("user_id") == data.get("self_id"):
-        pass
+def __handler(data: Union[dict, HyperNotify], actions: Actions) -> None:
+    if isinstance(data, dict):
+        if data.get("echo") is not None:
+            reports.put(data.get("echo"), data)
+        elif data.get("post_type") == "meta_event" or data.get("user_id") == data.get("self_id"):
+            pass
+        else:
+            # task = asyncio.create_task(handler(Events.em.new(data), actions))
+            asyncio.run(handler(Events.em.new(data), actions))
+            # await handler(Events.em.new(data), actions)
+            # timed = 0
+            #
+            # while not task.done():
+            #     time.sleep(0.1)
+            #     timed += 0.1
+            #     if timed >= 30:
+            #         task.cancel()
+            #         logger.log(f"处理{task.get_name()}超时", level=Logger.levels.ERROR)
+            #         break
     else:
-        # task = asyncio.create_task(handler(Events.em.new(data), actions))
-        asyncio.run(handler(Events.em.new(data), actions))
-        # timed = 0
-        #
-        # while not task.done():
-        #     time.sleep(0.1)
-        #     timed += 0.1
-        #     if timed >= 30:
-        #         task.cancel()
-        #         logger.log(f"处理{task.get_name()}超时", level=Logger.levels.ERROR)
-        #         break
+        asyncio.run(handler(data, actions))
 
 
 handler: callable = tester
@@ -242,6 +246,12 @@ def run():
             logger.log("成功建立连接", level=Logger.levels.INFO)
             retried = 0
             actions = Actions(connection)
+            data = HyperListenerStartNotify(
+                time_now=int(time.time()),
+                notify_type="listener_start",
+                connection=connection
+            )
+            threading.Thread(target=lambda: __handler(data, actions)).start()
             while True:
                 try:
                     data = connection.recv()
@@ -253,6 +263,7 @@ def run():
                     continue
                 # threading.Thread(target=lambda: asyncio.run(__handler(data, actions))).start()
                 threading.Thread(target=lambda: __handler(data, actions)).start()
+                # asyncio.create_task(__handler(data, actions))
     except KeyboardInterrupt:
         logger.log("正在退出(Ctrl+C)", level=Logger.levels.WARNING)
         try:

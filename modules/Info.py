@@ -10,6 +10,9 @@ from Hyper.Events import *
 class Module(ModuleClass.Module):
     @staticmethod
     def filter(event: Union[*Events.em.events], allowed: list) -> bool:
+        if isinstance(event, HyperNotify):
+            return False
+
         if event.blocked:
             return False
 

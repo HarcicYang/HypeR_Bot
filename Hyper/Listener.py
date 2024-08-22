@@ -1,7 +1,6 @@
 from Hyper import Configurator
 
 import sys
-import os
 
 config = Configurator.cm.get_cfg()
 
@@ -14,5 +13,5 @@ elif config.protocol == "Satori":
 def restart() -> None:
     stop()
     os.execv(sys.executable, ['python'] + sys.argv)
-    os._exit(1)
+    # os._exit(1)
 

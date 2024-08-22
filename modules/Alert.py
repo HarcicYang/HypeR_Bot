@@ -9,6 +9,9 @@ from Hyper.Events import *
 class Module(ModuleClass.Module):
     @staticmethod
     def filter(event: Union[*Events.em.events], allowed: list) -> bool:
+        if isinstance(event, HyperNotify):
+            return False
+
         if isinstance(event, GroupMessageEvent) or isinstance(event, PrivateMessageEvent):
             if event.is_owner and str(event.message).startswith(".alert"):
                 return True
