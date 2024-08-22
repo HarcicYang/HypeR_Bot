@@ -113,14 +113,14 @@ class Message:
 
 
 class Ret:
-    def __init__(self, json_data: dict):
+    def __init__(self, json_data: dict, serializer):
         self.status = json_data["status"]
         self.ret_code = json_data["retcode"]
-        self.data = Hyper.Utils.TypeExt.ObjectedJson(json_data.get("data"))
+        self.data = serializer(json_data.get("data"))
         self.echo = json_data.get("echo")
 
     @classmethod
-    def fetch(cls, echo: str) -> "Ret":
+    def fetch(cls, echo: str, serializer=Hyper.Utils.TypeExt.ObjectedJson) -> "Ret":
         # old = None
         # while True:
         #     content = reports.get()
@@ -130,4 +130,4 @@ class Ret:
         #         return cls(content)
         #     else:
         #         old = content
-        return cls(reports.get(echo))
+        return cls(reports.get(echo), serializer)
