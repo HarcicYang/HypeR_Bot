@@ -184,7 +184,7 @@ async def tester(message_data: Event, actions: Actions) -> None:
 
 def __handler(data: dict, actions: Actions) -> None:
     if data.get("echo") is not None:
-        reports.put(data)
+        reports.put(data.get("echo"), data)
     elif data.get("post_type") == "meta_event" or data.get("user_id") == data.get("self_id"):
         pass
     else:

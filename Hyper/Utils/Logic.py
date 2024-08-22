@@ -3,7 +3,7 @@ import os
 import shutil
 import traceback
 import asyncio
-from typing import Union
+from typing import Union, Any
 import aiohttp
 import time
 import requests
@@ -331,3 +331,20 @@ class Downloader:
                 for i in range(0, len(result)):
                     r += result[str(i)]
                 f.write(r)
+
+
+class KeyQueue:
+    def __init__(self):
+        self.contents = {}
+
+    def put(self, key: str, obj: Any) -> None:
+        if key in list(self.contents.keys()):
+            return
+        self.contents[key] = obj
+
+    def get(self, key: str) -> Any:
+        while 1:
+            try:
+                return self.contents[key]
+            except KeyError:
+                pass

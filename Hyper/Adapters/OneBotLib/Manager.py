@@ -3,11 +3,12 @@ from Hyper import Configurator, Logger, Network, Segments
 from Hyper.Utils import Logic
 
 from typing import Union
-import queue
+# import queue
 import random
 import json
 
-reports = queue.Queue()
+# reports = queue.Queue()
+reports = Logic.KeyQueue()
 config = Configurator.cm.get_cfg()
 logger = Logger.Logger()
 logger.set_level(config.log_level)
@@ -120,12 +121,13 @@ class Ret:
 
     @classmethod
     def fetch(cls, echo: str) -> "Ret":
-        old = None
-        while True:
-            content = reports.get()
-            if old is not None:
-                reports.put(old)
-            if content["echo"] == echo:
-                return cls(content)
-            else:
-                old = content
+        # old = None
+        # while True:
+        #     content = reports.get()
+        #     if old is not None:
+        #         reports.put(old)
+        #     if content["echo"] == echo:
+        #         return cls(content)
+        #     else:
+        #         old = content
+        return cls(reports.get(echo))
