@@ -1,12 +1,8 @@
 import asyncio
-import os.path
 import random
 import time
 import httpx
-import matplotlib.pyplot as plt
-import numpy as np
 from random import randint
-from matplotlib.patches import Arc
 import dataclasses
 import json
 
@@ -44,34 +40,6 @@ users: dict[str, UserInfo] = {}
 
 with open("./assets/quick.json", "r", encoding="utf-8") as f:
     words = json.load(f)["ele"]
-
-
-def plot_angle(angle_degrees, path):
-    plt.clf()
-    angle_radians = np.deg2rad(angle_degrees)
-    line_length = 2
-
-    x1 = [0, line_length * np.cos(np.deg2rad(0))]
-    y1 = [0, line_length * np.sin(np.deg2rad(0))]
-    x2 = [0, line_length * np.cos(angle_radians)]
-    y2 = [0, line_length * np.sin(angle_radians)]
-
-    plt.plot(x1, y1, "b-", linewidth=3.5)
-    plt.plot(x2, y2, "b-", linewidth=3.5)
-
-    arc = Arc((0, 0), width=2 * line_length, height=2 * line_length,
-              theta1=np.deg2rad(0), theta2=angle_radians,
-              linewidth=2, linestyle="--", color="r")
-
-    plt.gca().add_patch(arc)
-
-    plt.gca().set_aspect("equal", adjustable="box")
-
-    plt.xlim(-1.5, 1.5)
-    plt.ylim(-1.5, 1.5)
-    plt.axis("off")
-    plt.title(f"Random angle: {angle_degrees}°")
-    plt.savefig(path)
 
 
 setu_last = int(time.time())
