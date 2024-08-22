@@ -4,7 +4,7 @@ from Hyper.Events import *
 import random
 import json
 
-with open("quick.json", "r", encoding="utf-8") as f:
+with open("./assets/quick.json", "r", encoding="utf-8") as f:
     quicks = json.load(f)
 
 
