@@ -12,6 +12,8 @@ if config.protocol == "OneBot":
 elif config.protocol == "Satori":
     # from Hyper.Adapters.SatoriLib.Res import segment_builder, Base, message_types
     pass
+elif config.protocol == "Lagrange":
+    from Hyper.Adapters.LagrangeLib.Res import segment_builder, Base, message_types
 
 
 class MediaSeg(Base):

@@ -189,18 +189,7 @@ def __handler(data: Union[dict, HyperNotify], actions: Actions) -> None:
         elif data.get("post_type") == "meta_event" or data.get("user_id") == data.get("self_id"):
             pass
         else:
-            # task = asyncio.create_task(handler(Events.em.new(data), actions))
             asyncio.run(handler(Events.em.new(data), actions))
-            # await handler(Events.em.new(data), actions)
-            # timed = 0
-            #
-            # while not task.done():
-            #     time.sleep(0.1)
-            #     timed += 0.1
-            #     if timed >= 30:
-            #         task.cancel()
-            #         logger.log(f"处理{task.get_name()}超时", level=Logger.levels.ERROR)
-            #         break
     else:
         asyncio.run(handler(data, actions))
 

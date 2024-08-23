@@ -114,6 +114,7 @@ class Message:
 
 class Ret:
     def __init__(self, json_data: dict, serializer):
+        self.raw = json_data.copy()
         self.status = json_data["status"]
         self.ret_code = json_data["retcode"]
         self.data = serializer(json_data.get("data"))

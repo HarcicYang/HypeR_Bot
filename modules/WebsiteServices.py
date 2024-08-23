@@ -1,6 +1,7 @@
 from Hyper import Segments
 import ModuleClass
 from Hyper.Utils import Logic
+from Hyper.Utils.Logic import Downloader
 from modules import WordSafety
 from Hyper.Events import *
 
@@ -226,20 +227,15 @@ class Module(ModuleClass.Module):
                 )
 
                 await self.actions.send(group_id=self.event.group_id, message=result)
-                # if len(info[1]) != 0:
-                #     url = info[1][0].get("url")
-                #     size = info[1][0].get("size")
-                #     if url:
-                #         # if size > 1000000:
-                #         if False:
-                #             pass
-                #         else:
-                #             dlr = Downloader(url, f"./temps/b_video_{bv_id}.mp4", 1, True)
-                #             ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
-                #             await dlr.download(ua)
-                #             msg = Manager.Message(Segments.Video.build(f"./temps/b_video_{bv_id}.mp4"))
-                #             await self.actions.send(group_id=self.event.group_id, message=msg)
-                #             os.remove(f"./temps/b_video_{bv_id}.mp4")
+                if len(info[1]) != 0:
+                    url = info[1][0].get("url")
+                    if url:
+                            dlr = Downloader(url, f"./temps/b_video_{bv_id}.mp4", 1, True)
+                            ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+                            await dlr.download(ua)
+                            msg = Manager.Message(Segments.Video.build(f"./temps/b_video_{bv_id}.mp4"))
+                            await self.actions.send(group_id=self.event.group_id, message=msg)
+                            os.remove(f"./temps/b_video_{bv_id}.mp4")
 
                 os.remove(path)
 

@@ -48,6 +48,7 @@ class Config:
             silents: list[int] = None,
             connection: typing.Union[WSConnectionC, HTTPConnectionC] = None,
             log_level: str = "INFO",
+            uin: int = 0,
             others: dict = None
     ):
         self.inited = False
@@ -60,6 +61,7 @@ class Config:
             self.silents: list[int] = silents or list
             self.connection = connection
             self.log_level = log_level
+            self.uin = uin
             self.others = others or dict()
             self.inited = True
 
@@ -86,6 +88,7 @@ class Config:
                 config_json["Connection"]["retries"]
             )
         self.log_level = config_json["Log_level"]
+        self.uin = config_json["uin"]
         self.others = config_json["Others"]
 
         self.inited = True

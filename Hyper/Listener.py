@@ -8,6 +8,8 @@ if config.protocol == "OneBot":
     from Hyper.Adapters.OneBot import *
 elif config.protocol == "Satori":
     from Hyper.Adapters.Satori import *
+elif config.protocol == "Lagrange":
+    from Hyper.Adapters.LagrangePy import *
 
 
 def restart() -> None:

@@ -311,13 +311,10 @@ class HyperNotify:
 
 
 class HyperListenerStartNotify(HyperNotify):
-    def __init__(self, time_now: int, notify_type: str, connection: Union[WebsocketConnection, HTTPConnection]):
+    def __init__(self, time_now: int, notify_type: str, connection: Union[WebsocketConnection, HTTPConnection] = None):
         super().__init__(time_now, notify_type)
         self.connection = connection
 
 
 class HyperListenerStopNotify(HyperNotify):
     pass
-
-
-
