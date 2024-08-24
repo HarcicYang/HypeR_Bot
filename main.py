@@ -1,10 +1,15 @@
 from Hyper import Configurator
 
-Configurator.cm = Configurator.ConfigManager(Configurator.Config(file="config.json").load_from_file())
+Configurator.init(
+    Configurator.Config(
+        file="config.json"
+    ).load_from_file()
+)
 
 if True:
     import asyncio
     import gc
+    from typing import Union
 
     from Hyper import Listener, Events, Logger
     import ModuleClass
@@ -20,7 +25,7 @@ logger.set_level(config.log_level)
 
 @Listener.reg
 @Logic.ErrorHandler().handle_async
-async def handler(event: Events.Event, actions: Listener.Actions) -> None:
+async def handler(event: Union[Events.Event, Events.HyperNotify], actions: Listener.Actions) -> None:
     tasks = []
     for i in handler_list:
         if i.module.filter(event, i.allowed):

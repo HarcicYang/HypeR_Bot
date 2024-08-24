@@ -119,3 +119,8 @@ class ConfigManager:
 
 
 cm: ConfigManager
+
+
+def init(cfg: Config):
+    global cm
+    cm = ConfigManager(cfg)
