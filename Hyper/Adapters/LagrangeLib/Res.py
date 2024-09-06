@@ -1,7 +1,9 @@
+import os
 import random
-from typing import Union
+from typing import Optional, Union
 import base64
 import httpx
+from abc import ABC
 from lagrange.client.client import Client as LgrCli
 from lagrange.client.events.friend import FriendMessage
 from lagrange.client.message import elems
@@ -55,9 +57,9 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
 
         cls.__init__ = init
 
-        async def to_elem(self, gid: int = None, uin: int = None) -> Union[
-            elems.Text, elems.Image, elems.Audio, elems.Video, elems.Quote, elems.At, elems.AtAll, elems.Emoji, None
-        ]:
+        async def to_elem(self, gid: int = None, uin: int = None) -> Optional[Union[
+            elems.Text, elems.Image, elems.Audio, elems.Video, elems.Quote, elems.At, elems.AtAll, elems.Emoji
+        ]]:
             if sg_type == "at":
                 if str(self.qq) == "all":
                     return elems.AtAll(text="@全体成员")
@@ -104,24 +106,27 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
                 file = str(self.file)
                 if file.startswith("http"):
                     c = httpx.get(file).content
-                    with open(f"./temps/record_{random.randint(1000, 9999)}", "wb") as f:
-                        f.write(c)
-                    c = open(f"./temps/record_{random.randint(1000, 9999)}", "rb")
                 elif file.startswith("file://"):
-                    c = open(file.replace("file://", "", 1), "rb")
+                    with open(file.replace("file://", "", 1), "rb") as f:
+                        c = f.read()
                 elif file.startswith("base64://"):
                     file = file.replace("base64://", "", 1)
                     c = base64.b64decode(file)
-                    with open(f"./temps/image_{random.randint(1000, 9999)}", "wb") as f:
-                        f.write(c)
-                    c = open(f"./temps/image_{random.randint(1000, 9999)}", "rb")
                 else:
                     c = None
 
+                if c is not None:
+                    file = f"./temps/temp_record_{uin}_{gid}_{random.randint(1000, 9999)}"
+                    with open(file, "wb") as f:
+                        f.write(c)
+                    os.system(f"ffmpeg -i {file} -ac 1 -ar 8000 ./temps/out_temp_record_{uin}_{gid}.amr")
+
                 if gid is not None:
-                    return await lgr.client.upload_grp_audio(c, gid)
+                    res = await lgr.client.upload_grp_audio(open(f"./temps/out_temp_record_{uin}_{gid}.amr", "rb"), gid)
                 elif uin is not None:
-                    return await lgr.client.upload_friend_audio(c, uc.to_uid(uin))
+                    res = await lgr.client.upload_friend_audio(open(f"./temps/out_temp_record_{uin}_{gid}.amr", "rb"), uc.to_uid(uin))
+                os.remove(f"./temps/out_temp_record_{uin}_{gid}.amr")
+                return res
             else:
                 return None
 
@@ -189,7 +194,7 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
     return inner_builder
 
 
-class Base:
+class Base(ABC):
     def __init__(self, *args, **kwargs): ...
 
     async def to_elem(self) -> dict: ...

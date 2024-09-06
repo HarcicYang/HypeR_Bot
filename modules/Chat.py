@@ -3,9 +3,11 @@ from Hyper.Manager import Message
 from ModuleClass import ModuleRegister, Module
 from Hyper.Segments import *
 from Hyper.Configurator import cm
+from Hyper.Listener import Actions
 
 from modules.GoogleAI import genai, Context, Parts, Roles
 
+from typing import Union, Any
 from search_engines import Bing
 import html2text
 import random
@@ -14,8 +16,157 @@ import traceback
 import os
 import httpx
 
-white_list = cm.get_cfg().others.get("white")
+white_list: list = cm.get_cfg().others.get("white")
 white_list += cm.get_cfg().owner
+
+
+class ChatActions:
+    def __init__(self, actions: list["ChatActions"] = None):
+        self.actions = actions or list()
+
+    def clear(self, ac: Actions, ev: Union[GroupMessageEvent, PrivateMessageEvent]) -> "ChatActions":
+        class ClearRunner(type(self)):
+            async def run(self) -> None:
+                global cmc
+                if not ev.is_owner:
+                    return
+                del cmc
+                cmc = ContextManager()
+                await ac.send(
+                    group_id=ev.group_id,
+                    user_id=ev.user_id,
+                    message=Message(Reply(ev.message_id), Text("成功"))
+                )
+
+        self.actions.append(ClearRunner())
+        return self
+
+    def ask(self, ac: Actions, ev: Union[GroupMessageEvent, PrivateMessageEvent]) -> "ChatActions":
+        class AskRunner(type(self)):
+            async def run(self) -> None:
+                if isinstance(ev, GroupMessageEvent):
+                    if not str(ev.message).startswith(".chat "):
+                        if len(ev.message) == 2 and "chat_quick_ask" in str(ev.message):
+                            pass
+                        else:
+                            return
+                    if ev.user_id not in white_list:
+                        return
+                    if ev.blocked:
+                        return
+                new = []
+
+                msg_id = (
+                    await ac.send(
+                        group_id=ev.group_id,
+                        user_id=ev.user_id,
+                        message=Message(
+                            Reply(ev.message_id),
+                            Text("正在生成回复")
+                        )
+                    )
+                ).data.message_id
+
+                try:
+                    for i in ev.message:
+                        if isinstance(i, Text):
+                            new.append(Parts.Text(i.text.replace(".chat ", "", 1).replace("chat_quick_ask ", "", 1)))
+                        elif isinstance(i, Image):
+                            if i.file.startswith("http"):
+                                url = i.file
+                            else:
+                                url = i.url
+                            new.append(Parts.File.upload_from_url(url))
+
+                    new = Roles.User(*new)
+                    result = cmc.get_context(ev.user_id, ev.group_id).gen_content(new)
+                    await ac.send(
+                        group_id=ev.group_id,
+                        user_id=ev.user_id,
+                        message=Message(
+                            Reply(ev.message_id),
+                            Text(result)
+                        )
+                    )
+                except:
+                    err = traceback.format_exc()
+                    await ac.send(
+                        group_id=ev.group_id,
+                        user_id=ev.user_id,
+                        message=Message(
+                            Reply(ev.message_id),
+                            Text(err)
+                        )
+                    )
+
+                await ac.del_message(msg_id)
+
+        self.actions.append(AskRunner())
+        return self
+
+    def add_to_white(
+            self, target: int, ac: Actions, ev: Union[GroupMessageEvent, PrivateMessageEvent]
+    ) -> "ChatActions":
+        class WhiteListAddRunner(type(self)):
+            async def run(self):
+                if not ev.is_owner:
+                    return
+                white_list.append(int(target))
+                await ac.send(
+                    group_id=ev.group_id,
+                    user_id=ev.user_id,
+                    message=Message(Reply(ev.message_id), Text("成功"))
+                )
+
+        self.actions.append(WhiteListAddRunner())
+        return self
+
+    def del_from_white(
+            self, target: int, ac: Actions, ev: Union[GroupMessageEvent, PrivateMessageEvent]
+    ) -> "ChatActions":
+        class WhiteListDelRunner(type(self)):
+            async def run(self):
+                if not ev.is_owner:
+                    return
+                white_list.remove(int(target))
+                await ac.send(
+                    group_id=ev.group_id,
+                    user_id=ev.user_id,
+                    message=Message(Reply(ev.message_id), Text("成功"))
+                )
+
+        self.actions.append(WhiteListDelRunner())
+        return self
+
+    async def run(self, *args, **kwargs) -> Any:
+        for i in self.actions:
+            await i.run()
+
+    @classmethod
+    def parse(cls, cmd: str, actions: Actions, event: Union[GroupMessageEvent, PrivateMessageEvent]) -> "ChatActions":
+        args = cls()
+        if cmd.startswith(".chat"):
+            cmd = cmd.replace(".chat", "")
+            if cmd.startswith(".context"):
+                cmd = cmd.replace(".context", "")
+                if cmd.startswith(".clear"):
+                    args.clear(actions, event)
+            elif cmd.startswith(".white"):
+                cmd = cmd.replace(".white", "")
+                if cmd.startswith(".add "):
+                    uin = cmd.replace(".add ", "")
+                    args.add_to_white(int(uin), actions, event)
+                elif cmd.startswith(".del "):
+                    uin = cmd.replace(".del ", "")
+                    args.del_from_white(int(uin), actions, event)
+                else:
+                    pass
+            else:
+                args.ask(actions, event)
+        else:
+            pass
+
+        return args
 
 
 class Tools:
@@ -83,6 +234,7 @@ class Tools:
         :param query: 要搜索的关键词（句）
         :return: 一个list，包含了搜索到的结果。
         """
+
         def read_url(url: str) -> str:
             try:
                 headers = {
@@ -154,59 +306,6 @@ cmc = ContextManager()
 @ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
 class Chat(Module):
     async def handle(self):
-        if isinstance(self.event, GroupMessageEvent):
-            if not str(self.event.message).startswith(".chat "):
-                if len(self.event.message) == 2 and "chat_quick_ask" in str(self.event.message):
-                    pass
-                else:
-                    return
-            if self.event.user_id not in white_list:
-                return
-            if self.event.blocked:
-                return
-        new = []
-
-        msg_id = (
-            await self.actions.send(
-                group_id=self.event.group_id,
-                user_id=self.event.user_id,
-                message=Message(
-                    Reply(self.event.message_id),
-                    Text("正在生成回复")
-                )
-            )
-        ).data.message_id
-
-        try:
-            for i in self.event.message:
-                if isinstance(i, Text):
-                    new.append(Parts.Text(i.text.replace(".chat ", "", 1).replace("chat_quick_ask ", "", 1)))
-                elif isinstance(i, Image):
-                    if i.file.startswith("http"):
-                        url = i.file
-                    else:
-                        url = i.url
-                    new.append(Parts.File.upload_from_url(url))
-
-            new = Roles.User(*new)
-            result = cmc.get_context(self.event.user_id, self.event.group_id).gen_content(new)
-            await self.actions.send(
-                group_id=self.event.group_id,
-                user_id=self.event.user_id,
-                message=Message(
-                    Reply(self.event.message_id),
-                    Text(result)
-                )
-            )
-        except:
-            err = traceback.format_exc()
-            await self.actions.send(
-                group_id=self.event.group_id,
-                user_id=self.event.user_id,
-                message=Message(
-                    Reply(self.event.message_id),
-                    Text(err)
-                )
-            )
-
-        await self.actions.del_message(msg_id)
+        actions = ChatActions.parse(str(self.event.message), self.actions, self.event)
+        for i in actions.actions:
+            await i.run()

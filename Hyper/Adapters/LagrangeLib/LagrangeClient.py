@@ -1,13 +1,13 @@
 from Hyper import Logger, Configurator
+from Hyper.Utils.Logic import SimpleQueue
 
-import queue
 from lagrange import Lagrange
 
 config = Configurator.cm.get_cfg()
 logger = Logger.Logger()
 logger.set_level(config.log_level)
 
-event_queue = queue.Queue()
+event_queue = SimpleQueue()
 
 lgr = Lagrange(
     config.uin,

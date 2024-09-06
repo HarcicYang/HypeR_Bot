@@ -2,15 +2,20 @@ from Hyper.Segments import *
 from Hyper.Manager import Message, logger
 import ModuleClass
 from Hyper.Events import *
+from Hyper.Utils.ArkSignHelper import Card, get_pic
+
+import time
 import json
 
 
 @ModuleClass.ModuleRegister.register(GroupMessageEvent)
 class Test(ModuleClass.Module):
     async def handle(self):
-        if len(self.event.message) != 0 and isinstance(self.event.message[0], Json):
-            text = json.loads((await self.event.message.get())[0]["data"]["data"])
-            logger.log(text, level=Logger.levels.DEBUG)
+        if len(self.event.message) != 0:
+            for i in self.event.message:
+                if isinstance(i, Json):
+                    text = json.loads((await self.event.message.get())[0]["data"]["data"])
+                    logger.log(text, level=Logger.levels.DEBUG)
             # with open(f"debug/{int(time.time())}.json", "w", encoding="utf-8") as f:
             #     f.write(str(text))
 
@@ -18,7 +23,7 @@ class Test(ModuleClass.Module):
             return
 
         if str(self.event.message) == ".test_h":
-            return 
+            # return
             # content = ("# Markdown"
             #            " \n [测试](https://github.com)"
             #            " \n `这是一个一个代码块114514`"
@@ -94,7 +99,7 @@ class Test(ModuleClass.Module):
             )
 
         elif str(self.event.message) == ".test3":
-            result = await self.actions.get_stranger_info(1449924494)
+            result = await self.actions.get_stranger_info(2488529467)
             print(result.ret_code)
             print(result.data)
             result = await self.actions.get_group_info(group_id=894446744)
@@ -158,3 +163,49 @@ class Test(ModuleClass.Module):
                 group_id=self.event.group_id,
                 message=message
             )
+
+        elif str(self.event.message) == ".test6":
+            echo = await self.actions.custom.get_cookies(domain="qun.qq.com")
+            print(Manager.Ret.fetch(echo).data)
+
+        elif str(self.event.message) == ".test7":
+            ark = Card(
+                title="",
+                desc="",
+                jump_url="",
+                music_url="",
+                source_icon="https://p.qlogo.cn/homework/0/hw_h_owx0c2pifdccko66c04ddfbdc62/0",
+                tag="",
+                preview="https://p.qlogo.cn/homework/0/hw_h_owx0c2pifdccko66c04ddfbdc62/0"
+            )
+            card = Json(
+                str(await ark.get_sig(self.actions, self.event.self_id))
+            )
+            await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Message(card))
+
+        elif str(self.event.message) == ".test8":
+            c = {
+                'app': 'com.tencent.tdoc.qqpush',
+                'config': {
+                    'ctime': int(time.time()),
+                    'token': ''
+                },
+                'meta': {
+                    'contact': {
+                        'avatar': await get_pic(self.actions, self.event.self_id, "./temps/ra.jpg"),
+                        'contact': '你好！这里是 Rick Astley 唯一的官方QQ账号。',
+                        'jumpUrl': 'https://bilibili.com/video/BV1GJ411x7h7/',
+                        'nickname': 'Rick Astley',
+                        'tag': '推荐用户',
+                        'tagIcon': 'https://p.qlogo.cn/gh/367798007/367798007/100'
+                    }
+                },
+                'prompt': '推荐用户',
+                'ver': '',
+                'view': 'contact'
+            }
+            ark = Card.any(c)
+            card = Json(
+                str(await ark.get_sig(self.actions, self.event.self_id))
+            )
+            await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Message(card))

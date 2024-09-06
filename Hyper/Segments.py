@@ -14,6 +14,8 @@ elif config.protocol == "Satori":
     pass
 elif config.protocol == "Lagrange":
     from Hyper.Adapters.LagrangeLib.Res import segment_builder, Base, message_types
+elif config.protocol == "Kritor":
+    from Hyper.Adapters.KritorLib.Res import segment_builder, Base, message_types
 
 
 class MediaSeg(Base):

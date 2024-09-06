@@ -11,7 +11,7 @@ with open("./assets/quick.json", "r", encoding="utf-8") as f:
 @ModuleClass.ModuleRegister.register(GroupAddInviteEvent, GroupMemberDecreaseEvent, GroupMemberIncreaseEvent)
 class Module(ModuleClass.Module):
     async def handle(self):
-        if self.event.blocked:
+        if self.event.blocked or self.event.is_silent:
             return
         if isinstance(self.event, NoticeEvent):
             if isinstance(self.event, GroupMemberIncreaseEvent):

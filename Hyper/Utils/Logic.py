@@ -348,3 +348,19 @@ class KeyQueue:
                 return self.contents[key]
             except KeyError:
                 pass
+
+
+class SimpleQueue:
+    def __init__(self):
+        self.contents = []
+
+    def put(self, obj: Any) -> None:
+        self.contents.append(obj)
+
+    def get(self) -> Any:
+        while 1:
+            try:
+                return self.contents.pop(0)
+            except IndexError:
+                pass
+

@@ -1,7 +1,6 @@
-import gc
 import os
 import sys
-import importlib
+import importlib.util
 import traceback
 
 from Hyper import Configurator, Logger
@@ -9,28 +8,36 @@ from Hyper import Configurator, Logger
 config = Configurator.cm.get_cfg()
 logger = Logger.Logger()
 logger.set_level(config.log_level)
-imports = []
-
-if getattr(sys, "frozen", False):
-    path = "./_Internal/modules"
-else:
-    path = "modules"
-
-for i in os.listdir(path):
-    if "__init__" in i:
-        continue
-
-    try:
-        if i.endswith(".py"):
-            imports.append(importlib.import_module(f"modules.{i[:-3]}"))
-        elif i.endswith(".pyd") or i.endswith(".pyc"):
-            imports.append(importlib.import_module(f"modules.{i[:-4]}"))
-    except Exception as e:
-        logger.log(f"没能成功导入 modules.{i[:-4]}: \n\n{traceback.format_exc()}\n\n")
-del i
+modules_path = os.path.dirname(__file__)
 
 
-def reload() -> None:
-    gc.collect()
-    for j in imports:
-        imports[imports.index(j)] = importlib.reload(j)
+def import_modules(path):
+    global imports
+    imports = []
+    for filename in os.listdir(path):
+        if filename.startswith("__"):
+            continue
+
+        module_name = filename[:-3] if filename.endswith(".py") else filename[:-4]
+        module_path = os.path.join(path, filename)
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if spec is None:
+            # logger.log(f"无法导入模块: {module_name}")
+            continue
+
+        try:
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+            imports.append(module)
+        except Exception as e:
+            logger.log(f"导入模块 {module_name} 时发生错误: {traceback.format_exc()}", level=Logger.levels.ERROR)
+
+    return imports
+
+
+def load():
+    import_modules(modules_path)
+
+
+load()

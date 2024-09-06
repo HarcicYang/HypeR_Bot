@@ -2,6 +2,8 @@ from typing import Union
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import google.generativeai as genai
 import httpx
+from PIL import Image
+from io import BytesIO
 
 
 class Parts:

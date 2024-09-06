@@ -8,7 +8,6 @@ Configurator.init(
 
 if True:
     import asyncio
-    import gc
     from typing import Union
 
     from Hyper import Listener, Events, Logger
@@ -26,14 +25,10 @@ logger.set_level(config.log_level)
 @Listener.reg
 @Logic.ErrorHandler().handle_async
 async def handler(event: Union[Events.Event, Events.HyperNotify], actions: Listener.Actions) -> None:
-    tasks = []
-    for i in handler_list:
-        if i.module.filter(event, i.allowed):
-            tasks.append(asyncio.create_task(i.module(actions, event).handle()))
-
-    await asyncio.gather(*tasks)
-    del tasks
-    gc.collect()
+    async with ModuleClass.TaskCxt() as tasks:
+        for i in handler_list:
+            if i.module.filter(event, i.allowed):
+                tasks.add(asyncio.create_task(i.module(actions, event).handle()))
 
 
 Listener.run()

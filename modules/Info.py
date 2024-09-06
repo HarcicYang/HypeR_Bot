@@ -10,7 +10,7 @@ from Hyper.Events import *
 @ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
 class Module(ModuleClass.Module):
     @staticmethod
-    def filter(event: Union[*Events.em.events], allowed: list) -> bool:
+    def filter(event: Events.Event, allowed: list) -> bool:
         if isinstance(event, HyperNotify):
             return False
 

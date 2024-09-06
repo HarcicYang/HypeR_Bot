@@ -1,9 +1,10 @@
 from Hyper import Events, Listener, Logger, Configurator
 
+import gc
+import asyncio
 import importlib
 from typing import Union
 import dataclasses
-
 
 config = Configurator.cm.get_cfg()
 logger = Logger.Logger()
@@ -54,7 +55,27 @@ class Module:
         return ModuleInfo()
 
     @staticmethod
-    def filter(event: Union[*Events.em.events], allowed: list) -> bool:
+    def filter(
+            event: Union[
+                Events.GroupMessageEvent,
+                Events.PrivateMessageEvent,
+                Events.GroupFileUploadEvent,
+                Events.GroupAdminEvent,
+                Events.GroupMemberDecreaseEvent,
+                Events.GroupMemberIncreaseEvent,
+                Events.GroupMuteEvent,
+                Events.FriendAddEvent,
+                Events.GroupRecallEvent,
+                Events.FriendRecallEvent,
+                Events.NotifyEvent,
+                Events.GroupEssenceEvent,
+                Events.MessageReactionEvent,
+                Events.GroupAddInviteEvent,
+                Events.HyperListenerStartNotify,
+                Events.HyperListenerStopNotify
+            ],
+            allowed: list
+    ) -> bool:
         for i in allowed:
             if isinstance(event, i):
                 return True
@@ -104,7 +125,25 @@ def load() -> None:
     global imported, register_modules
     register_modules = []
     if imported is not None:
-        imported.reload()
+        imported.load()
         imported = importlib.reload(imported)
     else:
         imported = importlib.import_module("modules")
+
+
+class TaskCxt:
+    def __init__(self):
+        self.tasks = []
+
+    def add(self, task: asyncio.Task) -> None:
+        self.tasks.append(task)
+
+    async def wait(self) -> None:
+        await asyncio.gather(*self.tasks)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.wait()
+        gc.collect()

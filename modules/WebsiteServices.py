@@ -4,6 +4,7 @@ from Hyper.Utils import Logic
 from Hyper.Utils.Logic import Downloader
 from modules import WordSafety
 from Hyper.Events import *
+from Hyper.Utils.ArkSignHelper import Card, get_pic
 
 from typing import Any
 import re
@@ -12,12 +13,13 @@ import os
 from io import BytesIO
 import httpx
 import json
+import time
 from PIL import Image
 from pyppeteer import launch
 
 
 def open_from_url(url: str):
-    return Image.open(BytesIO(httpx.get(url).content))
+    return Image.open(BytesIO(httpx.get(url, verify=False).content))
 
 
 def square_scale(image: Image, height: int):
@@ -63,8 +65,10 @@ async def html2img(url: str, size: tuple[int, int]) -> str:
     return path
 
 
-@Logic.Cacher(1).cache_async
+# @Logic.Cacher(114514).cache_async
 async def get_image(info, bv_id) -> str:
+    if os.path.exists(f"file://{os.path.abspath(f'./temps/bilibili_{bv_id}.html')}"):
+        return f"file://{os.path.abspath(f'./temps/bilibili_{bv_id}.html')}"
     cover = open_from_url(info.picture)
     if cover.size[0] < 1020 or cover.size[1] < 1080 or cover.size[1] > 1500 or cover.size[0] > 1250:
         cover = square_scale(cover, 1200)
@@ -230,14 +234,15 @@ class Module(ModuleClass.Module):
                 if len(info[1]) != 0:
                     url = info[1][0].get("url")
                     if url:
+                        if not os.path.exists(f"./temps/b_video_{bv_id}.mp4"):
                             dlr = Downloader(url, f"./temps/b_video_{bv_id}.mp4", 1, True)
                             ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
                             await dlr.download(ua)
-                            msg = Manager.Message(Segments.Video.build(f"./temps/b_video_{bv_id}.mp4"))
-                            await self.actions.send(group_id=self.event.group_id, message=msg)
-                            os.remove(f"./temps/b_video_{bv_id}.mp4")
+                        msg = Manager.Message(Segments.Video.build(f"./temps/b_video_{bv_id}.mp4"))
+                        await self.actions.send(group_id=self.event.group_id, message=msg)
+                        # os.remove(f"./temps/b_video_{bv_id}.mp4")
 
-                os.remove(path)
+                # os.remove(path)
 
         pa = r"(http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+\b)"
         try:
@@ -248,16 +253,18 @@ class Module(ModuleClass.Module):
                     if not safety.safe:
                         return
                     content = i.replace("github.com/", "opengraph.githubassets.com/Yenai/")
-                    with open("./temps/github.png", "wb") as f:
+                    with open(f"./temps/github_{self.event.group_id}_{self.event.user_id}.png", "wb") as f:
                         f.write(httpx.get(content).content)
                     await self.actions.send(
                         group_id=self.event.group_id,
                         user_id=self.event.user_id,
                         message=Manager.Message(
-                            Segments.Image(f"file://{os.path.abspath('./temps/github.png')}",
-                                           summary=f"{safety.address}")
+                            Segments.Image(
+                                f"file://{os.path.abspath(f'./temps/github_{self.event.group_id}_{self.event.user_id}.png')}",
+                                summary=f"{safety.address}"
+                            )
                         )
                     )
-                    os.remove("./temps/github.png")
+                    os.remove(f"./temps/github_{self.event.group_id}_{self.event.user_id}.png")
         except:
             return

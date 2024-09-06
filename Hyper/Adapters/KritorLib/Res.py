@@ -1,3 +1,6 @@
+from Hyper.Adapters.KritorLib.protos.event import EventServiceStub, RequestPushEvent, EventType
+
+import asyncio
 from abc import ABC
 
 message_types = {}
@@ -111,3 +114,62 @@ class Base(ABC):
     def __eq__(self, other) -> bool: ...
 
     def __ne__(self, other) -> bool: ...
+
+
+class EventService:
+    def __init__(self, stub: EventServiceStub):
+        self.stub = stub
+
+    async def core_service(self):
+        while 1:
+            try:
+                async for i in self.stub.register_active_listener(
+                        RequestPushEvent(type=EventType.EVENT_TYPE_CORE_EVENT)
+                ):
+                    print(i)
+                    # print(i.to_json())
+            except EOFError:
+                continue
+
+    async def message_service(self):
+        while 1:
+            try:
+                async for i in self.stub.register_active_listener(
+                        RequestPushEvent(type=EventType.EVENT_TYPE_MESSAGE)
+                ):
+                    print(i)
+                    # print(i.to_json())
+            except EOFError:
+                continue
+
+    async def notice_service(self):
+        while 1:
+            try:
+                async for i in self.stub.register_active_listener(
+                        RequestPushEvent(type=EventType.EVENT_TYPE_NOTICE)
+                ):
+                    print(i)
+                    # print(i.to_json())
+            except EOFError:
+                continue
+
+    async def request_service(self):
+        while 1:
+            try:
+                async for i in self.stub.register_active_listener(
+                        RequestPushEvent(type=EventType.EVENT_TYPE_REQUEST)
+                ):
+                    print(i)
+                    # print(i.to_json())
+            except EOFError:
+                continue
+
+    async def run(self):
+        tasks = [
+            asyncio.create_task(self.core_service()),
+            asyncio.create_task(self.message_service()),
+            asyncio.create_task(self.notice_service()),
+            asyncio.create_task(self.request_service())
+        ]
+
+        await asyncio.gather(*tasks)
