@@ -104,7 +104,7 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
     return inner_builder
 
 
-class Base(ABC):
+class SegmentBase(ABC):
     def __init__(self, *args, **kwargs): ...
 
     def to_json(self) -> dict: ...

@@ -8,17 +8,20 @@ from Hyper.Configurator import cm
 
 config = cm.get_cfg()
 if config.protocol == "OneBot":
-    from Hyper.Adapters.OneBotLib.Res import segment_builder, Base, message_types
+    # from Hyper.Adapters.OneBotLib.Res import segment_builder, Base, message_types
+    from Hyper.Adapters.OneBotLib.Res import SegmentBase, message_types
 elif config.protocol == "Satori":
     # from Hyper.Adapters.SatoriLib.Res import segment_builder, Base, message_types
     pass
 elif config.protocol == "Lagrange":
-    from Hyper.Adapters.LagrangeLib.Res import segment_builder, Base, message_types
+    # from Hyper.Adapters.LagrangeLib.Res import segment_builder, Base, message_types
+    from Hyper.Adapters.LagrangeLib.Res import SegmentBase, message_types
 elif config.protocol == "Kritor":
-    from Hyper.Adapters.KritorLib.Res import segment_builder, Base, message_types
+    # from Hyper.Adapters.KritorLib.Res import segment_builder, Base, message_types
+    from Hyper.Adapters.KritorLib.Res import SegmentBase, message_types
 
 
-class MediaSeg(Base):
+class MediaSeg(SegmentBase):
     @classmethod
     def build(cls, file: str):
         if file.startswith("http") or file.startswith("file:") or file.startswith("base64:"):
@@ -36,60 +39,54 @@ class MediaSeg(Base):
             else:
                 return None
 
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
 
-@segment_builder("text", "<text>")
-class Text(Base):
+
+class Text(SegmentBase, st="text", su="<text>"):
     text: str
 
 
-@segment_builder("image", "[图片]")
-class Image(MediaSeg):
+class Image(MediaSeg, st="image", su="[Image]"):
     file: str
     url: str
-    summary: str = "[图片]"
+    summary: str = "[Image]"
 
 
-@segment_builder("at", f"@<qq>")
-class At(Base):
+class At(SegmentBase, st="at", su=f"@<qq>"):
     qq: str
 
 
-@segment_builder("reply", "")
-class Reply(Base):
+class Reply(SegmentBase, st="reply", su=""):
     id: str
 
 
-@segment_builder("face", "[表情: <id>]")
-class Faces(Base):
+class Faces(SegmentBase, st="face", su="[Face: <id>]"):
     id: str
 
 
-@segment_builder("location", "[位置: <lat>, <lon>]")
-class Location(Base):
-    lat: str
-    lon: str
+# @segment_builder("location", "[位置: <lat>, <lon>]")
+# class Location(Base):
+#     lat: str
+#     lon: str
 
 
-@segment_builder("record", "[语音]")
-class Record(MediaSeg):
+class Record(MediaSeg, st="record", su="[Audio]"):
     file: str
     url: str
 
 
-@segment_builder("video", "[视频]")
-class Video(MediaSeg):
+class Video(MediaSeg, st="video", su="[Video]"):
     file: str
     url: str
 
 
-@segment_builder("poke", "[拍一拍]")
-class Poke(Base):
+class Poke(SegmentBase, st="poke", su="[Poke]"):
     type: str
     id: str
 
 
-@segment_builder("contact")
-class Contact(Base):
+class Contact(SegmentBase, st="contact"):
     type: str
     id: str
 
@@ -97,13 +94,11 @@ class Contact(Base):
         return f"[推荐{'群' if self.type == 'group' else '用户'}: {self.id}]"
 
 
-@segment_builder("forward", "[转发消息]")
-class Forward(Base):
+class Forward(SegmentBase, st="forward", su="[Forward]"):
     id: str
 
 
-@segment_builder("node", "[转发消息]")
-class Node(Base):
+class Node(SegmentBase, st="node", su="[Node]"):
     id: str
 
 
@@ -209,35 +204,35 @@ class MarkDown:
         return f"[MarkDown]"
 
 
-@segment_builder("longmsg", "[<id>]")
-class LongMessage(Base):
+# @segment_builder("longmsg", "[<id>]")
+class LongMessage(SegmentBase, st="longmsg", su="[Long: <id>]"):
     id: str
 
 
-@segment_builder("json", "[Json]")
-class Json(Base):
+# @segment_builder("json", "[Json]")
+class Json(SegmentBase, st="json", su="[Json]"):
     data: typing.Union[dict, list, str]
 
 
-@segment_builder("mface", "[表情]")
-class MarketFace(Base):
+# @segment_builder("mface", "[表情]")
+class MarketFace(SegmentBase, st="mface", su=""):
     face_id: str
     tab_id: str
     key: str
 
 
-@segment_builder("dice", "[骰子]")
-class Dice(Base):
+# @segment_builder("dice", "[骰子]")
+class Dice(SegmentBase, st="dice", su="[Dice]"):
     pass
 
 
-@segment_builder("rps", "[猜拳]")
-class Rps(Base):
+# @segment_builder("rps", "[猜拳]")
+class Rps(SegmentBase, st="rps", su="[RPS]"):
     pass
 
 
-@segment_builder("music", "[音乐]")
-class Music(Base):
+# @segment_builder("music", "[音乐]")
+class Music(SegmentBase, st="music", su="[Music]"):
     type: str
     id: str = None
     url: str

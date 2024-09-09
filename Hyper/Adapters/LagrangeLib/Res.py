@@ -21,133 +21,47 @@ from Hyper.Adapters.LagrangeLib.LagrangeClient import lgr, uc, config, event_que
 message_types = {}
 
 
-def segment_builder(sg_type: str, summary_tmp: str = None):
-    # print(inspect.get_annotations(cls))
-    def inner_builder(cls):
-        var = dict(vars(cls))
-        anns: dict = var.get("__annotations__", False) or dict()
+class SegmentBase(ABC):
+    def __init__(self, *args, **kwargs):
+        var = self.__var
+        anns = self.__anns
+        arg = {}
+        if len(args) > 0:
+            for i in args:
+                arg[list(anns.keys())[list(args).index(i)]] = i
 
-        def init(self, *args, **kwargs):
-            arg = {}
-            if len(args) > 0:
-                for i in args:
-                    arg[list(anns.keys())[list(args).index(i)]] = i
+        if len(kwargs) > 0:
+            for i in kwargs:
+                try:
+                    arg[i] = anns[i](kwargs[i])
+                except TypeError:
+                    arg[i] = kwargs[i]
+        new_arg = arg.copy()
 
-            if len(kwargs) > 0:
-                for i in kwargs:
-                    try:
-                        arg[i] = anns[i](kwargs[i])
-                    except TypeError:
-                        arg[i] = kwargs[i]
-            new_arg = arg.copy()
+        if len(anns) > len(arg):
+            for i in anns.keys():
+                if i not in arg.keys():
+                    if i not in var.keys():
+                        new_arg[i] = None
+                        continue
+                    if not isinstance(var[i], anns[i]):
+                        new_arg[i] = anns[i](var[i])
+                    else:
+                        new_arg[i] = var[i]
 
-            if len(anns) > len(arg):
-                for i in anns.keys():
-                    if i not in arg.keys():
-                        if i not in var.keys():
-                            new_arg[i] = None
-                            continue
-                        if not isinstance(var[i], anns[i]):
-                            new_arg[i] = anns[i](var[i])
-                        else:
-                            new_arg[i] = var[i]
+        for i in new_arg:
+            setattr(self, i, new_arg[i])
 
-            for i in new_arg:
-                setattr(self, i, new_arg[i])
+    def __init_subclass__(cls, **kwargs):
+        sg_type = kwargs.get("sg_type") or kwargs.get("st")
+        summary_tmp = kwargs.get("summary_tmp") or kwargs.get("su")
 
-        cls.__init__ = init
+        if sg_type is summary_tmp is None:
+            return
 
-        async def to_elem(self, gid: int = None, uin: int = None) -> Optional[Union[
-            elems.Text, elems.Image, elems.Audio, elems.Video, elems.Quote, elems.At, elems.AtAll, elems.Emoji
-        ]]:
-            if sg_type == "at":
-                if str(self.qq) == "all":
-                    return elems.AtAll(text="@全体成员")
-                else:
-                    info = await lgr.client.get_user_info(uc.to_uid(int(self.qq)))
-                    return elems.At(
-                        text=f"@{info.name}",
-                        uid=uc.to_uid(int(self.qq)),
-                        uin=int(self.qq)
-                    )
-            elif sg_type == "text":
-                return elems.Text(text=str(self.text))
-            elif sg_type == "reply":
-                seq, uin, _ = get_msg_info(int(self.id))
-                return elems.Quote(
-                    text="",
-                    seq=seq,
-                    uin=uin,
-                    timestamp=0
-                )
-            elif sg_type == "image":
-                file = str(self.file)
-                if file.startswith("http"):
-                    c = httpx.get(file).content
-                    with open(f"./temps/image_{random.randint(1000, 9999)}", "wb") as f:
-                        f.write(c)
-                    c = open(f"./temps/image_{random.randint(1000, 9999)}", "rb")
-                elif file.startswith("file://"):
-                    c = open(file.replace("file://", "", 1), "rb")
-                elif file.startswith("base64://"):
-                    file = file.replace("base64://", "", 1)
-                    c = base64.b64decode(file)
-                    with open(f"./temps/image_{random.randint(1000, 9999)}", "wb") as f:
-                        f.write(c)
-                    c = open(f"./temps/image_{random.randint(1000, 9999)}", "rb")
-                else:
-                    c = None
-
-                if gid is not None:
-                    return await lgr.client.upload_grp_image(c, gid)
-                elif uin is not None:
-                    return await lgr.client.upload_friend_image(c, uc.to_uid(uin))
-            elif sg_type == "record":
-                file = str(self.file)
-                if file.startswith("http"):
-                    c = httpx.get(file).content
-                elif file.startswith("file://"):
-                    with open(file.replace("file://", "", 1), "rb") as f:
-                        c = f.read()
-                elif file.startswith("base64://"):
-                    file = file.replace("base64://", "", 1)
-                    c = base64.b64decode(file)
-                else:
-                    c = None
-
-                if c is not None:
-                    file = f"./temps/temp_record_{uin}_{gid}_{random.randint(1000, 9999)}"
-                    with open(file, "wb") as f:
-                        f.write(c)
-                    os.system(f"ffmpeg -i {file} -ac 1 -ar 8000 ./temps/out_temp_record_{uin}_{gid}.amr")
-
-                if gid is not None:
-                    res = await lgr.client.upload_grp_audio(open(f"./temps/out_temp_record_{uin}_{gid}.amr", "rb"), gid)
-                elif uin is not None:
-                    res = await lgr.client.upload_friend_audio(open(f"./temps/out_temp_record_{uin}_{gid}.amr", "rb"), uc.to_uid(uin))
-                os.remove(f"./temps/out_temp_record_{uin}_{gid}.amr")
-                return res
-            else:
-                return None
-
-        cls.to_elem = to_elem
-
-        def to_json(self) -> dict:
-            base = {"type": sg_type, "data": {}}
-            for i in anns:
-                if getattr(self, i) is None:
-                    continue
-                if not isinstance(getattr(self, i), anns[i]):
-                    base["data"][i] = anns[i](getattr(self, i))
-                else:
-                    base["data"][i] = getattr(self, i)
-                # try:
-                #     base["data"][i] = anns[i](getattr(self, i))
-                # except TypeError:
-                #     base["data"][i] = getattr(self, i)
-            return base
-
-        cls.to_json = to_json
+        cls.__sg_type = sg_type
+        cls.__var = dict(vars(cls))
+        cls.__anns: dict = cls.__var.get("__annotations__", False) or dict()
 
         def to_str(self) -> str:
             text = summary_tmp
@@ -168,22 +82,6 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
 
         cls.__str__ = to_str if cls().__str__() == "__not_set__" else cls.__str__
 
-        def eq(self, other) -> bool:
-            if type(self) is type(other) and self.to_json() == other.to_json():
-                return True
-            else:
-                return False
-
-        cls.__eq__ = eq
-
-        def ne(self, other) -> bool:
-            if type(self) is type(other) and self.to_json() == other.to_json():
-                return False
-            else:
-                return True
-
-        cls.__ne__ = ne
-
         message_types[sg_type] = {
             "type": cls,
             "args": list(anns.keys())
@@ -191,21 +89,109 @@ def segment_builder(sg_type: str, summary_tmp: str = None):
 
         return cls
 
-    return inner_builder
+    async def to_elem(self, gid: int = None, uin: int = None) -> Optional[Union[
+        elems.Text, elems.Image, elems.Audio, elems.Video, elems.Quote, elems.At, elems.AtAll, elems.Emoji
+    ]]:
+        sg_type = self.__sg_type
+        if sg_type == "at":
+            if str(self.qq) == "all":
+                return elems.AtAll(text="@全体成员")
+            else:
+                info = await lgr.client.get_user_info(uc.to_uid(int(self.qq)))
+                return elems.At(
+                    text=f"@{info.name}",
+                    uid=uc.to_uid(int(self.qq)),
+                    uin=int(self.qq)
+                )
+        elif sg_type == "text":
+            return elems.Text(text=str(self.text))
+        elif sg_type == "reply":
+            seq, uin, _ = get_msg_info(int(self.id))
+            return elems.Quote(
+                text="",
+                seq=seq,
+                uin=uin,
+                timestamp=0
+            )
+        elif sg_type == "image":
+            file = str(self.file)
+            if file.startswith("http"):
+                c = httpx.get(file).content
+                with open(f"./temps/image_{random.randint(1000, 9999)}", "wb") as f:
+                    f.write(c)
+                c = open(f"./temps/image_{random.randint(1000, 9999)}", "rb")
+            elif file.startswith("file://"):
+                c = open(file.replace("file://", "", 1), "rb")
+            elif file.startswith("base64://"):
+                file = file.replace("base64://", "", 1)
+                c = base64.b64decode(file)
+                with open(f"./temps/image_{random.randint(1000, 9999)}", "wb") as f:
+                    f.write(c)
+                c = open(f"./temps/image_{random.randint(1000, 9999)}", "rb")
+            else:
+                c = None
 
+            if gid is not None:
+                return await lgr.client.upload_grp_image(c, gid)
+            elif uin is not None:
+                return await lgr.client.upload_friend_image(c, uc.to_uid(uin))
+        elif sg_type == "record":
+            file = str(self.file)
+            if file.startswith("http"):
+                c = httpx.get(file).content
+            elif file.startswith("file://"):
+                with open(file.replace("file://", "", 1), "rb") as f:
+                    c = f.read()
+            elif file.startswith("base64://"):
+                file = file.replace("base64://", "", 1)
+                c = base64.b64decode(file)
+            else:
+                c = None
 
-class Base(ABC):
-    def __init__(self, *args, **kwargs): ...
+            if c is not None:
+                file = f"./temps/temp_record_{uin}_{gid}_{random.randint(1000, 9999)}"
+                with open(file, "wb") as f:
+                    f.write(c)
+                os.system(f"ffmpeg -i {file} -ac 1 -ar 8000 ./temps/out_temp_record_{uin}_{gid}.amr")
 
-    async def to_elem(self) -> dict: ...
+            if gid is not None:
+                res = await lgr.client.upload_grp_audio(open(f"./temps/out_temp_record_{uin}_{gid}.amr", "rb"), gid)
+            elif uin is not None:
+                res = await lgr.client.upload_friend_audio(open(f"./temps/out_temp_record_{uin}_{gid}.amr", "rb"),
+                                                           uc.to_uid(uin))
+            os.remove(f"./temps/out_temp_record_{uin}_{gid}.amr")
+            return res
+        else:
+            return None
 
-    def to_json(self) -> dict: ...
+    def to_json(self) -> dict:
+        base = {"type": self.__sg_type, "data": {}}
+        for i in self.__anns:
+            if getattr(self, i) is None:
+                continue
+            if not isinstance(getattr(self, i), self.__anns[i]):
+                base["data"][i] = self.__anns[i](getattr(self, i))
+            else:
+                base["data"][i] = getattr(self, i)
+            # try:
+            #     base["data"][i] = anns[i](getattr(self, i))
+            # except TypeError:
+            #     base["data"][i] = getattr(self, i)
+        return base
 
     def __str__(self) -> str: return "__not_set__"
 
-    def __eq__(self, other) -> bool: ...
+    def __ne__(self, other) -> bool:
+        if type(self) is type(other) and self.to_json() == other.to_json():
+            return False
+        else:
+            return True
 
-    def __ne__(self, other) -> bool: ...
+    def __eq__(self, other) -> bool:
+        if type(self) is type(other) and self.to_json() == other.to_json():
+            return True
+        else:
+            return False
 
 
 def to_ob_msg(chain: list):
