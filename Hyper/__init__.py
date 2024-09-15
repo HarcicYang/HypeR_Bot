@@ -1,57 +1,67 @@
-from Hyper.Listener import stop, reg, run, Actions
-from Events import *
+from Hyper import Configurator
 
 from typing import Coroutine, Union
+import importlib
 import sys
 import os
 
 HYPER_BOT_VERSION = "0.78.5"
 
+listener: "listener"
+
+
+def _load_listener() -> None:
+    global listener
+    listener = importlib.import_module("Hyper.Listener")
+
 
 def restart() -> None:
-    stop()
+    listener.stop()
     os.execv(sys.executable, [sys.executable] + sys.argv)
     # os._exit(1)
 
 
 class Client:
-    def __init__(self):
+    def __init__(self, bot_config: Configurator.Config):
         self.records = {}
-        reg(self.distributor)
+        Configurator.init(bot_config)
 
     def subscribe(
             self,
             func: Coroutine,
             event: Union[
-                Events.GroupMessageEvent,
-                Events.PrivateMessageEvent,
-                Events.GroupFileUploadEvent,
-                Events.GroupAdminEvent,
-                Events.GroupMemberDecreaseEvent,
-                Events.GroupMemberIncreaseEvent,
-                Events.GroupMuteEvent,
-                Events.FriendAddEvent,
-                Events.GroupRecallEvent,
-                Events.FriendRecallEvent,
-                Events.NotifyEvent,
-                Events.GroupEssenceEvent,
-                Events.MessageReactionEvent,
-                Events.GroupAddInviteEvent,
-                Events.HyperListenerStartNotify,
-                Events.HyperListenerStopNotify
+                "Events.GroupMessageEvent",
+                "Events.PrivateMessageEvent",
+                "Events.GroupFileUploadEvent",
+                "Events.GroupAdminEvent",
+                "Events.GroupMemberDecreaseEvent",
+                "Events.GroupMemberIncreaseEvent",
+                "Events.GroupMuteEvent",
+                "Events.FriendAddEvent",
+                "Events.GroupRecallEvent",
+                "Events.FriendRecallEvent",
+                "Events.NotifyEvent",
+                "Events.GroupEssenceEvent",
+                "Events.MessageReactionEvent",
+                "Events.GroupAddInviteEvent",
+                "Events.HyperListenerStartNotify",
+                "Events.HyperListenerStopNotify"
             ]
     ) -> None:
         self.records[event] = func
 
-    async def distributor(self, message_data: Union[Event, HyperNotify], actions: Actions) -> None:
+    async def distributor(
+            self, message_data: Union["Events.Event", "Events.HyperNotify"], actions: "Listener.Actions"
+    ) -> None:
         if type(message_data) in list(self.records.keys()):
             await self.records[actions](message_data, actions)
         else:
             return
 
     def run(self):
+        listener.reg(self.distributor)
         if self.records:
-            run()
+            listener.run()
 
     def __enter__(self):
         return self

@@ -4,11 +4,17 @@ from Hyper.Segments import message_types, At
 from Hyper.Network import KritorConnection, WebsocketConnection, HTTPConnection
 from Hyper.Logger import levels
 
-from typing import Union, Any
+from typing import Union
 
-config = Configurator.cm.get_cfg()
-logger = Logger.Logger()
-logger.set_level(config.log_level)
+config: Configurator.Config
+logger: Logger.Logger
+
+
+def init():
+    global config, logger
+    config = Configurator.cm.get_cfg()
+    logger = Logger.Logger()
+    logger.set_level(config.log_level)
 
 
 class EventManager:
@@ -311,7 +317,8 @@ class HyperNotify:
 
 
 class HyperListenerStartNotify(HyperNotify):
-    def __init__(self, time_now: int, notify_type: str, connection: Union[WebsocketConnection, HTTPConnection, KritorConnection] = None):
+    def __init__(self, time_now: int, notify_type: str,
+                 connection: Union[WebsocketConnection, HTTPConnection, KritorConnection] = None):
         super().__init__(time_now, notify_type)
         self.connection = connection
 

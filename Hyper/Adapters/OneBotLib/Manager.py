@@ -9,9 +9,17 @@ import json
 
 # reports = queue.Queue()
 reports = Logic.KeyQueue()
-config = Configurator.cm.get_cfg()
-logger = Logger.Logger()
-logger.set_level(config.log_level)
+
+config: Configurator.Config
+logger: Logger.Logger
+
+
+def init() -> None:
+    global config, logger
+    config = Configurator.cm.get_cfg()
+    logger = Logger.Logger()
+    logger.set_level(config.log_level)
+
 
 servicing = []
 

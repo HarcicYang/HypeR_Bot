@@ -36,14 +36,33 @@ levels = Levels()
 
 
 class Logger:
+    running_loggers = {}
+
     def __init__(self):
         self.log_level = levels.INFO
+
+    @classmethod
+    def create(cls, key: str, level: str):
+        c = cls()
+        c.set_level(level)
+        cls.running_loggers[key] = c
+        print(key)
+        print(c)
+        print(cls.running_loggers)
+        return c
+
+    @classmethod
+    def fetch(cls, key: str):
+        print(cls.running_loggers)
+        return cls.running_loggers.get(key)
 
     def set_level(self, level: str):
         if level in levels.level_names:
             self.log_level = levels.level_names[level]
         else:
             self.log("未知的日志等级", levels.ERROR)
+
+        return self
 
     def log(self, message: str, level: str = levels.INFO):
         if levels.level_nums[level] < levels.level_nums[self.log_level]:

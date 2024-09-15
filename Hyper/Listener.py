@@ -1,8 +1,5 @@
 from Hyper import Configurator, Events
 
-import sys
-from typing import Coroutine, Union
-
 config = Configurator.cm.get_cfg()
 
 if config.protocol == "OneBot":
@@ -14,3 +11,4 @@ elif config.protocol == "Lagrange":
 elif config.protocol == "Kritor":
     from Hyper.Adapters.Kritor import *
 
+Events.init()
