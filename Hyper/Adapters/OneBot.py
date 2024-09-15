@@ -3,7 +3,6 @@ import threading
 import time
 import asyncio
 import os
-from typing import Union
 
 from Hyper import Network, Events
 from Hyper.Utils import Errors, Logic

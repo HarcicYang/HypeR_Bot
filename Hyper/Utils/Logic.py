@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import shutil
 import traceback
 import asyncio
@@ -7,8 +8,27 @@ from typing import Union, Any
 import aiohttp
 import time
 import requests
+from functools import wraps
 
 from Hyper import Logger
+
+
+class PrivateMethodError(Exception):
+    pass
+
+
+def private(func):
+    def wrapper(self, *args, **kwargs):
+        current_frame = sys._getframe(1)
+        caller_locals = current_frame.f_locals
+        if 'self' in caller_locals and caller_locals['self'].__class__ == self.__class__:
+            pass
+        else:
+            raise PrivateMethodError()
+
+        return func(self, *args, **kwargs)
+
+    return wrapper
 
 
 class Cacher:
@@ -39,7 +59,7 @@ class Cacher:
             if kwargs.get("no_cache", False):
                 kwargs.pop("no_cache")
                 return await func(*args, **kwargs)
-            if f"{str(args)}{str(kwargs)}"not in list(self.cached.keys()):
+            if f"{str(args)}{str(kwargs)}" not in list(self.cached.keys()):
                 ret = await func(*args, **kwargs)
                 self.cached[f"{str(args)}{str(kwargs)}"] = ret
                 if len(self.cached) >= self.cache_time:
@@ -363,4 +383,3 @@ class SimpleQueue:
                 return self.contents.pop(0)
             except IndexError:
                 pass
-
