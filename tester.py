@@ -1,21 +1,20 @@
-from typing import Any
+class T1:
+    b = 1
+
+    def __init__(self, a):
+        self.a = a
+
+    def __init_subclass__(cls, **kwargs):
+        cls.b = kwargs.get('b')
 
 
-class ChatActions:
-    def __init__(self, actions: list["ChatActions"] = None):
-        self.actions = actions or list()
-
-    def clear(self) -> "ChatActions":
-        class ClearRunner(type(self)):
-            async def run(self) -> None:
-                print(1)
-
-        self.actions.append(ClearRunner())
-        return self
-
-    async def run(self, *args, **kwargs) -> Any:
-        ...
+class T2(T1, b=2):
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
 
 
-c = ChatActions().clear().clear()
-print(c.actions)
+class T3(T2, b=3):
+    pass
+
+
+print(T3(1).b)
