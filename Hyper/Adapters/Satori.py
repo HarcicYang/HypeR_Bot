@@ -47,11 +47,13 @@ def reg(func: callable):
     handler = func
 
 
+listener_ran = False
 connection: Union[Network.WebsocketConnection, Network.SatoriConnection]
 
 
 def run():
-    global connection
+    global connection, listener_ran
+    listener_ran = True
     try:
         if handler is tester:
             raise Errors.ListenerNotRegisteredError("No handler registered")

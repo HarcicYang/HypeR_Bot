@@ -3,7 +3,6 @@ from typing import Union
 import os
 import threading
 import time
-import json
 
 from Hyper.Adapters.OneBot import Actions as OneBotActions
 from Hyper.Events import Event, HyperNotify, HyperListenerStartNotify
@@ -38,11 +37,12 @@ def reg(func: callable):
 
 
 connection: KritorConnection
+listener_ran = False
 
 
 def run():
     async def runner():
-        global connection
+        global connection, listener_ran
         try:
             if handler is tester:
                 raise Errors.ListenerNotRegisteredError("No handler registered")
@@ -64,7 +64,8 @@ def run():
                     connection.connect()
                 except ConnectionRefusedError or TimeoutError:
                     if retried >= config.connection.retries:
-                        logger.log(f"重试次数达到最大值({config.connection.retries})，退出", level=Logger.levels.CRITICAL)
+                        logger.log(f"重试次数达到最大值({config.connection.retries})，退出",
+                                   level=Logger.levels.CRITICAL)
                         break
 
                     logger.log(f"连接建立失败，3秒后重试({retried}/{config.connection.retries})",

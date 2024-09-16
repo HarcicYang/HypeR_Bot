@@ -12,7 +12,7 @@ from Hyper.Events import *
 config = Configurator.cm.get_cfg()
 logger = Logger.Logger()
 logger.set_level(config.log_level)
-
+listener_ran = False
 
 class Actions:
     def __init__(self, cnt: Union[Network.WebsocketConnection, Network.HTTPConnection]):
@@ -205,7 +205,8 @@ connection: Union[Network.WebsocketConnection, Network.HTTPConnection]
 
 
 def run():
-    global connection
+    global connection, listener_ran
+    listener_ran = True
     try:
         if handler is tester:
             raise Errors.ListenerNotRegisteredError("No handler registered")
@@ -231,7 +232,7 @@ def run():
                 retried += 1
                 time.sleep(3)
                 continue
-            logger.log("成功建立连接", level=Logger.levels.INFO)
+            logger.log(f"成功在{connection.url}建立连接", level=Logger.levels.INFO)
             retried = 0
             actions = Actions(connection)
             data = HyperListenerStartNotify(

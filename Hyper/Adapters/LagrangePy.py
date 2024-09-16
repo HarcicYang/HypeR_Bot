@@ -68,8 +68,13 @@ def reg(func: callable):
     handler = func
 
 
+listener_ran = False
+
+
 def run():
     def start_listener() -> None:
+        global listener_ran
+        listener_ran = True
         try:
             if handler is tester:
                 raise Errors.ListenerNotRegisteredError("No handler registered")

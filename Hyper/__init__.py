@@ -1,4 +1,5 @@
 from Hyper import Configurator
+from Hyper.Utils import Screens
 
 from typing import Coroutine, Union
 import importlib
@@ -8,6 +9,9 @@ import os
 HYPER_BOT_VERSION = "0.78.5"
 
 listener: "listener"
+
+Screens.play_startup()
+Screens.play_info(HYPER_BOT_VERSION)
 
 
 def _load_listener() -> None:
