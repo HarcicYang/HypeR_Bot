@@ -19,7 +19,7 @@ class Ess(Module):
         )
 
     @staticmethod
-    def filter(event: Union[*Events.em.events], allowed: list) -> bool:
+    def filter(event: Events.Event, allowed: list) -> bool:
         if isinstance(event, GroupMessageEvent):
             if len(event.message) < 1:
                 return False

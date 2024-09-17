@@ -1,9 +1,8 @@
-import Hyper.Utils.TypeExt
 from Hyper import Configurator, Logger, Network, Segments
 from Hyper.Utils import Logic
+from Hyper.Utils.TypeExt import ObjectedJson
 
-from typing import Union
-# import queue
+from typing import Union, Generic, TypeVar
 import random
 import json
 
@@ -120,16 +119,19 @@ class Message:
         return self
 
 
-class Ret:
+T = TypeVar("T")
+
+
+class Ret(Generic[T]):
     def __init__(self, json_data: dict, serializer):
         self.raw = json_data.copy()
         self.status = json_data["status"]
         self.ret_code = json_data["retcode"]
-        self.data = serializer(json_data.get("data"))
+        self.data: T = serializer(json_data.get("data"))
         self.echo = json_data.get("echo")
 
     @classmethod
-    def fetch(cls, echo: str, serializer=Hyper.Utils.TypeExt.ObjectedJson) -> "Ret":
+    def fetch(cls, echo: str, serializer=ObjectedJson) -> "Ret":
         # old = None
         # while True:
         #     content = reports.get()

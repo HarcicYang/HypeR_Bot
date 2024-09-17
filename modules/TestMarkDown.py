@@ -1,5 +1,5 @@
 from Hyper.Segments import *
-from Hyper.Manager import Message, logger
+from Hyper.Manager import Message
 import ModuleClass
 from Hyper.Events import *
 from Hyper.Utils.ArkSignHelper import Card, get_pic
@@ -15,7 +15,6 @@ class Test(ModuleClass.Module):
             for i in self.event.message:
                 if isinstance(i, Json):
                     text = json.loads((await self.event.message.get())[0]["data"]["data"])
-                    logger.log(text, level=Logger.levels.DEBUG)
             # with open(f"debug/{int(time.time())}.json", "w", encoding="utf-8") as f:
             #     f.write(str(text))
 
@@ -87,6 +86,7 @@ class Test(ModuleClass.Module):
                 )
             )
             res_id: str = forward_result.data
+            print(forward_result.raw)
             message = Message(
                 [
                     Forward(res_id)

@@ -1,4 +1,3 @@
-from typing import Union
 import datetime
 
 import Hyper
@@ -25,8 +24,8 @@ class Module(ModuleClass.Module):
 
     async def handle(self):
         version = await self.actions.get_version_info()
-        name = version.data["app_name"]
-        code = version.data["app_version"]
+        name = version.data.app_name
+        code = version.data.app_version
         message = ("HypeR Bot v{}\n"
                    "https://github.com/HarcicYang/HypeR_Bot\n"
                    "\n"

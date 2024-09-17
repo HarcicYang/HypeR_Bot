@@ -6,9 +6,9 @@ import importlib
 import sys
 import os
 
-HYPER_BOT_VERSION = "0.78.5"
+HYPER_BOT_VERSION = "0.78.7"
 
-listener: "listener"
+listener: "Listener"
 
 Screens.play_startup()
 Screens.play_info(HYPER_BOT_VERSION)

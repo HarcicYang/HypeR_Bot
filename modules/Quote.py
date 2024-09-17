@@ -96,11 +96,10 @@ class Quoter(Module):
                 return
 
             content = await self.actions.get_msg(msg_id)
-            name = content.data["sender"]["nickname"] if not content.data["sender"].get("card") else \
-                content.data["sender"]["card"]
-            uin = content.data["sender"]["user_id"]
-            message = content.data["message"]
-            message = gen_message({"message": message})
+            name = content.data.sender.nickname if not content.data.sender.card else \
+                content.data.sender.card
+            uin = content.data.sender.user_id
+            message = content.data.message
             text = str(message)
             res = await get_image(text, f"http://q2.qlogo.cn/headimg_dl?dst_uin={uin}&spec=640", name, uin)
             await self.actions.send(

@@ -55,27 +55,7 @@ class Module:
         return ModuleInfo()
 
     @staticmethod
-    def filter(
-            event: Union[
-                Events.GroupMessageEvent,
-                Events.PrivateMessageEvent,
-                Events.GroupFileUploadEvent,
-                Events.GroupAdminEvent,
-                Events.GroupMemberDecreaseEvent,
-                Events.GroupMemberIncreaseEvent,
-                Events.GroupMuteEvent,
-                Events.FriendAddEvent,
-                Events.GroupRecallEvent,
-                Events.FriendRecallEvent,
-                Events.NotifyEvent,
-                Events.GroupEssenceEvent,
-                Events.MessageReactionEvent,
-                Events.GroupAddInviteEvent,
-                Events.HyperListenerStartNotify,
-                Events.HyperListenerStopNotify
-            ],
-            allowed: list
-    ) -> bool:
+    def filter(event: Events.Event, allowed: list) -> bool:
         for i in allowed:
             if isinstance(event, i):
                 return True

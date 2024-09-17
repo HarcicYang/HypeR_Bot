@@ -1,6 +1,7 @@
 bilibili-api-python==16.1.1
-dashscope
 Pillow
 flask
 pyppeteer
 websocket-client
+grpclib
+betterproto
