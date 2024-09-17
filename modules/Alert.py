@@ -1,6 +1,6 @@
 from typing import Union
 
-from Hyper import Events, Segments
+from Hyper import Events, Segments, Comm
 import ModuleClass
 from Hyper.Events import *
 
@@ -22,4 +22,4 @@ class Module(ModuleClass.Module):
         cmds = str(self.event.message)
         target = cmds.split(" ")[1]
         cmds = cmds.replace(target, "", 1).replace(".alert", "", 1)
-        await self.actions.send(group_id=int(target), message=Manager.Message(Segments.Text(cmds)))
+        await self.actions.send(group_id=int(target), message=Comm.Message(Segments.Text(cmds)))

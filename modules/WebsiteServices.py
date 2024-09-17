@@ -1,4 +1,4 @@
-from Hyper import Segments
+from Hyper import Segments, Comm
 import ModuleClass
 from Hyper.Utils import Logic
 from Hyper.Utils.Logic import Downloader
@@ -226,7 +226,7 @@ class Module(ModuleClass.Module):
             for i in bv_id:
                 info = await video_info(bv=i)
                 path = await get_image(info[0], i)
-                result = Manager.Message(
+                result = Comm.Message(
                     Segments.Image(f"file://{os.path.abspath(path)}", summary=f"{info[0].title}")
                 )
 
@@ -238,7 +238,7 @@ class Module(ModuleClass.Module):
                             dlr = Downloader(url, f"./temps/b_video_{bv_id}.mp4", 1, True)
                             ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
                             await dlr.download(ua)
-                        msg = Manager.Message(Segments.Video.build(f"./temps/b_video_{bv_id}.mp4"))
+                        msg = Comm.Message(Segments.Video.build(f"./temps/b_video_{bv_id}.mp4"))
                         await self.actions.send(group_id=self.event.group_id, message=msg)
                         # os.remove(f"./temps/b_video_{bv_id}.mp4")
 
@@ -258,7 +258,7 @@ class Module(ModuleClass.Module):
                     await self.actions.send(
                         group_id=self.event.group_id,
                         user_id=self.event.user_id,
-                        message=Manager.Message(
+                        message=Comm.Message(
                             Segments.Image(
                                 f"file://{os.path.abspath(f'./temps/github_{self.event.group_id}_{self.event.user_id}.png')}",
                                 summary=f"{safety.address}"

@@ -1,4 +1,4 @@
-from Hyper.Manager import Message
+from Hyper.Comm import Message
 from Hyper.Segments import *
 from ModuleClass import Module, ModuleRegister, InnerHandler
 from Hyper.Events import *

@@ -1,5 +1,5 @@
 from Hyper.Events import GroupMessageEvent, PrivateMessageEvent
-from Hyper.Manager import Message
+from Hyper.Comm import Message
 from ModuleClass import ModuleRegister, Module
 from Hyper.Segments import *
 from Hyper.Configurator import cm

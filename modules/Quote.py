@@ -1,5 +1,5 @@
 from Hyper import Segments
-from Hyper.Manager import Message
+from Hyper.Comm import Message
 from Hyper.Events import *
 from ModuleClass import Module, ModuleInfo, ModuleRegister
 

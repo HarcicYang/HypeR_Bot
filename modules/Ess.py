@@ -1,7 +1,7 @@
 from typing import Union
 
 from Hyper import Events
-from Hyper.Manager import Message
+from Hyper.Comm import Message
 from ModuleClass import Module, ModuleInfo, ModuleRegister
 from Hyper.Segments import *
 from Hyper.Events import *

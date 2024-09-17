@@ -6,7 +6,7 @@ import urllib
 from urllib import parse
 
 from Hyper.Listener import Actions
-from Hyper.Manager import Ret
+from Hyper.Comm import Ret
 
 
 def _uid_and_uid_key(uin, pskey):

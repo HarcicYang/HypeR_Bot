@@ -1,7 +1,7 @@
 from Hyper.Events import GroupMessageEvent
 from ModuleClass import ModuleInfo, ModuleRegister, Module
 from Hyper.Segments import *
-from Hyper.Manager import Message
+from Hyper.Comm import Message
 from Hyper.Utils.Logic import Downloader
 
 from pyncm import apis

@@ -6,7 +6,7 @@ from random import randint
 import dataclasses
 import json
 
-from Hyper.Manager import Message
+from Hyper.Comm import Message
 from Hyper.Segments import *
 from ModuleClass import ModuleRegister, Module
 from Hyper.Events import GroupMessageEvent, PrivateMessageEvent

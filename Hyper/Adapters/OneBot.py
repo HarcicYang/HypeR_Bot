@@ -4,10 +4,10 @@ import time
 import asyncio
 import os
 
-from Hyper import Network, Events
+from Hyper import Network, Events, Comm
 from Hyper.Utils import Errors, Logic
 from Hyper.Utils.APIRsp import *
-from Hyper.Manager import reports
+from Hyper.Comm import reports
 from Hyper.Events import *
 
 config = Configurator.cm.get_cfg()
@@ -26,7 +26,7 @@ class Actions:
 
             def __getattr__(self, item) -> callable:
                 async def wrapper(**kwargs) -> str:
-                    packet = Manager.Packet(
+                    packet = Comm.Packet(
                         str(item),
                         **kwargs
                     )
@@ -39,16 +39,16 @@ class Actions:
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().send, logger)
     async def send(
-            self, message: Manager.Message, group_id: int = None, user_id: int = None
-    ) -> Manager.Ret[MsgSendRsp]:
+            self, message: Comm.Message, group_id: int = None, user_id: int = None
+    ) -> Comm.Ret[MsgSendRsp]:
         if group_id is not None:
-            packet = Manager.Packet(
+            packet = Comm.Packet(
                 "send_msg",
                 group_id=group_id,
                 message=await message.get()
             )
         elif user_id is not None:
-            packet = Manager.Packet(
+            packet = Comm.Packet(
                 "send_msg",
                 user_id=user_id,
                 message=await message.get()
@@ -56,18 +56,18 @@ class Actions:
         else:
             raise Errors.ArgsInvalidError("'send' API requires 'group_id' or 'user_id' but none of them are provided.")
         packet.send_to(self.connection)
-        return Manager.Ret.fetch(packet.echo, MsgSendRsp)
+        return Comm.Ret.fetch(packet.echo, MsgSendRsp)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().recall, logger)
     async def del_message(self, message_id: int) -> None:
-        Manager.Packet(
+        Comm.Packet(
             "delete_msg",
             message_id=message_id,
         ).send_to(self.connection)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().kick, logger)
     async def set_group_kick(self, group_id: int, user_id: int) -> None:
-        Manager.Packet(
+        Comm.Packet(
             "set_group_kick",
             group_id=group_id,
             user_id=user_id,
@@ -75,7 +75,7 @@ class Actions:
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().mute, logger)
     async def set_group_ban(self, group_id: int, user_id: int, duration: int = 60) -> None:
-        Manager.Packet(
+        Comm.Packet(
             "set_group_ban",
             group_id=group_id,
             user_id=user_id,
@@ -83,37 +83,37 @@ class Actions:
         ).send_to(self.connection)
 
     @Logic.Cacher().cache_async
-    async def get_login_info(self) -> Manager.Ret[GetLoginInfoRsp]:
-        packet = Manager.Packet("get_login_info")
+    async def get_login_info(self) -> Comm.Ret[GetLoginInfoRsp]:
+        packet = Comm.Packet("get_login_info")
         packet.send_to(self.connection)
-        return Manager.Ret.fetch(packet.echo, GetLoginInfoRsp)
+        return Comm.Ret.fetch(packet.echo, GetLoginInfoRsp)
 
     @Logic.Cacher().cache_async
-    async def get_version_info(self) -> Manager.Ret[GetVerInfoRsp]:
-        packet = Manager.Packet("get_version_info")
+    async def get_version_info(self) -> Comm.Ret[GetVerInfoRsp]:
+        packet = Comm.Packet("get_version_info")
         packet.send_to(self.connection)
-        return Manager.Ret.fetch(packet.echo, GetVerInfoRsp)
+        return Comm.Ret.fetch(packet.echo, GetVerInfoRsp)
 
-    async def send_forward_msg(self, message: Manager.Message) -> Manager.Ret[SendForwardRsp]:
-        packet = Manager.Packet(
+    async def send_forward_msg(self, message: Comm.Message) -> Comm.Ret[SendForwardRsp]:
+        packet = Comm.Packet(
             "send_forward_msg",
             messages=await message.get()
         )
         packet.send_to(self.connection)
-        return Manager.Ret.fetch(packet.echo, SendForwardRsp)
+        return Comm.Ret.fetch(packet.echo, SendForwardRsp)
 
-    async def send_group_forward_msg(self, group_id: int, message: Manager.Message) -> Manager.Ret[SendGrpForwardRsp]:
-        packet = Manager.Packet(
+    async def send_group_forward_msg(self, group_id: int, message: Comm.Message) -> Comm.Ret[SendGrpForwardRsp]:
+        packet = Comm.Packet(
             "send_group_forward_msg",
             group_id=group_id,
             messages=await message.get()
         )
         packet.send_to(self.connection)
-        return Manager.Ret.fetch(packet.echo, SendForwardRsp)
+        return Comm.Ret.fetch(packet.echo, SendForwardRsp)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().set_req, logger)
     async def set_group_add_request(self, flag: str, sub_type: str, approve: bool, reason: str = "Refused") -> None:
-        Manager.Packet(
+        Comm.Packet(
             "set_group_add_request",
             flag=flag,
             sub_type=sub_type,
@@ -122,63 +122,63 @@ class Actions:
         ).send_to(self.connection)
 
     @Logic.Cacher().cache_async
-    async def get_stranger_info(self, user_id: int) -> Manager.Ret[GetStrInfoRsp]:
-        packet = Manager.Packet(
+    async def get_stranger_info(self, user_id: int) -> Comm.Ret[GetStrInfoRsp]:
+        packet = Comm.Packet(
             "get_stranger_info",
             user_id=user_id,
             no_cache=True,
         )
         packet.send_to(self.connection)
-        return Manager.Ret.fetch(packet.echo, GetStrInfoRsp)
+        return Comm.Ret.fetch(packet.echo, GetStrInfoRsp)
 
     @Logic.Cacher().cache_async
-    async def get_group_member_info(self, group_id: int, user_id: int) -> Manager.Ret[GetGrpMemInfoRsp]:
-        packet = Manager.Packet(
+    async def get_group_member_info(self, group_id: int, user_id: int) -> Comm.Ret[GetGrpMemInfoRsp]:
+        packet = Comm.Packet(
             "get_group_member_info",
             group_id=group_id,
             user_id=user_id,
             no_cache=True
         )
         packet.send_to(self.connection)
-        return Manager.Ret.fetch(packet.echo, GetGrpMemInfoRsp)
+        return Comm.Ret.fetch(packet.echo, GetGrpMemInfoRsp)
 
     @Logic.Cacher().cache_async
-    async def get_group_info(self, group_id: int) -> Manager.Ret[GetGrpInfoRsp]:
-        packet = Manager.Packet(
+    async def get_group_info(self, group_id: int) -> Comm.Ret[GetGrpInfoRsp]:
+        packet = Comm.Packet(
             "get_group_info",
             group_id=group_id,
             no_cache=True
         )
         packet.send_to(self.connection)
-        return Manager.Ret.fetch(packet.echo, GetGrpInfoRsp)
+        return Comm.Ret.fetch(packet.echo, GetGrpInfoRsp)
 
-    async def get_status(self) -> Manager.Ret:
-        packet = Manager.Packet("get_status")
+    async def get_status(self) -> Comm.Ret:
+        packet = Comm.Packet("get_status")
         packet.send_to(self.connection)
-        return Manager.Ret.fetch(packet.echo)
+        return Comm.Ret.fetch(packet.echo)
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().set_ess, logger)
     async def set_essence_msg(self, message_id: int) -> None:
-        Manager.Packet(
+        Comm.Packet(
             "set_essence_msg",
             message_id=message_id
         ).send_to(self.connection)
 
     async def set_group_special_title(self, group_id: int, user_id: int, title: str) -> None:
-        Manager.Packet(
+        Comm.Packet(
             "set_group_special_title",
             group_id=group_id,
             user_id=user_id,
             special_title=title,
         ).send_to(self.connection)
 
-    async def get_msg(self, msg_id: int) -> Manager.Ret[GetMsgRsp]:
-        packet = Manager.Packet(
+    async def get_msg(self, msg_id: int) -> Comm.Ret[GetMsgRsp]:
+        packet = Comm.Packet(
             "get_msg",
             message_id=msg_id
         )
         packet.send_to(self.connection)
-        return Manager.Ret.fetch(packet.echo, GetMsgRsp)
+        return Comm.Ret.fetch(packet.echo, GetMsgRsp)
 
 
 async def tester(message_data: Union[Event, HyperNotify], actions: Actions) -> None:

@@ -1,4 +1,4 @@
-from Hyper import Configurator, Logger, Manager
+from Hyper import Configurator, Logger, Comm
 from Hyper.Utils.TypeExt import Integer
 from Hyper.Utils.Logic import private
 from Hyper.Segments import message_types, At
@@ -80,8 +80,8 @@ class GroupAnonymous:
             self.flag = json_data.get("flag")
 
 
-def gen_message(data: dict) -> Manager.Message:
-    message = Manager.Message()
+def gen_message(data: dict) -> Comm.Message:
+    message = Comm.Message()
     for i in data["message"]:
         if i["type"] in message_types:
             args = []

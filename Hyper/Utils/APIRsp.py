@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Union, Literal
 
 from Hyper.Events import PrivateSender, GroupSender, gen_message
-from Hyper.Manager import Message
+from Hyper.Comm import Message
 
 
 class BaseResponse(ABC):

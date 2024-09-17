@@ -1,5 +1,5 @@
 from Hyper.Segments import *
-from Hyper.Manager import Message
+from Hyper.Comm import Message
 import ModuleClass
 from Hyper.Events import *
 from Hyper.Utils.ArkSignHelper import Card, get_pic

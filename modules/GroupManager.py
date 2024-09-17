@@ -2,7 +2,7 @@ import os.path
 import json
 import time
 from Hyper.Events import *
-from Hyper import Manager, Segments
+from Hyper import Comm, Segments
 import ModuleClass
 from modules import WordSafety
 
@@ -284,7 +284,7 @@ class Module(ModuleClass.Module):
                 await self.actions.send(
                     user_id=self.event.user_id,
                     group_id=self.event.group_id,
-                    message=Manager.Message(
+                    message=Comm.Message(
                         Segments.At(str(self.event.user_id)), Segments.Text("请勿发送违禁词")
                     )
                 )

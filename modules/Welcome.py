@@ -1,4 +1,4 @@
-from Hyper import Segments
+from Hyper import Segments, Comm
 import ModuleClass
 from Hyper.Events import *
 import random
@@ -16,7 +16,7 @@ class Module(ModuleClass.Module):
         if isinstance(self.event, NoticeEvent):
             if isinstance(self.event, GroupMemberIncreaseEvent):
                 text = str(random.choice(quicks["group_increase"])).split("<user>")
-                await self.actions.send(group_id=self.event.group_id, message=Manager.Message(
+                await self.actions.send(group_id=self.event.group_id, message=Comm.Message(
                     [
                         Segments.Text(text[0]),
                         Segments.At(self.event.user_id),
@@ -26,7 +26,7 @@ class Module(ModuleClass.Module):
             elif isinstance(self.event, GroupMemberDecreaseEvent):
                 try:
                     text = str(random.choice(quicks["group_decrease"][self.event.sub_type])).replace("<user>", str(self.event.user_id))
-                    await self.actions.send(group_id=self.event.group_id, message=Manager.Message(
+                    await self.actions.send(group_id=self.event.group_id, message=Comm.Message(
                         [
                             Segments.Text(text)
                         ]
@@ -42,7 +42,7 @@ class Module(ModuleClass.Module):
                 if self.event.sub_type == "add":
                     await self.actions.set_group_add_request(flag=self.event.flag, sub_type=self.event.sub_type,
                                                              approve=True)
-                    await self.actions.send(group_id=self.event.group_id, message=Manager.Message(
+                    await self.actions.send(group_id=self.event.group_id, message=Comm.Message(
                         [
                             Segments.Text("同意用户"), Segments.At(self.event.user_id), Segments.Text("的加群请求。"),
                             Segments.Text("\n"),
@@ -50,7 +50,7 @@ class Module(ModuleClass.Module):
                         ]
                     ))
                 elif self.event.sub_type == "invite":
-                    message = Manager.Message(
+                    message = Comm.Message(
                         [
                             Segments.Text(f"HypeR Bot 通过用户{self.event.user_id}的邀请加入群组")
                         ]

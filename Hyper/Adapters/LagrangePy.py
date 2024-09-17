@@ -13,7 +13,7 @@ class Actions(Actions):
         self.client = cli
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().send, logger)
-    async def send(self, message: Manager.Message, group_id: int = None, user_id: int = None) -> Manager.Ret:
+    async def send(self, message: Comm.Message, group_id: int = None, user_id: int = None) -> Comm.Ret:
         chain = await message.get(group_id, user_id)
         try:
             if group_id:
@@ -22,15 +22,15 @@ class Actions(Actions):
                 seq = await self.client.send_friend_msg(chain, uc.to_uid(user_id))
             else:
                 raise Exception()
-            msg_id = get_msg_id(seq, self.client.uin)
+            msg_id = get_msg_id(seq, self.client.uin, 0)
             data = {"status": "ok", "retcode": 0, "data": {"message_id": msg_id}}
         except Exception as e:
             data = {"status": "failed", "retcode": 1400, "data": None}
 
-        return Manager.Ret(data, ObjectedJson)
+        return Comm.Ret(data, ObjectedJson)
 
-    async def get_version_info(self) -> Manager.Ret:
-        return Manager.Ret(
+    async def get_version_info(self) -> Comm.Ret:
+        return Comm.Ret(
             {
                 "status": "ok",
                 "retcode": 0,

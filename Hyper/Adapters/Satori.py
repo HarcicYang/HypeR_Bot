@@ -13,7 +13,7 @@ class Actions(Actions):
 
             def __getattr__(self, item) -> callable:
                 def wrapper(**kwargs) -> str:
-                    packet = Manager.Packet(
+                    packet = Comm.Packet(
                         str(item),
                         **kwargs
                     )

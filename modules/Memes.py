@@ -4,7 +4,7 @@ import httpx
 import meme_generator
 from meme_generator import exception
 
-from Hyper import Segments
+from Hyper import Segments, Comm
 import ModuleClass
 from Hyper.Events import *
 from ModuleClass import ModuleInfo
@@ -60,7 +60,7 @@ class Module(ModuleClass.Module):
                     await self.actions.send(
                         user_id=self.event.user_id,
                         group_id=self.event.group_id,
-                        message=Manager.Message(
+                        message=Comm.Message(
                             Segments.Reply(self.event.message_id),
                             Segments.Text(
                                 f"找不到{str(message).split()[1].replace('[图片]', '')}这一模板，详见：\n"
@@ -72,7 +72,7 @@ class Module(ModuleClass.Module):
                     await self.actions.send(
                         user_id=self.event.user_id,
                         group_id=self.event.group_id,
-                        message=Manager.Message(
+                        message=Comm.Message(
                             Segments.Reply(self.event.message_id),
                             Segments.Text(
                                 "https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html"
@@ -84,7 +84,7 @@ class Module(ModuleClass.Module):
             images = []
             args = {}
             img_num = 0
-            n_msg = Manager.Message()
+            n_msg = Comm.Message()
             for i in self.event.message:
                 if type(i) is Segments.Text:
                     n_msg.add(i)
@@ -139,7 +139,7 @@ class Module(ModuleClass.Module):
                 has_error = True
 
             if has_error:
-                message = Manager.Message(
+                message = Comm.Message(
                     Segments.Reply(self.event.message_id),
                     Segments.Text(text),
                     Segments.Text(
@@ -157,7 +157,7 @@ class Module(ModuleClass.Module):
                 await self.actions.send(
                     user_id=self.event.user_id,
                     group_id=self.event.group_id,
-                    message=Manager.Message(
+                    message=Comm.Message(
                         Segments.Reply(self.event.message_id),
                         Segments.Image(content_text)
                     )

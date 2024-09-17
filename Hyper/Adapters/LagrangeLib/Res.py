@@ -70,7 +70,7 @@ class SegmentBase(ABC):
             if "<" not in text and ">" not in text:
                 return text
 
-            for i in anns:
+            for i in self.__anns:
                 if f"<{i}>" in summary_tmp:
                     try:
                         v = self.__getattribute__(i)
@@ -84,7 +84,7 @@ class SegmentBase(ABC):
 
         message_types[sg_type] = {
             "type": cls,
-            "args": list(anns.keys())
+            "args": list(cls.__anns.keys())
         }
 
         return cls
