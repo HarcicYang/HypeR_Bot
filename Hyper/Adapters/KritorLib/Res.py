@@ -1,6 +1,7 @@
 from Hyper.Adapters.KritorLib.protos.event import EventServiceStub, RequestPushEvent, EventType
 
 import asyncio
+from typing import NoReturn
 from abc import ABC
 
 message_types = {}
@@ -120,7 +121,7 @@ class EventService:
     def __init__(self, stub: EventServiceStub):
         self.stub = stub
 
-    async def core_service(self):
+    async def core_service(self) -> NoReturn:
         while 1:
             try:
                 async for i in self.stub.register_active_listener(
@@ -131,7 +132,7 @@ class EventService:
             except EOFError:
                 continue
 
-    async def message_service(self):
+    async def message_service(self) -> NoReturn:
         while 1:
             try:
                 async for i in self.stub.register_active_listener(
@@ -142,7 +143,7 @@ class EventService:
             except EOFError:
                 continue
 
-    async def notice_service(self):
+    async def notice_service(self) -> NoReturn:
         while 1:
             try:
                 async for i in self.stub.register_active_listener(
@@ -153,7 +154,7 @@ class EventService:
             except EOFError:
                 continue
 
-    async def request_service(self):
+    async def request_service(self) -> NoReturn:
         while 1:
             try:
                 async for i in self.stub.register_active_listener(
@@ -164,7 +165,7 @@ class EventService:
             except EOFError:
                 continue
 
-    async def run(self):
+    async def run(self) -> NoReturn:
         tasks = [
             asyncio.create_task(self.core_service()),
             asyncio.create_task(self.message_service()),

@@ -1,4 +1,8 @@
 from abc import ABC
+from typing import Self
+
+from Hyper.Utils.HyperTyping import OneBotSegReg
+
 
 message_types = {}
 
@@ -64,9 +68,9 @@ class SegmentBase(ABC):
 
         cls.__str__ = to_str if cls().__str__() == "__not_set__" else cls.__str__
 
-        message_types[sg_type] = {
+        message_types[sg_type]: OneBotSegReg = {
             "type": cls,
-            "args": list(cls.__anns.keys())
+            "args": list(cls.__anns.keys()),
         }
 
         return cls
@@ -80,10 +84,6 @@ class SegmentBase(ABC):
                 base["data"][i] = self.__anns[i](getattr(self, i))
             else:
                 base["data"][i] = getattr(self, i)
-            # try:
-            #     base["data"][i] = anns[i](getattr(self, i))
-            # except TypeError:
-            #     base["data"][i] = getattr(self, i)
         return base
 
     def __str__(self) -> str: return "__not_set__"

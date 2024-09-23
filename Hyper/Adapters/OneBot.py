@@ -3,6 +3,7 @@ import threading
 import time
 import asyncio
 import os
+from typing import NoReturn
 
 from Hyper import Network, Events, Comm
 from Hyper.Utils import Errors, Logic
@@ -181,7 +182,9 @@ class Actions:
         return Comm.Ret.fetch(packet.echo, GetMsgRsp)
 
 
-async def tester(message_data: Union[Event, HyperNotify], actions: Actions) -> None:
+async def tester(
+        message_data: Union[Event, HyperNotify], actions: Actions
+) -> None:
     ...
 
 
@@ -200,7 +203,7 @@ def __handler(data: Union[dict, HyperNotify], actions: Actions) -> None:
 handler: callable = tester
 
 
-def reg(func: callable):
+def reg(func: callable) -> None:
     global handler
     handler = func
 
@@ -208,7 +211,7 @@ def reg(func: callable):
 connection: Union[Network.WebsocketConnection, Network.HTTPConnection]
 
 
-def run():
+def run() -> NoReturn:
     global connection, listener_ran
     listener_ran = True
     try:

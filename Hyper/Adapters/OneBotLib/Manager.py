@@ -1,8 +1,9 @@
 from Hyper import Configurator, Logger, Network, Segments
 from Hyper.Utils import Logic
+from Hyper.Utils.HyperTyping import T, OneBotJsonPacket
 from Hyper.Utils.TypeExt import ObjectedJson
 
-from typing import Union, Generic, TypeVar
+from typing import Union, Generic
 import random
 import json
 
@@ -31,7 +32,7 @@ class Packet:
 
     def send_to(self, connection: Union[Network.WebsocketConnection, Network.HTTPConnection]) -> None:
         if isinstance(connection, Network.WebsocketConnection):
-            payload = {
+            payload: OneBotJsonPacket = {
                 "action": self.endpoint,
                 "params": self.paras,
                 "echo": self.echo,
@@ -119,11 +120,8 @@ class Message:
         return self
 
 
-T = TypeVar("T")
-
-
 class Ret(Generic[T]):
-    def __init__(self, json_data: dict, serializer):
+    def __init__(self, json_data: dict, serializer: T):
         self.raw = json_data.copy()
         self.status = json_data["status"]
         self.ret_code = json_data["retcode"]
@@ -132,13 +130,4 @@ class Ret(Generic[T]):
 
     @classmethod
     def fetch(cls, echo: str, serializer=ObjectedJson) -> "Ret":
-        # old = None
-        # while True:
-        #     content = reports.get()
-        #     if old is not None:
-        #         reports.put(old)
-        #     if content["echo"] == echo:
-        #         return cls(content)
-        #     else:
-        #         old = content
         return cls(reports.get(echo), serializer)

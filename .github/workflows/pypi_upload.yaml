@@ -1,4 +1,4 @@
-name: Build and upload python package
+name: HypeR Bot PyPi Upload
 
 on:
   release:
