@@ -56,7 +56,7 @@
 <div style="display: flex; text-align: center">
     <!-- 图片部分 -->
     <div class="user_icon">
-        <img src="{ava_url}" style="width:640px;height:640px"/>
+        <img src="{ava_url}" style="width:640px;height:640px" class="user_img"/>
     </div>
     <!-- 文字部分 -->
     <div style="display: block">
@@ -65,4 +65,22 @@
     </div>
 </div>
 </body>
+<script>
+    const url_params = new URLSearchParams(window.location.search);
+    const quote = url_params.get("quote");
+    const name = url_params.get("name");
+    const img_url = url_params.get("img");
+
+    let quote_box = document.getElementsByClassName("user_quote");
+    let name_box = document.getElementsByClassName("user_name");
+    let img_box = document.getElementsByClassName("user_img");
+
+    quote_box.innerHTML = String(quote);
+    name_box.innerHTML = String(name);
+    img_box.src = String(img_url);
+    quote_box.offsetHeight;
+    name_box.offsetHeight;
+    img_box.offsetHeight;
+
+</script>
 </html>
