@@ -1,10 +1,13 @@
 from Hyper import Configurator
 
-Configurator.init(
-    Configurator.Config(
-        file="config.json"
-    ).load_from_file()
-)
+from cfgr.manager import Serializers
+
+try:
+    Configurator.BotConfig.load_from("config.json", Serializers.JSON, "hyper-bot")
+except FileNotFoundError:
+    Configurator.BotConfig.create_and_write("config.json", Serializers.JSON)
+    print("没有找到配置文件，已自动创建，请填写后重启")
+    exit(-1)
 
 if True:
     import asyncio
@@ -17,7 +20,7 @@ if True:
 ModuleClass.load()
 
 handler_list = ModuleClass.ModuleRegister.get_registered()
-config = Configurator.cm.get_cfg()
+config = Configurator.BotConfig.get("hyper-bot")
 logger = Logger.Logger()
 logger.set_level(config.log_level)
 

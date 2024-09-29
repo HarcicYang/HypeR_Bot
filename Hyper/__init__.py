@@ -26,9 +26,8 @@ def restart() -> None:
 
 
 class Client:
-    def __init__(self, bot_config: Configurator.Config):
+    def __init__(self):
         self.records = {}
-        Configurator.init(bot_config)
 
     def subscribe(
             self,

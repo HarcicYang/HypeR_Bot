@@ -2,7 +2,6 @@ from Hyper.Events import GroupMessageEvent, PrivateMessageEvent
 from Hyper.Comm import Message
 from ModuleClass import ModuleRegister, Module
 from Hyper.Segments import *
-from Hyper.Configurator import cm
 from Hyper.Listener import Actions
 
 from modules.GoogleAI import genai, Context, Parts, Roles
@@ -16,8 +15,10 @@ import traceback
 import os
 import httpx
 
-white_list: list = cm.get_cfg().others.get("white")
-white_list += cm.get_cfg().owner
+config = Configurator.BotConfig.get("hyper-bot")
+
+white_list: list = config.others.get("white")
+white_list += config.owner
 
 
 class ChatActions:
@@ -278,7 +279,7 @@ model = genai.GenerativeModel(
     tools="code_execution"
 )
 
-key = cm.get_cfg().others["gemini_key"]
+key = config.others["gemini_key"]
 genai.configure(api_key=key, transport="rest")
 os.environ["GOOGLE_API_KEY"] = key
 tools = [Tools.read_url]

@@ -3,7 +3,7 @@ import atexit
 from Hyper import Configurator, Events
 from Hyper.Utils.Screens import color_txt, rgb
 
-config = Configurator.cm.get_cfg()
+config = Configurator.BotConfig.get("hyper-bot")
 
 if config.protocol == "OneBot":
     from Hyper.Adapters.OneBot import *

@@ -10,13 +10,13 @@ import json
 # reports = queue.Queue()
 reports = Logic.KeyQueue()
 
-config: Configurator.Config
+config: Configurator.BotConfig
 logger: Logger.Logger
 
 
 def init() -> None:
     global config, logger
-    config = Configurator.cm.get_cfg()
+    config = Configurator.BotConfig.get("hyper-bot")
     logger = Logger.Logger()
     logger.set_level(config.log_level)
 

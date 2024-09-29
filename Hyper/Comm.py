@@ -1,6 +1,6 @@
-from Hyper.Configurator import *
+from Hyper import Configurator
 
-config = cm.get_cfg()
+config = Configurator.BotConfig.get("hyper-bot")
 
 if config.protocol == "OneBot":
     from Hyper.Adapters.OneBotLib.Manager import *

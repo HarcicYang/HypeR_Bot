@@ -4,9 +4,9 @@ import typing
 import uuid
 
 from Hyper.Utils.Errors import *
-from Hyper.Configurator import cm
+from Hyper import Configurator
 
-config = cm.get_cfg()
+config = Configurator.BotConfig.get("hyper-bot")
 if config.protocol == "OneBot":
     # from Hyper.Adapters.OneBotLib.Res import segment_builder, Base, message_types
     from Hyper.Adapters.OneBotLib.Res import SegmentBase, message_types

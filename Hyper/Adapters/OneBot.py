@@ -11,7 +11,7 @@ from Hyper.Utils.APIRsp import *
 from Hyper.Comm import reports
 from Hyper.Events import *
 
-config = Configurator.cm.get_cfg()
+config = Configurator.BotConfig.get("hyper-bot")
 logger = Logger.Logger()
 logger.set_level(config.log_level)
 listener_ran = False
@@ -218,9 +218,9 @@ def run() -> NoReturn:
         if handler is tester:
             raise Errors.ListenerNotRegisteredError("No handler registered")
         # connection = websocket.WebSocket()
-        if isinstance(config.connection, Configurator.WSConnectionC):
+        if isinstance(config.connection, Configurator.BotWSC):
             connection = Network.WebsocketConnection(f"ws://{config.connection.host}:{config.connection.port}")
-        elif isinstance(config.connection, Configurator.HTTPConnectionC):
+        elif isinstance(config.connection, Configurator.BotHTTPC):
             connection = Network.HTTPConnection(
                 url=f"http://{config.connection.host}:{config.connection.port}",
                 listener_url=f"http://{config.connection.listener_host}:{config.connection.listener_port}"

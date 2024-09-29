@@ -1,27 +1,15 @@
 {
-  "owner": [
-    2488529467
-  ],
-  "black_list": [
-    3497623764, 3378817406
-  ],
-  "silents": [
-    894446744
-  ],
-  "Connection": {
-    "mode": "FWS",
-    "host": "127.0.0.1",
-    "port": 5004,
-    "listener_host": "127.0.0.1",
-    "listener_port": 5003,
-    "retries": 5,
-    "satori_token": "3ad625bfe958fb6cd60d7be89d06efe46e5c49fddd699195cd0461be073c335b"
+  "protocol": "",
+  "owner": [],
+  "black_list": [],
+  "silents": [],
+  "connection": {
+    "host": "",
+    "port": 0,
+    "retries": 0,
+    "token": ""
   },
-  "Log_level": "INFO",
-  "protocol": "OneBot",
-  "Others": {
-    "gemini_key": "AIzaSyBZwfGlNzu8zIFPS9TpHokd2BMgkWdbA94",
-    "white": [1348472639, 3575277439, 3569709728]
-  },
-  "uin": 3591992788
+  "log_level": "",
+  "uin": 0,
+  "others": {}
 }

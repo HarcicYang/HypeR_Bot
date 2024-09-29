@@ -2,7 +2,7 @@ from Hyper.Events import GroupMessageEvent, PrivateMessageEvent
 from Hyper.Comm import Message
 from ModuleClass import ModuleRegister, Module
 from Hyper.Segments import *
-from Hyper.Configurator import cm
+from Hyper import Configurator
 
 from modules.GoogleAI import genai, Context, Parts, Roles
 
@@ -26,7 +26,7 @@ model = genai.GenerativeModel(
     tools="code_execution"
 )
 
-key = cm.get_cfg().others["gemini_key"]
+key = Configurator.BotConfig.get("hyper-bot").others["gemini_key"]
 genai.configure(api_key=key, transport="rest")
 os.environ["GOOGLE_API_KEY"] = key
 

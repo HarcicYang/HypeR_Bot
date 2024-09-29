@@ -8,13 +8,13 @@ from Hyper.Logger import levels
 from abc import ABC
 from typing import Union
 
-config: Configurator.Config
+config: Configurator.BotConfig
 logger: Logger.Logger
 
 
 def init():
     global config, logger
-    config = Configurator.cm.get_cfg()
+    config = Configurator.BotConfig.get("hyper-bot")
     logger = Logger.Logger()
     logger.set_level(config.log_level)
 

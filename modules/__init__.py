@@ -5,7 +5,7 @@ import traceback
 
 from Hyper import Configurator, Logger
 
-config = Configurator.cm.get_cfg()
+config = Configurator.BotConfig.get("hyper-bot")
 logger = Logger.Logger()
 logger.set_level(config.log_level)
 modules_path = os.path.dirname(__file__)
