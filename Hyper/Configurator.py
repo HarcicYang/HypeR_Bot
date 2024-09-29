@@ -25,9 +25,9 @@ class BotConfig(BaseConfig):
     owner: list
     black_list: list
     silents: list
-    connection: dict
     connection: BotHTTPC
     connection: BotWSC
+    connection: dict
     log_level: str = "INFO"
     uin: int
     others: dict
