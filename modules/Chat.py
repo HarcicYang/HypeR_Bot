@@ -113,6 +113,8 @@ class ChatActions:
                 if not ev.is_owner:
                     return
                 white_list.append(int(target))
+                config.others["white"] = white_list
+                config.write()
                 await ac.send(
                     group_id=ev.group_id,
                     user_id=ev.user_id,

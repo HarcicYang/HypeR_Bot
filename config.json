@@ -1,15 +1,30 @@
 {
-  "protocol": "",
-  "owner": [],
-  "black_list": [],
-  "silents": [],
+  "protocol": "OneBot",
+  "owner": [
+    2488529467
+  ],
+  "black_list": [
+    3497623764,
+    3378817406
+  ],
+  "silents": [
+    894446744
+  ],
   "connection": {
-    "host": "",
-    "port": 0,
-    "retries": 0,
-    "token": ""
+    "host": "127.0.0.1",
+    "port": 5004,
+    "retries": 5,
+    "token": null
   },
-  "log_level": "",
-  "uin": 0,
-  "others": {}
+  "log_level": "INFO",
+  "uin": 3591992788,
+  "others": {
+    "gemini_key": "AIzaSyBZwfGlNzu8zIFPS9TpHokd2BMgkWdbA94",
+    "white": [
+      1348472639,
+      3575277439,
+      3569709728,
+      2488529467,
+    ]
+  }
 }
