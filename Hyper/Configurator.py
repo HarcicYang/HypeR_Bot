@@ -6,6 +6,7 @@ from Hyper.Utils import Logic
 
 
 class BotWSC(BaseConfig):
+    mode: str = "FWS"
     host: str
     port: int
     retries: int
@@ -13,6 +14,7 @@ class BotWSC(BaseConfig):
 
 
 class BotHTTPC(BaseConfig):
+    mode: str = "HTTPC"
     host: str
     port: int
     listener_host: str
