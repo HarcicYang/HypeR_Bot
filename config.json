@@ -12,6 +12,10 @@
   ],
   "connection": {
     "mode": "FWS",
+    "ob_auto_startup": true,
+    "ob_exec": "./Lagrange.OneBot/Lagrange.OneBot.exe",
+    "ob_startup_path": "./Lagrange.OneBot/",
+    "ob_log_output": false,
     "host": "127.0.0.1",
     "port": 5004,
     "retries": 5,
