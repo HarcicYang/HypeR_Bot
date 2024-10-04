@@ -246,7 +246,7 @@ def run() -> NoReturn:
             )
         retried = 0
         if config.connection.ob_auto_startup:
-            LagrangeOneBotService(IServiceStartUp.MANUAL).run_in_thread(config)
+            LagrangeOneBotService(IServiceStartUp.MANUAL).run_in_thread()
 
         while True:
             try:
