@@ -3,6 +3,8 @@ from cfgr.manager import BaseConfig
 
 class BotWSC(BaseConfig):
     mode: str = "FWS"
+    ob_auto_startup: bool = False
+    ob_exec: str = None
     host: str
     port: int
     retries: int
@@ -11,6 +13,8 @@ class BotWSC(BaseConfig):
 
 class BotHTTPC(BaseConfig):
     mode: str = "HTTPC"
+    ob_auto_startup: bool = False
+    ob_exec: str = None
     host: str
     port: int
     listener_host: str
