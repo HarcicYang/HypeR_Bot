@@ -3,9 +3,11 @@ import threading
 import time
 import asyncio
 import os
-from typing import NoReturn
+import subprocess
+from typing import Any, NoReturn
 
 from Hyper import Network, Events, Comm
+from Hyper.Service import FuncCall, IServiceBase, IServiceStartUp
 from Hyper.Utils import Errors, Logic
 from Hyper.Utils.APIRsp import *
 from Hyper.Comm import reports
@@ -211,6 +213,23 @@ def reg(func: callable) -> None:
 connection: Union[Network.WebsocketConnection, Network.HTTPConnection]
 
 
+class LagrangeOneBotService(IServiceBase):
+
+    def handler(self, func: FuncCall) -> Any:
+        pass
+
+    async def server(self, bot_config: Configurator.BotConfig) -> None:
+        proc = subprocess.Popen(
+            args=config.connection.ob_exec,
+            cwd=config.connection.ob_startup_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
+        if bot_config.connection.ob_log_output:
+            for i in proc.stdout:
+                print(i.decode(), end="")
+
+
 def run() -> NoReturn:
     global connection, listener_ran
     listener_ran = True
@@ -226,6 +245,9 @@ def run() -> NoReturn:
                 listener_url=f"http://{config.connection.listener_host}:{config.connection.listener_port}"
             )
         retried = 0
+        if config.connection.ob_auto_startup:
+            LagrangeOneBotService(IServiceStartUp.MANUAL).run_in_thread(config)
+
         while True:
             try:
                 connection.connect()

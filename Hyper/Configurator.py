@@ -5,6 +5,8 @@ class BotWSC(BaseConfig):
     mode: str = "FWS"
     ob_auto_startup: bool = False
     ob_exec: str = None
+    ob_startup_path: str = None
+    ob_log_output: bool = False
     host: str
     port: int
     retries: int
@@ -15,6 +17,8 @@ class BotHTTPC(BaseConfig):
     mode: str = "HTTPC"
     ob_auto_startup: bool = False
     ob_exec: str = None
+    ob_startup_path: str = None
+    ob_log_output: bool = False
     host: str
     port: int
     listener_host: str
