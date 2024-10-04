@@ -1,8 +1,4 @@
-import json
-import typing
 from cfgr.manager import BaseConfig
-
-from Hyper.Utils import Logic
 
 
 class BotWSC(BaseConfig):

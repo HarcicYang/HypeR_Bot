@@ -2,6 +2,7 @@ from Hyper import Configurator
 from Hyper.Utils import Screens
 
 from typing import Coroutine, Union
+import asyncio
 import importlib
 import sys
 import os
@@ -51,13 +52,19 @@ class Client:
                 "Events.HyperListenerStopNotify"
             ]
     ) -> None:
-        self.records[event] = func
+        if not self.records.get(event):
+            self.records[event] = [func]
+        else:
+            self.records[event].append(func)
 
     async def distributor(
             self, message_data: Union["Events.Event", "Events.HyperNotify"], actions: "Listener.Actions"
     ) -> None:
         if type(message_data) in list(self.records.keys()):
-            await self.records[actions](message_data, actions)
+            tasks = []
+            for i in self.records[type(message_data)]:
+                tasks.append(asyncio.create_task(i(message_data, actions)))
+            await asyncio.gather(*tasks)
         else:
             return
 

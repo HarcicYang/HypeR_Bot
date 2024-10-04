@@ -151,7 +151,7 @@ class Musics(Module):
                         Text("正在获取歌曲，请稍等")
                     )
                 )
-                msg_id = msg_res.data["message_id"]
+                msg_id = msg_res.data.message_id
                 res = await download(song_id)
                 if res[0]:
                     path = res[2]
