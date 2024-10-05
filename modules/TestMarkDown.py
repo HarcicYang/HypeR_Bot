@@ -85,7 +85,7 @@ class Test(ModuleClass.Module):
                     ]
                 )
             )
-            res_id: str = forward_result.data
+            res_id: str = forward_result.data.res_id
             print(forward_result.raw)
             message = Message(
                 [
@@ -116,15 +116,16 @@ class Test(ModuleClass.Module):
             forward_result = await self.actions.send_forward_msg(
                 message=Message(
                     [
-                        CustomNode(user_id=str(self.event.self_id), nick_name="bot", content=Message([keyboard])
-                                   )
+                        CustomNode(
+                            user_id=str(self.event.self_id), nick_name="bot", content=Message([keyboard])
+                        )
                     ]
                 )
             )
-            res_id: str = forward_result.data
+            res_id: str = forward_result.data.res_id
             await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
                                     message=Message([LongMessage(res_id)]))
-        elif str(self.event.message) == "我们的小溯溯":
+        elif str(self.event.message) == "我们的小溯":
             row = KeyBoardRow(
                 [
                     KeyBoardButton("小溯溯真棒", data="👍", enter=True, style=0)
@@ -140,7 +141,7 @@ class Test(ModuleClass.Module):
                     ]
                 )
             )
-            res_id: str = forward_result.data
+            res_id: str = forward_result.data.res_id
             await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
                                     message=Message([LongMessage(res_id)]))
 
@@ -149,7 +150,7 @@ class Test(ModuleClass.Module):
                                     message=Message([Dice()]))
 
         elif str(self.event.message) == ".test5":
-            message = Manager.Message(
+            message = Comm.Message(
                 [
                     Music(
                         type="custom",
@@ -166,7 +167,7 @@ class Test(ModuleClass.Module):
 
         elif str(self.event.message) == ".test6":
             echo = await self.actions.custom.get_cookies(domain="qun.qq.com")
-            print(Manager.Ret.fetch(echo).data)
+            print(Comm.Ret.fetch(echo).data)
 
         elif str(self.event.message) == ".test7":
             ark = Card(

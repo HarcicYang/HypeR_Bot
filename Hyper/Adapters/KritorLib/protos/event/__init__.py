@@ -65,10 +65,11 @@ class RequestEventRequestType(betterproto.Enum):
 
 
 class EventType(betterproto.Enum):
-    EVENT_TYPE_CORE_EVENT = 0
-    EVENT_TYPE_MESSAGE = 1
-    EVENT_TYPE_NOTICE = 2
-    EVENT_TYPE_REQUEST = 3
+    EVENT_TYPE_UNSPECIFIED = 0
+    EVENT_TYPE_CORE_EVENT = 1
+    EVENT_TYPE_MESSAGE = 2
+    EVENT_TYPE_NOTICE = 3
+    EVENT_TYPE_REQUEST = 4
 
 
 @dataclass(eq=False, repr=False)

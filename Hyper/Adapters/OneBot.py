@@ -222,8 +222,7 @@ class LagrangeOneBotService(IServiceBase):
         proc = subprocess.Popen(
             args=config.connection.ob_exec,
             cwd=config.connection.ob_startup_path,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT
+            stdout=subprocess.PIPE
         )
         if bot_config.connection.ob_log_output:
             for i in proc.stdout:
@@ -246,7 +245,7 @@ def run() -> NoReturn:
             )
         retried = 0
         if config.connection.ob_auto_startup:
-            LagrangeOneBotService(IServiceStartUp.MANUAL).run_in_thread()
+            LagrangeOneBotService(IServiceStartUp.MANUAL).run_in_thread(config)
 
         while True:
             try:

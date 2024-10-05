@@ -44,3 +44,5 @@ class BotConfig(BaseConfig):
                 self.connection = BotWSC(**self.connection)
             elif self.connection["mode"] == "HTTPC":
                 self.connection = BotHTTPC(**self.connection)
+        elif self.protocol == "Kritor":
+            self.connection = BotWSC(**self.connection)

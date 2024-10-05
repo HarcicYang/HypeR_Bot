@@ -1,14 +1,27 @@
 import asyncio
-from typing import Union
+from typing import Any, Union, Self
 import os
 import threading
 import time
 
+from Hyper import Comm
 from Hyper.Adapters.OneBot import Actions as OneBotActions
-from Hyper.Events import Event, HyperNotify, HyperListenerStartNotify
+from Hyper.Adapters.KritorLib.Res import event_queue, to_protos, message_ids
+from Hyper.Events import Event, HyperNotify, HyperListenerStartNotify, em
+from Hyper.Service import FuncCall, IServiceStartUp, IServiceBase
 from Hyper.Network import KritorConnection
 from Hyper.Utils import Errors
+from Hyper.Utils.APIRsp import *
 from Hyper import Configurator, Logger
+
+from Hyper.Adapters.KritorLib.protos.common import Contact, Scene
+from Hyper.Adapters.KritorLib.protos.core import GetVersionRequest, CoreServiceStub
+from Hyper.Adapters.KritorLib.protos.message import (
+    MessageServiceStub,
+    SendMessageRequest,
+    RecallMessageRequest,
+    GetMessageRequest
+)
 
 config = Configurator.BotConfig.get("hyper-bot")
 logger = Logger.Logger()
@@ -19,13 +32,57 @@ class Actions(OneBotActions):
     def __init__(self, cnt: KritorConnection):
         self.connection = cnt
 
+    @Logger.AutoLogAsync.register(Logger.AutoLog.templates().send, logger)
+    async def send(
+            self, message: Comm.Message, group_id: int = None, user_id: int = None
+    ) -> Comm.Ret[MsgSendRsp]:
+        msg = to_protos(message.get_sync())
+        if group_id is not None:
+            contact = Contact(
+                scene=Scene.GROUP,
+                peer=str(group_id),
+            )
+        else:
+            contact = Contact(
+                scene=Scene.FRIEND,
+                peer=str(user_id),
+            )
+        req = SendMessageRequest(
+            contact=contact,
+            elements=msg,
+            retry_count=3
+        )
+        print(req)
+        res = await MessageServiceStub(self.connection.channel).send_message(req)
+
+        message_ids[res.message_id] = len(message_ids)
+        print(res)
+
+        return Comm.Ret(
+            {"data": {"message_id": message_ids[res.message_id]}},
+            MsgSendRsp
+        )
+
+    async def get_version_info(self) -> Comm.Ret[GetVerInfoRsp]:
+        res = await CoreServiceStub(self.connection.channel).get_version(GetVersionRequest())
+        return Comm.Ret(
+            {"data": {"app_name": res.app_name, "app_version": res.version, "protocol_version": None}},
+            GetVerInfoRsp
+        )
+
 
 async def tester(message_data: Union[Event, HyperNotify], actions: Actions) -> None:
     ...
 
 
-def __handler(data: Union[dict, HyperNotify], actions: Actions) -> None:
-    print(data)
+def _handler(data: Union[dict, HyperNotify], actions: Actions) -> None:
+    if isinstance(data, dict):
+        if data.get("post_type") == "meta_event" or data.get("user_id") == data.get("self_id"):
+            pass
+        else:
+            asyncio.run(handler(em.new(data), actions))
+    else:
+        asyncio.run(handler(data, actions))
 
 
 handler: callable = tester
@@ -38,6 +95,21 @@ def reg(func: callable):
 
 connection: KritorConnection
 listener_ran = False
+
+
+class KritorEventGettingService(IServiceBase):
+    actions: Actions
+
+    def handler(self, func: FuncCall) -> Any:
+        pass
+
+    def set_actions(self, act: Actions) -> Self:
+        self.actions = act
+        return self
+
+    async def server(self) -> Any:
+        while 1:
+            threading.Thread(target=lambda: _handler(event_queue.get(), self.actions)).start()
 
 
 def run():
@@ -81,14 +153,13 @@ def run():
                     notify_type="listener_start",
                     connection=connection
                 )
-                threading.Thread(target=lambda: __handler(data, actions)).start()
-                task = []
+                threading.Thread(target=lambda: _handler(data, actions)).start()
+                task = None
                 while True:
                     try:
-                        if not task:
-                            task.append(asyncio.create_task(connection.recv()))
-                        else:
-                            await asyncio.sleep(1)
+                        task = connection.recv()
+                        KritorEventGettingService(IServiceStartUp.MANUAL).set_actions(actions).run_in_thread()
+                        await task
                     except ConnectionResetError:
                         logger.log("连接断开", level=Logger.levels.ERROR)
                         break

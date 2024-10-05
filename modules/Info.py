@@ -30,9 +30,7 @@ class Module(ModuleClass.Module):
                    "https://github.com/HarcicYang/HypeR_Bot\n"
                    "\n"
                    "时间：{}\n"
-                   "OneBot实现名称：{}"
-                   "\n"
-                   "OneBot实现版本：{}").format(
+                   "协议库实现：{} {}").format(
             Hyper.HYPER_BOT_VERSION,
             str(datetime.datetime.now()),
             name,

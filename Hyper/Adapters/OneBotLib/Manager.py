@@ -3,7 +3,7 @@ from Hyper.Utils import Logic
 from Hyper.Utils.HyperTyping import T, OneBotJsonPacket
 from Hyper.Utils.TypeExt import ObjectedJson
 
-from typing import Union, Generic
+from typing import Union, Generic, Type
 import random
 import json
 
@@ -121,10 +121,10 @@ class Message:
 
 
 class Ret(Generic[T]):
-    def __init__(self, json_data: dict, serializer: T):
+    def __init__(self, json_data: dict, serializer: Type[T]):
         self.raw = json_data.copy()
-        self.status = json_data["status"]
-        self.ret_code = json_data["retcode"]
+        self.status = json_data.get("status")
+        self.ret_code = json_data.get("retcode")
         self.data: T = serializer(json_data.get("data"))
         self.echo = json_data.get("echo")
 
