@@ -52,12 +52,8 @@ class Actions(OneBotActions):
             elements=msg,
             retry_count=3
         )
-        print(req)
         res = await MessageServiceStub(self.connection.channel).send_message(req)
-
         message_ids[res.message_id] = len(message_ids)
-        print(res)
-
         return Comm.Ret(
             {"data": {"message_id": message_ids[res.message_id]}},
             MsgSendRsp
