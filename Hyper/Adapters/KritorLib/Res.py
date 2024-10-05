@@ -12,8 +12,8 @@ from Hyper.Adapters.KritorLib.protos.common import (
 )
 from Hyper.Configurator import BotConfig
 from Hyper.Utils.Logic import SimpleQueue
-from Hyper import Comm
 
+import traceback
 import asyncio
 from typing import NoReturn, Self
 from abc import ABC
@@ -115,14 +115,17 @@ def to_protos(body: list) -> list:
                 )
             )
         elif i["type"] == "image":
-            elems.append(
-                Element(
-                    type=ElementElementType.IMAGE,
-                    image=ImageElement(
-                        file_url=i["file"]
+            try:
+                elems.append(
+                    Element(
+                        type=ElementElementType.IMAGE,
+                        image=ImageElement(
+                            file_url=i["file"]
+                        )
                     )
                 )
-            )
+            except:
+                traceback.print_exc()
         elif i["type"] == "video":
             elems.append(
                 Element(
@@ -152,18 +155,21 @@ def to_protos(body: list) -> list:
             )
         elif i["type"] == "reply":
             try:
-                mid = list(filter(lambda x: message_ids[x] == i["data"]["id"], message_ids))[1]
-            except IndexError:
-                mid = list(filter(lambda x: message_ids[x] == i["data"]["id"], message_ids))[0]
+                try:
+                    mid = list(filter(lambda x: message_ids[x] == int(i["data"]["id"]), message_ids))[1]
+                except IndexError:
+                    mid = list(filter(lambda x: message_ids[x] == int(i["data"]["id"]), message_ids))[0]
 
-            elems.append(
-                Element(
-                    type=ElementElementType.REPLY,
-                    reply=ReplyElement(
-                        message_id=mid
+                elems.append(
+                    Element(
+                        type=ElementElementType.REPLY,
+                        reply=ReplyElement(
+                            message_id=mid
+                        )
                     )
                 )
-            )
+            except:
+                traceback.print_exc()
 
     return elems
 

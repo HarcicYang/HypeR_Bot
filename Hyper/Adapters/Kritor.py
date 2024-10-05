@@ -109,7 +109,7 @@ class KritorEventGettingService(IServiceBase):
 
 
 def run():
-    async def runner():
+    async def hy_i_runner():
         global connection, listener_ran
         try:
             if handler is tester:
@@ -170,7 +170,7 @@ def run():
                 pass
             os._exit(0)
 
-    asyncio.get_event_loop().run_until_complete(runner())
+    asyncio.get_event_loop().run_until_complete(hy_i_runner())
 
 
 def stop() -> None:
