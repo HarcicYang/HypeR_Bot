@@ -25,7 +25,7 @@ start_up = [
     rf"""
     {color_txt("HHH  HHH YYY   YY PPPPPPPp,   ,dEPPPP   ,dbPPPp   dBBPPPo OOOOOOOO TTTTTTTTT ", rgb(100, 184, 236))}
     {color_txt("HHHHHHHH YYYoooYY PPPP   Pp   dEEooo    dRRooP'   BBBoooB OOO  OOO    'TTd   ", rgb(146, 214, 235))}
-    {color_txt("HHP  HHH       YY PPPPPPP'  ,EE'      ,RR' P'     BBB   B OOO  OOO   'TTT    ", rgb(91, 223, 205))}
+    {color_txt("HHP  HHH      _YY PPPPPPP'  ,EE'      ,RR' P'     BBB   B OOO  OOO   'TTT    ", rgb(91, 223, 205))}
     {color_txt("HHP  HHH PPPPPPY  888P      EEbdPPP   RR  do      BBBPPPP OOOooOOO 'TTp      ", rgb(93, 226, 158))}                                              
 
     """,
