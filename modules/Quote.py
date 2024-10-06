@@ -96,6 +96,7 @@ class Quoter(Module):
                 return
 
             content = await self.actions.get_msg(msg_id)
+            print(content.data.message)
             name = content.data.sender.nickname if not content.data.sender.card else \
                 content.data.sender.card
             uin = content.data.sender.user_id

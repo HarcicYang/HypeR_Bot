@@ -290,7 +290,7 @@ def run() -> NoReturn:
             connection.close()
         except:
             pass
-        sys.extt()
+        sys.exit()
 
 
 def stop() -> None:

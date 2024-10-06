@@ -3,15 +3,17 @@ import typing
 import inspect
 from functools import wraps
 
+from Hyper.Utils.Screens import color_txt, rgb
+
 
 class Levels:
     def __init__(self):
-        self.TRACE = f"✔️ \033[{47}m\033[{30}mTRACE \033[0m\033[0m "
-        self.INFO = f"ℹ️ \033[{47}m\033[{30}mINFO \033[0m\033[0m "
-        self.WARNING = f"⚠️ \033[{43}mWARN \033[0m "
-        self.ERROR = f"❌ \033[{41}mERROR\033[0m "
-        self.CRITICAL = f"🔴 \033[{41};{1}m*CRIT\033[0m "
-        self.DEBUG = f"🛠️ \033[{43}mDEBUG\033[0m "
+        self.TRACE = color_txt("| Trace    |", rgb(184, 255, 254))
+        self.INFO = color_txt("| Info     |", rgb(90, 221, 225))
+        self.WARNING = color_txt("| Warning  |", rgb(82, 171, 237))
+        self.ERROR = color_txt("| Error    |", rgb(255, 48, 70))
+        self.CRITICAL = color_txt("| Critical |", rgb(178, 33, 48))
+        self.DEBUG = color_txt("| Debug    |", rgb(93, 227, 144))
 
         self.level_nums = {
             self.TRACE: -1,
@@ -67,14 +69,14 @@ class Logger:
     def log(self, message: str, level: str = levels.INFO):
         if levels.level_nums[level] < levels.level_nums[self.log_level]:
             return
-        time = datetime.datetime.now()
+        time = color_txt(str(datetime.datetime.now())[:-4], rgb(65, 128, 176))
         if "\n" in message:
             listed = message.split("\n")
             for i in listed:
-                content = f" \033[38;5;244m[{str(time)[:-4]}]\033[0m {level} {i}"
+                content = f" {time} {level} {i}"
                 print(content)
         else:
-            content = f" \033[38;5;244m[{str(time)[:-4]}]\033[0m {level} {message}"
+            content = f" {time} {level} {message}"
             print(content)
 
 

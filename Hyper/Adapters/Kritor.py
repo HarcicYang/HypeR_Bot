@@ -28,6 +28,15 @@ logger = Logger.Logger()
 logger.set_level(config.log_level)
 
 
+def mid_res(msg_id: str) -> tuple[str, int, int]:
+    ret = ["", 0, 0]
+    ret[0] = "group" if msg_id.startswith("g") else "private"
+    msg_id = msg_id.replace("g", "").replace("p", "")
+    ret[1] = int(msg_id[:20])
+    ret[2] = int(msg_id[20:])
+    return ret[0], ret[1], ret[2]
+
+
 class Actions(OneBotActions):
     def __init__(self, cnt: KritorConnection):
         self.connection = cnt
@@ -65,6 +74,60 @@ class Actions(OneBotActions):
             {"data": {"app_name": res.app_name, "app_version": res.version, "protocol_version": None}},
             GetVerInfoRsp
         )
+
+    async def get_msg(self, msg_id: int) -> Comm.Ret[GetMsgRsp]:
+        try:
+            mid = list(filter(lambda x: message_ids[x] == msg_id, message_ids))[1]
+        except IndexError:
+            mid = list(filter(lambda x: message_ids[x] == msg_id, message_ids))[0]
+        if str(mid).startswith("g"):  # GROUP
+            contact = Contact(
+                scene=Scene.GROUP,
+                peer=str(mid_res(mid)[1]),
+            )
+            res = await MessageServiceStub(self.connection.channel).get_message(GetMessageRequest(contact, mid))
+            print(res)
+            return Comm.Ret(
+                {
+                    "time": res.message.time,
+                    "message_type": "group",
+                    "message_id": msg_id,
+                    "real_id": 0,
+                    "sender": {
+                        "user_id": res.message.group.uin,
+                        "nickname": res.message.group.nick,
+                        "sex": "unknown",
+                        "age": 0,
+                        "card": res.message.group.nick,
+                        "area": "unknown",
+                        "level": "0",
+                        "role": "unknown",
+                        "title": None
+                    }
+                },
+                GetMsgRsp
+            )
+        else:
+            contact = Contact(
+                scene=Scene.FRIEND,
+                peer=str(mid_res(mid)[1]),
+            )
+            res = await MessageServiceStub(self.connection.channel).get_message(GetMessageRequest(contact, mid))
+            return Comm.Ret(
+                {
+                    "time": res.message.time,
+                    "message_type": "private",
+                    "message_id": msg_id,
+                    "real_id": 0,
+                    "sender": {
+                        "user_id": res.message.private.uin,
+                        "nickname": res.message.private.nick,
+                        "sex": "unknown",
+                        "age": 0
+                    }
+                },
+                GetMsgRsp
+            )
 
 
 async def tester(message_data: Union[Event, HyperNotify], actions: Actions) -> None:
