@@ -8,3 +8,4 @@ Flask~=3.0.0
 google~=3.0.0
 protobuf~=4.25.3
 setuptools~=65.5.0
+ucfgr
