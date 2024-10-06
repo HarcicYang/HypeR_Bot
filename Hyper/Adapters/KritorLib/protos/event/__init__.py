@@ -172,9 +172,9 @@ class GroupEssenceMessageNotice(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class GroupMemberIncreasedNotice(betterproto.Message):
     group_id: int = betterproto.uint64_field(1)
-    operator_uid: str = betterproto.string_field(2)
+    operator_uid: Optional[str] = betterproto.string_field(2, optional=True)
     operator_uin: int = betterproto.uint64_field(3)
-    target_uid: str = betterproto.string_field(4)
+    target_uid: Optional[str] = betterproto.string_field(4, optional=True)
     target_uin: int = betterproto.uint64_field(5)
     type: "GroupMemberIncreasedNoticeGroupMemberIncreasedType" = betterproto.enum_field(6)
 
@@ -182,10 +182,10 @@ class GroupMemberIncreasedNotice(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class GroupMemberDecreasedNotice(betterproto.Message):
     group_id: int = betterproto.uint64_field(1)
-    operator_uid: Optional[str] = betterproto.string_field(2, optional=True, group="_operator_uid")
-    operator_uin: Optional[int] = betterproto.uint64_field(3, optional=True, group="_operator_uin")
-    target_uid: Optional[str] = betterproto.string_field(4, optional=True, group="_target_uid")
-    target_uin: Optional[int] = betterproto.uint64_field(5, optional=True, group="_target_uin")
+    operator_uid: Optional[str] = betterproto.string_field(2, optional=True)
+    operator_uin: Optional[int] = betterproto.uint64_field(3, optional=True)
+    target_uid: Optional[str] = betterproto.string_field(4, optional=True)
+    target_uin: Optional[int] = betterproto.uint64_field(5, optional=True)
     type: "GroupMemberDecreasedNoticeGroupMemberDecreasedType" = betterproto.enum_field(6)
 
 
