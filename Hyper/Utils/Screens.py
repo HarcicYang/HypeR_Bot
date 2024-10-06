@@ -23,32 +23,10 @@ start_up = [
     """,
 
     rf"""
-    {color_txt('██╗   ██╗██╗    ██╗██████╗', rgb(114, 220, 230))} {color_txt('███████╗██████╗ ', rgb(91, 223, 201))}   {color_txt('██████╗  ██████╗ ████████╗', rgb(93, 226, 162))}
-    {color_txt('██║   ██║╚██╗ ██╔╝██╔══██╗', rgb(114, 220, 230))} {color_txt('██╔════╝██╔══██╗', rgb(91, 223, 201))}   {color_txt('██╔══██╗██╔═══██╗╚══██╔══╝', rgb(93, 226, 162))} 
-    {color_txt('████████║ ╚████╔╝ ██████╔╝', rgb(114, 220, 230))} {color_txt('█████╗  ██████╔╝', rgb(91, 223, 201))}   {color_txt('██████╔╝██║   ██║   ██║   ', rgb(93, 226, 162))} 
-    {color_txt('██╔═══██║  ╚██╔╝  ██╔═══╝ ', rgb(114, 220, 230))} {color_txt('██╔══╝  ██╔══██╗', rgb(91, 223, 201))}   {color_txt('██╔══██╗██║   ██║   ██║   ', rgb(93, 226, 162))} 
-    {color_txt('██║   ██║   ██║   ██║     ', rgb(114, 220, 230))} {color_txt('███████╗██║  ██║', rgb(91, 223, 201))}   {color_txt('██████╔╝╚██████╔╝   ██║   ', rgb(93, 226, 162))} 
-    {color_txt('╚═╝   ╚═╝   ╚═╝   ╚═╝     ', rgb(114, 220, 230))} {color_txt('╚══════╝╚═╝  ╚═╝', rgb(91, 223, 201))}   {color_txt('╚═════╝  ╚═════╝    ╚═╝   ', rgb(93, 226, 162))} 
-
-    """,
-
-    rf"""
     {color_txt("HHH  HHH YYY   YY PPPPPPPp,   ,dEPPPP   ,dbPPPp   dBBPPPo OOOOOOOO TTTTTTTTT ", rgb(100, 184, 236))}
-    {color_txt("HHHHHHHH YYYoooYY PPPP    p   dEEooo    dRRooP'   BBBoooB OOO  OOO    'TTd   ", rgb(146, 214, 235))}
-    {color_txt("HHP  HHH       YY PPPPPPPP' ,EE'      ,RR' P'     BBB   B OOO  OOO   'TTT    ", rgb(91, 223, 205))}
-    {color_txt("HHP  HHH PPPPPPYP 888P      EEbdPPP   RR  do      BBBPPPP OOOooOOO 'TTp      ", rgb(93, 226, 158))}                                              
-
-    """,
-
-    rf"""
-    {color_txt('M""MMMMM""MM', rgb(92, 225, 178))} {color_txt("                          ", rgb(124, 200, 235))} {color_txt('MM````````MM    M#``````` M ', rgb(104, 255, 211))} {color_txt("           dP  ", rgb(92, 221, 230))} 
-    {color_txt('M  MMMMM  MM', rgb(92, 225, 178))} {color_txt("                          ", rgb(124, 200, 235))} {color_txt('MM  mmmm,  M    ##  mmmm. `M', rgb(104, 255, 211))} {color_txt("           88  ", rgb(92, 221, 230))} 
-    {color_txt('M         `M', rgb(92, 225, 178))} {color_txt("dP    dP 88d888b. .d8888b.", rgb(124, 200, 235))} {color_txt("M'        .M    #'        .M", rgb(104, 255, 211))} {color_txt(".d8888b. d8888P", rgb(92, 221, 230))} 
-    {color_txt('M  MMMMM  MM', rgb(92, 225, 178))} {color_txt("88    88 88'  `88 88ooood8", rgb(124, 200, 235))} {color_txt('MM  MMMb. "M    M#  MMMb.`YM', rgb(104, 255, 211))} {color_txt("88'  `88   88  ", rgb(92, 221, 230))} 
-    {color_txt('M  MMMMM  MM', rgb(92, 225, 178))} {color_txt("88.  .88 88.  .88 88.  ...", rgb(124, 200, 235))} {color_txt('MM  MMMMM  M    M#  MMMM`  M', rgb(104, 255, 211))} {color_txt("88.  .88   88  ", rgb(92, 221, 230))} 
-    {color_txt('M  MMMMM  MM', rgb(92, 225, 178))} {color_txt("`8888P88 88Y888P' `88888P'", rgb(124, 200, 235))} {color_txt('MM  MMMMM  M    M#       .;M', rgb(104, 255, 211))} {color_txt("`88888P'   dP  ", rgb(92, 221, 230))} 
-    {color_txt('MMMMMMMMMMMM', rgb(92, 225, 178))} {color_txt("     .88 88               ", rgb(124, 200, 235))} {color_txt('MMMMMMMMMMMM    M#########M ', rgb(104, 255, 211))} {color_txt("               ", rgb(92, 221, 230))} 
-                 {color_txt(" d8888P  dP               ", rgb(124, 200, 235))}   
+    {color_txt("HHHHHHHH YYYoooYY PPPP   Pp   dEEooo    dRRooP'   BBBoooB OOO  OOO    'TTd   ", rgb(146, 214, 235))}
+    {color_txt("HHP  HHH       YY PPPPPPP'  ,EE'      ,RR' P'     BBB   B OOO  OOO   'TTT    ", rgb(91, 223, 205))}
+    {color_txt("HHP  HHH PPPPPPY  888P      EEbdPPP   RR  do      BBBPPPP OOOooOOO 'TTp      ", rgb(93, 226, 158))}                                              
 
     """,
 
