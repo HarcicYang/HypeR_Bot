@@ -22,5 +22,5 @@ setup(
         f"Hyper.Adapters.KritorLib.protos.{i}"
         for i in find_packages("./Hyper/Adapters/KritorLib/protos")
     ],
-    include_package_data=True,
+    include_package_data=True
 )
