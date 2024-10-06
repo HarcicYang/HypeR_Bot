@@ -2,7 +2,7 @@ import json
 import threading
 import time
 import asyncio
-import os
+import sys
 import subprocess
 from typing import Any, NoReturn
 
@@ -271,7 +271,7 @@ def run() -> NoReturn:
                 notify_type="listener_start",
                 connection=connection
             )
-            threading.Thread(target=lambda: __handler(data, actions)).start()
+            threading.Thread(target=lambda: __handler(data, actions), daemon=True).start()
             while True:
                 try:
                     data = connection.recv()
@@ -282,7 +282,7 @@ def run() -> NoReturn:
                     logger.log("收到错误的JSON内容", level=Logger.levels.ERROR)
                     continue
                 # threading.Thread(target=lambda: asyncio.run(__handler(data, actions))).start()
-                threading.Thread(target=lambda: __handler(data, actions)).start()
+                threading.Thread(target=lambda: __handler(data, actions), daemon=True).start()
                 # asyncio.create_task(__handler(data, actions))
     except KeyboardInterrupt:
         logger.log("正在退出(Ctrl+C)", level=Logger.levels.WARNING)
@@ -290,7 +290,7 @@ def run() -> NoReturn:
             connection.close()
         except:
             pass
-        os._exit(0)
+        sys.extt()
 
 
 def stop() -> None:

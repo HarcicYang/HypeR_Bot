@@ -1,6 +1,6 @@
 import asyncio
 from typing import Any, Union, Self
-import os
+import sys
 import threading
 import time
 
@@ -105,72 +105,70 @@ class KritorEventGettingService(IServiceBase):
 
     async def server(self) -> Any:
         while 1:
-            threading.Thread(target=lambda: _handler(event_queue.get(), self.actions)).start()
+            threading.Thread(target=lambda: _handler(event_queue.get(), self.actions), daemon=True).start()
 
 
 def run():
+    global listener_ran
+    listener_ran = True
     async def hy_i_runner():
-        global connection, listener_ran
-        try:
-            if handler is tester:
-                raise Errors.ListenerNotRegisteredError("No handler registered")
-            # connection = websocket.WebSocket()
-            # if isinstance(config.connection, Configurator.WSConnectionC):
-            #     connection = Network.WebsocketConnection(f"ws://{config.connection.host}:{config.connection.port}")
-            # elif isinstance(config.connection, Configurator.HTTPConnectionC):
-            #     connection = Network.HTTPConnection(
-            #         url=f"http://{config.connection.host}:{config.connection.port}",
-            #         listener_url=f"http://{config.connection.listener_host}:{config.connection.listener_port}"
-            #     )
-            connection = KritorConnection(
-                host=config.connection.host,
-                port=config.connection.port,
-            )
+        global connection
+        if handler is tester:
+            raise Errors.ListenerNotRegisteredError("No handler registered")
+        # connection = websocket.WebSocket()
+        # if isinstance(config.connection, Configurator.WSConnectionC):
+        #     connection = Network.WebsocketConnection(f"ws://{config.connection.host}:{config.connection.port}")
+        # elif isinstance(config.connection, Configurator.HTTPConnectionC):
+        #     connection = Network.HTTPConnection(
+        #         url=f"http://{config.connection.host}:{config.connection.port}",
+        #         listener_url=f"http://{config.connection.listener_host}:{config.connection.listener_port}"
+        #     )
+        connection = KritorConnection(
+            host=config.connection.host,
+            port=config.connection.port,
+        )
+        retried = 0
+        while True:
+            try:
+                connection.connect()
+            except ConnectionRefusedError or TimeoutError:
+                if retried >= config.connection.retries:
+                    logger.log(f"重试次数达到最大值({config.connection.retries})，退出",
+                               level=Logger.levels.CRITICAL)
+                    break
+
+                logger.log(f"连接建立失败，3秒后重试({retried}/{config.connection.retries})",
+                           level=Logger.levels.WARNING)
+                retried += 1
+                time.sleep(3)
+                continue
+            logger.log("成功建立连接", level=Logger.levels.INFO)
             retried = 0
+            actions = Actions(connection)
+            data = HyperListenerStartNotify(
+                time_now=int(time.time()),
+                notify_type="listener_start",
+                connection=connection
+            )
+            threading.Thread(target=lambda: _handler(data, actions), daemon=True).start()
+            task = None
             while True:
                 try:
-                    connection.connect()
-                except ConnectionRefusedError or TimeoutError:
-                    if retried >= config.connection.retries:
-                        logger.log(f"重试次数达到最大值({config.connection.retries})，退出",
-                                   level=Logger.levels.CRITICAL)
-                        break
-
-                    logger.log(f"连接建立失败，3秒后重试({retried}/{config.connection.retries})",
-                               level=Logger.levels.WARNING)
-                    retried += 1
-                    time.sleep(3)
-                    continue
-                logger.log("成功建立连接", level=Logger.levels.INFO)
-                retried = 0
-                actions = Actions(connection)
-                data = HyperListenerStartNotify(
-                    time_now=int(time.time()),
-                    notify_type="listener_start",
-                    connection=connection
-                )
-                threading.Thread(target=lambda: _handler(data, actions)).start()
-                task = None
-                while True:
-                    try:
-                        task = connection.recv()
-                        KritorEventGettingService(IServiceStartUp.MANUAL).set_actions(actions).run_in_thread()
-                        await task
-                    except ConnectionResetError:
-                        logger.log("连接断开", level=Logger.levels.ERROR)
-                        break
-                    # threading.Thread(target=lambda: asyncio.run(__handler(data, actions))).start()
-                    # threading.Thread(target=lambda: __handler(data, actions)).start()
-                    # asyncio.create_task(__handler(data, actions))
-        except KeyboardInterrupt:
-            logger.log("正在退出(Ctrl+C)", level=Logger.levels.WARNING)
-            try:
-                connection.close()
-            except:
-                pass
-            os._exit(0)
-
-    asyncio.get_event_loop().run_until_complete(hy_i_runner())
+                    task = connection.recv()
+                    KritorEventGettingService(IServiceStartUp.MANUAL).set_actions(actions).run_in_thread()
+                    await task
+                except ConnectionResetError:
+                    task = None
+                    logger.log("连接断开", level=Logger.levels.ERROR)
+                    break
+                # threading.Thread(target=lambda: asyncio.run(__handler(data, actions))).start()
+                # threading.Thread(target=lambda: __handler(data, actions)).start()
+                # asyncio.create_task(__handler(data, actions))
+    try:
+        asyncio.get_event_loop().run_until_complete(hy_i_runner())
+    except KeyboardInterrupt:
+        logger.log("正在退出(Ctrl+C)", level=Logger.levels.WARNING)
+        sys.exit()
 
 
 def stop() -> None:

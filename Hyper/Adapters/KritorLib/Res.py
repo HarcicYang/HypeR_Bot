@@ -115,17 +115,14 @@ def to_protos(body: list) -> list:
                 )
             )
         elif i["type"] == "image":
-            try:
-                elems.append(
-                    Element(
-                        type=ElementElementType.IMAGE,
-                        image=ImageElement(
-                            file_url=i["file"]
-                        )
+            elems.append(
+                Element(
+                    type=ElementElementType.IMAGE,
+                    image=ImageElement(
+                        file_url=i["data"]["file"]
                     )
                 )
-            except:
-                traceback.print_exc()
+            )
         elif i["type"] == "video":
             elems.append(
                 Element(

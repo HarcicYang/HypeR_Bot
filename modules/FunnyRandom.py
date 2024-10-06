@@ -28,7 +28,7 @@ class UserInfo:
         elif 60 < self.goodness <= 80:
             return "你真棒"
         else:
-            return "👍校溯酥👍"
+            return "👍_ _ _👍"
 
     @classmethod
     def build(cls) -> "UserInfo":

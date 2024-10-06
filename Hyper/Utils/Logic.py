@@ -8,6 +8,7 @@ from typing import Union, Any
 import aiohttp
 import time
 import requests
+import inspect
 from functools import wraps
 
 from Hyper import Logger
@@ -383,3 +384,36 @@ class SimpleQueue:
                 return self.contents.pop(0)
             except IndexError:
                 pass
+
+
+def timer(func: callable) -> callable:
+    if inspect.iscoroutinefunction(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            start = time.time()
+            res = await func(*args, **kwargs)
+            end = time.time()
+            print(f"Func {func.__name__} took {end - start:.2f} seconds")
+            return res
+    else:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start = time.time()
+            res = func(*args, **kwargs)
+            end = time.time()
+            print(f"Func {func.__name__} took {end - start:.2f} seconds")
+            return res
+
+    return wrapper
+
+
+class Timer:
+    def __init__(self, name: str):
+        self.name = name
+        self.start_t = 0.0
+
+    def start(self):
+        self.start_t = time.time()
+
+    def stop(self):
+        print(f"Code scope {self.name} took {time.time() - self.start_t:.2f} seconds")
