@@ -1,4 +1,12 @@
-from Hyper.Adapters.KritorLib.protos.event import EventServiceStub, RequestPushEvent, EventType
+from Hyper.Adapters.KritorLib.protos.event import (
+    EventServiceStub,
+    RequestPushEvent,
+    EventType,
+    NoticeEvent as NoticeProto,
+    NoticeEventNoticeType,
+    GroupMemberDecreasedNoticeGroupMemberDecreasedType,
+    GroupMemberIncreasedNoticeGroupMemberIncreasedType
+)
 from Hyper.Adapters.KritorLib.protos.common import (
     ElementElementType,
     PushMessageBody,
@@ -216,6 +224,47 @@ class OneBotEventJsonBuilder:
 
             return self
 
+        def notice(self, ev: NoticeProto) -> Self:
+            self.data["post_type"] = "notice"
+            self.data["notice_type"] = None
+
+            return self
+
+        def group_admin(self, ev: NoticeProto) -> Self:
+            self.data["notice_type"] = "group_admin"
+            try:
+                self.data["sub_type"] = "set" if ev.group_admin_changed.is_admin else "unset"
+            except:
+                self.data["sub_type"] = "unset"
+
+            return self
+
+        def group_decrease(self, ev: NoticeProto) -> Self:
+            self.data["notice_type"] = "group_decrease"
+            sub_map = {
+                GroupMemberDecreasedNoticeGroupMemberDecreasedType.KICK: "kick",
+                GroupMemberDecreasedNoticeGroupMemberDecreasedType.KICK_ME: "kick_me",
+                GroupMemberDecreasedNoticeGroupMemberDecreasedType.LEAVE: "leave"
+            }
+            self.data["sub_type"] = sub_map[ev.group_member_decrease.type]
+            self.data["operator_id"] = ev.group_member_decrease.operator_uin
+
+            return self
+
+        def group_increase(self, ev: NoticeProto) -> Self:
+            self.data["notice_type"] = "group_increase"
+            sub_map = {
+                GroupMemberIncreasedNoticeGroupMemberIncreasedType.INVITE: "invite",
+                GroupMemberIncreasedNoticeGroupMemberIncreasedType.APPROVE: "approve",
+            }
+            self.data["sub_type"] = sub_map[ev.group_member_increase.type]
+            try:
+                self.data["operator_id"] = ev.group_member_increase.operator_uin
+            except:
+                self.data["operator_id"] = None
+
+            return self
+
     def __init__(self, self_id: int):
         self.self_id = self_id
 
@@ -368,6 +417,7 @@ class EventService:
                     elif i.message.scene == Scene.FRIEND:
                         ev = ev.private(i.message).data
                     else:
+                        print(i)
                         continue
 
                     # print(ev)
@@ -382,8 +432,33 @@ class EventService:
                 async for i in self.stub.register_active_listener(
                         RequestPushEvent(type=EventType.EVENT_TYPE_NOTICE)
                 ):
-                    print(i)
-                    # print(i.to_json())
+                    ev = OneBotEventJsonBuilder(self.uin)
+                    if i.notice.type == NoticeEventNoticeType.GROUP_MEMBER_DECREASE:
+                        ev = (
+                            ev.get_base(
+                                time=i.notice.time,
+                                user_id=i.notice.group_member_decrease.target_uin,
+                                group_id=i.notice.group_member_decrease.group_id
+                            )
+                            .notice(ev=i.notice)
+                            .group_decrease(ev=i.notice)
+                        ).data
+                    elif i.notice.type == NoticeEventNoticeType.GROUP_MEMBER_INCREASE:
+                        ev = (
+                            ev.get_base(
+                                time=i.notice.time,
+                                user_id=i.notice.group_member_increase.target_uin,
+                                group_id=i.notice.group_member_increase.group_id
+                            )
+                            .notice(ev=i.notice)
+                            .group_increase(ev=i.notice)
+                        ).data
+                    else:
+                        print(i)
+                        continue  # not implemented
+
+                    event_queue.put(ev)
+
             except EOFError:
                 continue
 

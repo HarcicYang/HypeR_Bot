@@ -111,6 +111,7 @@ class KritorEventGettingService(IServiceBase):
 def run():
     global listener_ran
     listener_ran = True
+
     async def hy_i_runner():
         global connection
         if handler is tester:
@@ -164,6 +165,7 @@ def run():
                 # threading.Thread(target=lambda: asyncio.run(__handler(data, actions))).start()
                 # threading.Thread(target=lambda: __handler(data, actions)).start()
                 # asyncio.create_task(__handler(data, actions))
+
     try:
         asyncio.get_event_loop().run_until_complete(hy_i_runner())
     except KeyboardInterrupt:

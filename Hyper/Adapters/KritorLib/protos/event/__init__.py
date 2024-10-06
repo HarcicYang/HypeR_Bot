@@ -19,19 +19,22 @@ if TYPE_CHECKING:
 
 
 class GroupMemberIncreasedNoticeGroupMemberIncreasedType(betterproto.Enum):
-    APPROVE = 0
-    INVITE = 1
+    UNSPECIFIED = 0
+    APPROVE = 1
+    INVITE = 2
 
 
 class GroupMemberDecreasedNoticeGroupMemberDecreasedType(betterproto.Enum):
-    LEAVE = 0
-    KICK = 1
-    KICK_ME = 2
+    UNSPECIFIED = 0
+    LEAVE = 1
+    KICK = 2
+    KICK_ME = 3
 
 
 class GroupMemberBanNoticeGroupMemberBanType(betterproto.Enum):
-    LIFT_BAN = 0
-    BAN = 1
+    UNSPECIFIED = 0
+    LIFT_BAN = 1
+    BAN = 2
 
 
 class NoticeEventNoticeType(betterproto.Enum):
@@ -127,7 +130,7 @@ class GroupRecallNotice(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class GroupFileUploadedNotice(betterproto.Message):
     group_id: int = betterproto.uint64_field(1)
-    operator_uid: str = betterproto.string_field(2)
+    operator_uid: Optional[str] = betterproto.string_field(2, optional=True)
     operator_uin: int = betterproto.uint64_field(3)
     file_id: str = betterproto.string_field(4)
     file_name: str = betterproto.string_field(5)
@@ -328,30 +331,30 @@ class EventStructure(betterproto.Message):
 
 class EventServiceStub(betterproto.ServiceStub):
     async def register_active_listener(
-        self,
-        request_push_event: "RequestPushEvent",
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None,
+            self,
+            request_push_event: "RequestPushEvent",
+            *,
+            timeout: Optional[float] = None,
+            deadline: Optional["Deadline"] = None,
+            metadata: Optional["MetadataLike"] = None,
     ) -> AsyncIterator["EventStructure"]:
         async for response in self._unary_stream(
-            "/kritor.event.EventService/RegisterActiveListener",
-            request_push_event,
-            EventStructure,
-            timeout=timeout,
-            deadline=deadline,
-            metadata=metadata,
+                "/kritor.event.EventService/RegisterActiveListener",
+                request_push_event,
+                EventStructure,
+                timeout=timeout,
+                deadline=deadline,
+                metadata=metadata,
         ):
             yield response
 
     async def register_passive_listener(
-        self,
-        event_structure_iterator: Union[AsyncIterable["EventStructure"], Iterable["EventStructure"]],
-        *,
-        timeout: Optional[float] = None,
-        deadline: Optional["Deadline"] = None,
-        metadata: Optional["MetadataLike"] = None,
+            self,
+            event_structure_iterator: Union[AsyncIterable["EventStructure"], Iterable["EventStructure"]],
+            *,
+            timeout: Optional[float] = None,
+            deadline: Optional["Deadline"] = None,
+            metadata: Optional["MetadataLike"] = None,
     ) -> "RequestPushEvent":
         return await self._stream_unary(
             "/kritor.event.EventService/RegisterPassiveListener",
@@ -371,12 +374,12 @@ class EventServiceBase(ServiceBase):
         yield EventStructure()
 
     async def register_passive_listener(
-        self, event_structure_iterator: AsyncIterator["EventStructure"]
+            self, event_structure_iterator: AsyncIterator["EventStructure"]
     ) -> "RequestPushEvent":
         raise grpclib.GRPCError(grpclib.const.Status.UNIMPLEMENTED)
 
     async def __rpc_register_active_listener(
-        self, stream: "grpclib.server.Stream[RequestPushEvent, EventStructure]"
+            self, stream: "grpclib.server.Stream[RequestPushEvent, EventStructure]"
     ) -> None:
         request = await stream.recv_message()
         await self._call_rpc_handler_server_stream(
@@ -386,7 +389,7 @@ class EventServiceBase(ServiceBase):
         )
 
     async def __rpc_register_passive_listener(
-        self, stream: "grpclib.server.Stream[EventStructure, RequestPushEvent]"
+            self, stream: "grpclib.server.Stream[EventStructure, RequestPushEvent]"
     ) -> None:
         request = stream.__aiter__()
         response = await self.register_passive_listener(request)
