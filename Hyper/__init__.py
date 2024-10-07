@@ -32,7 +32,7 @@ class Client:
 
     def subscribe(
             self,
-            func: Coroutine,
+            func: callable,
             event: Union[
                 "Events.GroupMessageEvent",
                 "Events.PrivateMessageEvent",
@@ -69,6 +69,7 @@ class Client:
             return
 
     def run(self):
+        _load_listener()
         listener.reg(self.distributor)
         if self.records:
             listener.run()

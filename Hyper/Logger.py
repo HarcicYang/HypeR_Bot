@@ -1,6 +1,8 @@
 import datetime
 import typing
 import inspect
+import traceback
+import sys
 from functools import wraps
 
 from Hyper.Utils.Screens import color_txt, rgb
@@ -66,7 +68,27 @@ class Logger:
 
         return self
 
-    def log(self, message: str, level: str = levels.INFO):
+    @staticmethod
+    def format_exec():
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        formatted = color_txt("\nHypeR Bot Exception traceback: \n\n", rgb(255, 47, 47))
+        tb_frames = traceback.extract_tb(exc_traceback)
+        FILE = color_txt("File", rgb(85, 173, 238))
+        LINE = color_txt("line", rgb(85, 173, 238))
+        for frame in tb_frames:
+            filename, lineno, func_name, code = frame
+            formatted += (
+                f"  {FILE} {color_txt(filename, rgb(104, 255, 244))},"
+                f" {LINE} {lineno},"
+                f" in {color_txt(func_name, rgb(70, 172, 107))}\n"
+                f"      {color_txt(code, rgb(255, 255, 255))}\n\n"
+            )
+        formatted += f"{color_txt(exc_type.__name__, rgb(255, 47, 47))}: "
+        formatted += color_txt(exc_value, rgb(255, 255, 255)) + "\n"
+
+        return formatted
+
+    def log(self, message: str, level: str = levels.INFO) -> None:
         if levels.level_nums[level] < levels.level_nums[self.log_level]:
             return
         time = color_txt(str(datetime.datetime.now())[:-4], rgb(65, 128, 176))
@@ -78,6 +100,24 @@ class Logger:
         else:
             content = f" {time} {level} {color_txt(message, rgb(215, 255, 255))}"
             print(content)
+
+    def info(self, message: str) -> None:
+        self.log(message, levels.INFO)
+
+    def warning(self, message: str) -> None:
+        self.log(message, levels.WARNING)
+
+    def error(self, message: str) -> None:
+        self.log(message, levels.ERROR)
+
+    def critical(self, message: str) -> None:
+        self.log(message, levels.CRITICAL)
+
+    def debug(self, message: str) -> None:
+        self.log(message, levels.DEBUG)
+
+    def trace(self, message: str) -> None:
+        self.log(message, levels.TRACE)
 
 
 class AutoLog:

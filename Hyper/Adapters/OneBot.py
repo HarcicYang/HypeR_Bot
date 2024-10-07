@@ -252,19 +252,15 @@ def run() -> NoReturn:
                 connection.connect()
             except ConnectionRefusedError or TimeoutError:
                 if retried >= config.connection.retries:
-                    logger.log(f"重试次数达到最大值({config.connection.retries})，退出", level=Logger.levels.CRITICAL)
+                    logger.critical(f"重试次数达到最大值({config.connection.retries})，退出")
                     break
 
-                logger.log(f"连接建立失败，3秒后重试({retried}/{config.connection.retries})",
-                           level=Logger.levels.WARNING)
+                logger.warning(f"连接建立失败，3秒后重试({retried}/{config.connection.retries})")
                 retried += 1
                 time.sleep(3)
                 continue
             retried = 0
-            logger.log(
-                f"成功在 {connection.url} 建立连接",
-                level=Logger.levels.INFO
-            )
+            logger.info(f"成功在 {connection.url} 建立连接")
             actions = Actions(connection)
             data = HyperListenerStartNotify(
                 time_now=int(time.time()),
@@ -276,16 +272,16 @@ def run() -> NoReturn:
                 try:
                     data = connection.recv()
                 except ConnectionResetError:
-                    logger.log("连接断开", level=Logger.levels.ERROR)
+                    logger.error("连接断开")
                     break
                 except json.decoder.JSONDecodeError:
-                    logger.log("收到错误的JSON内容", level=Logger.levels.ERROR)
+                    logger.error("收到错误的JSON内容")
                     continue
                 # threading.Thread(target=lambda: asyncio.run(__handler(data, actions))).start()
                 threading.Thread(target=lambda: __handler(data, actions), daemon=True).start()
                 # asyncio.create_task(__handler(data, actions))
     except KeyboardInterrupt:
-        logger.log("正在退出(Ctrl+C)", level=Logger.levels.WARNING)
+        logger.warning("正在退出(Ctrl+C)")
         try:
             connection.close()
         except:

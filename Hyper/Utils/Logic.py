@@ -85,7 +85,7 @@ class ErrorHandler:
             try:
                 return func(*args, **kwargs)
             except:
-                self.logger.log(f"出现错误：\n{str(traceback.format_exc())}", level=self.level)
+                self.logger.log(self.logger.format_exec(), level=self.level)
 
         return wrapper
 
@@ -94,7 +94,7 @@ class ErrorHandler:
             try:
                 return await func(*args, **kwargs)
             except:
-                self.logger.log(f"出现错误：\n{str(traceback.format_exc())}", level=self.level)
+                self.logger.log(self.logger.format_exec(), level=self.level)
 
         return wrapper
 
