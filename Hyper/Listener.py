@@ -1,9 +1,8 @@
-import atexit
-
 from Hyper import Configurator, Events
-from Hyper.Utils.Screens import color_txt, rgb
 
 config = Configurator.BotConfig.get("hyper-bot")
+
+__all__ = ["run", "stop", "Actions"]
 
 if config.protocol == "OneBot":
     from Hyper.Adapters.OneBot import *
@@ -15,7 +14,6 @@ elif config.protocol == "Kritor":
     from Hyper.Adapters.Kritor import *
 
 Events.init()
-
 
 # @atexit.register
 # def not_running() -> None:

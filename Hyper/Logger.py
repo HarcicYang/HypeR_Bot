@@ -88,6 +88,12 @@ class Logger:
 
         return formatted
 
+    def register_hook(self) -> None:
+        def hook(exc_t: typing.Any, exc_v: typing.Any, exc_tb: typing.Any) -> None:
+            self.error(self.format_exec())
+
+        sys.excepthook = hook
+
     def log(self, message: str, level: str = levels.INFO) -> None:
         if levels.level_nums[level] < levels.level_nums[self.log_level]:
             return

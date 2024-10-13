@@ -4,6 +4,7 @@ import google.generativeai as genai
 import httpx
 from PIL import Image
 from io import BytesIO
+import os
 
 
 class Parts:
@@ -14,7 +15,10 @@ class Parts:
 
         @classmethod
         def upload_from_file(cls, path: str):
-            file = genai.upload_file(path, mime_type="application/octet-stream")
+            if "png" in path:
+                file = genai.upload_file(path, mime_type="image/png")
+            else:
+                file = genai.upload_file(path, mime_type="image/jpeg")
             return cls(file)
 
         @classmethod
