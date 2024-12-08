@@ -3,7 +3,7 @@ from Hyper.Utils.TypeExt import ObjectedJson
 from Hyper.Utils.HyperTyping import T
 from Hyper import Segments
 
-from typing import Generic, Type
+from typing import Generic, Type, Self
 
 config = Configurator.BotConfig.get("hyper-bot")
 
@@ -12,14 +12,16 @@ if config.protocol == "OneBot":
 elif config.protocol == "Satori":
     from Hyper.Adapters.SatoriLib.Manager import *
 elif config.protocol == "Lagrange":
+    pass
     from Hyper.Adapters.LagrangeLib.Manager import *
 elif config.protocol == "Kritor":
     from Hyper.Adapters.KritorLib.Manager import *
 
+
 init()
 
 
-__all__ = ["Message", "MessageBuilder", "Packet", "Ret"]
+__all__ = ["Message", "MessageBuilder", "Packet", "Ret", "reports"]
 
 
 class MessageBuilder:
@@ -107,5 +109,5 @@ class Ret(Generic[T]):
         self.echo = json_data.get("echo")
 
     @classmethod
-    def fetch(cls, echo: str, serializer=ObjectedJson) -> "Ret":
+    def fetch(cls, echo: str, serializer=ObjectedJson) -> Self:
         return cls(reports.get(echo), serializer)

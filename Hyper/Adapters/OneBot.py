@@ -10,7 +10,7 @@ from Hyper import Network, Events, Comm
 from Hyper.Service import FuncCall, IServiceBase, IServiceStartUp
 from Hyper.Utils import Errors, Logic
 from Hyper.Utils.APIRsp import *
-from Hyper.Comm import reports
+from Hyper.Adapters.OneBotLib.Manager import reports
 from Hyper.Events import *
 
 config = Configurator.BotConfig.get("hyper-bot")

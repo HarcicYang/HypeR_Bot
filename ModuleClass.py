@@ -6,7 +6,7 @@ import importlib
 from typing import Union
 import dataclasses
 
-config = Configurator.BotConfig.get("hyper-bot")
+config: Configurator.BotConfig = Configurator.BotConfig.get("hyper-bot")
 logger = Logger.Logger()
 logger.set_level(config.log_level)
 
@@ -22,6 +22,8 @@ class ModuleInfo:
 
 
 class Module:
+    config = config
+
     def __init__(
             self,
             actions: Listener.Actions,

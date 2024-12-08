@@ -101,7 +101,11 @@ class Logger:
         if "\n" in message:
             listed = message.split("\n")
             for i in listed:
-                content = f" {time} {level} {color_txt(i, rgb(215, 255, 255))}"
+                if listed.index(i) == 0:
+                    listed[0] = "\n"
+                    content = f" {time} {level} {color_txt(i, rgb(215, 255, 255))}"
+                else:
+                    content = " " * 37 + color_txt(i, rgb(215, 255, 255))
                 print(content)
         else:
             content = f" {time} {level} {color_txt(message, rgb(215, 255, 255))}"

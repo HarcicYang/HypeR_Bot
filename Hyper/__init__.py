@@ -1,7 +1,7 @@
 from Hyper import Configurator
 from Hyper.Utils import Screens
 
-from typing import Coroutine, Union
+from typing import Union
 import asyncio
 import importlib
 import sys

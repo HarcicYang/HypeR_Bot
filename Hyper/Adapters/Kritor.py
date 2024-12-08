@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Union, Self
+from typing import Any, Self
 import sys
 import threading
 import time

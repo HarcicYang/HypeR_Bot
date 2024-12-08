@@ -206,8 +206,11 @@ def string_similarity(s1: str, s2: str) -> float:
 @ModuleClass.ModuleRegister.register(GroupMessageEvent)
 class Module(ModuleClass.Module):
     async def handle(self):
-        if self.event.is_owner and str(self.event.message) == ".dump":
-            print(data.dump())
+        if self.event.is_owner:
+            if str(self.event.message) == ".dump":
+                print(data.dump())
+            else:
+                return
 
         user = data.get_group(self.event.group_id).get_user(self.event.user_id)
         if not user.inited:

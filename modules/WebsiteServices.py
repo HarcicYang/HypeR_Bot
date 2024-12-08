@@ -1,10 +1,12 @@
-from Hyper import Segments, Comm
+import asyncio
+import io
+import base64
+
+from Hyper import Segments
 import ModuleClass
 from Hyper.Utils import Logic
 from Hyper.Utils.Logic import Downloader
-from modules import WordSafety
 from Hyper.Events import *
-from Hyper.Utils.ArkSignHelper import Card, get_pic
 
 from typing import Any
 import re
@@ -13,9 +15,10 @@ import os
 from io import BytesIO
 import httpx
 import json
-import time
 from PIL import Image
-from pyppeteer import launch
+from PIL.ImageFile import ImageFile
+
+from modules.site_catch import Catcher
 
 
 def open_from_url(url: str):
@@ -46,27 +49,8 @@ def num_format(number: int) -> str:
     return formatted_number
 
 
-async def html2img(url: str, size: tuple[int, int]) -> str:
-    browser = await launch(
-        headless=True,
-        options={
-            "handleSIGINT": False,
-            "handleSIGTERM": False,
-            "handleSIGHUP": False
-        }
-    )
-    page = await browser.newPage()
-    await page.goto(url)
-    title = await page.title()
-    await page.setViewport({"width": size[0], "height": size[1]})
-    path = f"./temps/web_{title.replace(' ', '')}.png"
-    await page.screenshot({"path": path})
-    await browser.close()
-    return path
-
-
-# @Logic.Cacher(114514).cache_async
 async def get_image(info, bv_id) -> str:
+    catcher = await Catcher.init()
     if os.path.exists(f"file://{os.path.abspath(f'./temps/bilibili_{bv_id}.html')}"):
         return f"file://{os.path.abspath(f'./temps/bilibili_{bv_id}.html')}"
     cover = open_from_url(info.picture)
@@ -83,23 +67,28 @@ async def get_image(info, bv_id) -> str:
     with open("./assets/bilibili/bili.html", encoding="utf-8") as f:
         html_tmp = f.read()
 
-    html_tmp = html_tmp.replace("{[bv]}", bv_id)
-    html_tmp = html_tmp.replace("{[cover]}", cover)
-    html_tmp = html_tmp.replace("{[head_img]}", info.uploader_face)
-    html_tmp = html_tmp.replace("{[name]}", info.uploader)
-    html_tmp = html_tmp.replace("{[plays]}", played_times)
-    html_tmp = html_tmp.replace("{[likes]}", likes_text)
-    html_tmp = html_tmp.replace("{[coins]}", coins_text)
-    html_tmp = html_tmp.replace("{[favorites]}", favorites_text)
-    html_tmp = html_tmp.replace("{[title]}", info.title)
-    html_tmp = html_tmp.replace("{[desc]}", info.desc)
+    html_tmp = (
+        html_tmp
+        .replace("{[bv]}", bv_id)
+        .replace("{[cover]}", cover)
+        .replace("{[head_img]}", info.uploader_face)
+        .replace("{[name]}", info.uploader)
+        .replace("{[plays]}", played_times)
+        .replace("{[likes]}", likes_text)
+        .replace("{[coins]}", coins_text)
+        .replace("{[favorites]}", favorites_text)
+        .replace("{[title]}", info.title)
+        .replace("{[desc]}", info.desc)
+    )
 
     with open(f"./temps/bilibili_{bv_id}.html", "w", encoding="utf-8") as f:
         f.write(html_tmp)
 
-    res = await html2img(f"file://{os.path.abspath(f'./temps/bilibili_{bv_id}.html')}", size)
+    # res = await html2img(f"file://{os.path.abspath(f'./temps/bilibili_{bv_id}.html')}", size)
+    res = await catcher.catch(f"file://{os.path.abspath(f'./temps/bilibili_{bv_id}.html')}", size)
     os.remove(f"./temps/cover_{bv_id}.png")
     os.remove(f"./temps/bilibili_{bv_id}.html")
+    asyncio.create_task(catcher.quit())
     return res
 
 
@@ -176,36 +165,81 @@ async def video_info(bv: str) -> tuple[Any, dict]:
     return Info(), d_urls
 
 
-class GithubSafetyResult:
-    def __init__(self, safe: bool, address: str):
-        self.safe: bool = safe
-        self.address: str = address
+class GitHubView:
+    def __init__(self, author: str = None, repo: str = None):
+        self.author = author
+        self.repo = repo
 
+    def parse(self, repo: str) -> "GitHubView":
+        url = repo.split("/")
+        base_index = None
+        for i in url:
+            if i == "github.com":
+                base_index = url.index(i)
+                break
+        if not base_index:
+            return self
+        self.author = url[base_index + 1]
+        self.repo = url[base_index + 2]
+        return self
 
-@Logic.Cacher().cache
-def github_safety_check(url: str) -> GithubSafetyResult:
-    url = url.split("/")
-    base_index = None
-    for i in url:
-        if i == "github.com":
-            base_index = url.index(i)
-            break
-    if not base_index:
-        return GithubSafetyResult(False, url[base_index])
-    repo = f"https://api.github.com/repos/{url[base_index + 1]}/{url[base_index + 2]}"
-    retired = 0
-    response = None
-    while retired <= 3:
-        try:
-            response = httpx.get(repo, verify=False)
-        except:
-            retired += 1
-            continue
-        break
-    desc = str(response.json().get("description"))
-    result = WordSafety.check(text=desc)
-    ret = GithubSafetyResult(result.result, f"{url[base_index + 1]}/{url[base_index + 2]}")
-    return ret
+    async def auto(self, url: str) -> ImageFile:
+        self.parse(url)
+        url = url.split("/")
+        if (code := "issues") in url:
+            return await self.iss(url[url.index(code) + 1])
+        elif (code := "pull") in url:
+            if url[url.index(code) + 2] == "files":
+                return await self.pull_diff(url[url.index(code) + 1])
+            return await self.pull(url[url.index(code) + 1])
+        elif (code := "commit") in url:
+            return await self.commit(url[url.index(code) + 1])
+        else:
+            raise NotImplementedError()
+
+    @staticmethod
+    async def _get(url: str) -> str:
+        cth = await Catcher.init()
+        # pth = await cth.catch("https://github.com/LagrangeDev/Lagrange.Core/issues/444")
+        # pth = await cth.catch("https://github.com/LagrangeDev/Lagrange.Core/pull/703")
+        pth = await cth.catch(url)
+        await cth.quit()
+        return pth
+
+    def head(self) -> str:
+        return f"https://opengraph.githubassets.com/Yenai/{self.author}/{self.repo}"
+
+    @staticmethod
+    def head_any(url: str) -> str:
+        return url.replace("github.com/", "opengraph.githubassets.com/Yenai/")
+
+    async def iss(self, code: str) -> ImageFile:
+        url = f"https://github.com/{self.author}/{self.repo}/issues/{code}"
+        pth = await self._get(url)
+        img = Image.open(pth)
+        img = img.crop((0, 75, img.size[0], img.size[1] - 220))
+        return img
+
+    async def pull(self, code: str) -> ImageFile:
+        url = f"https://github.com/{self.author}/{self.repo}/pull/{code}"
+        pth = await self._get(url)
+        img = Image.open(pth)
+        img = img.crop((0, 75, img.size[0], img.size[1] - 220))
+        return img
+
+    async def pull_diff(self, code: str) -> ImageFile:
+        url = f"https://github.com/{self.author}/{self.repo}/pull/{code}/files"
+        pth = await self._get(url)
+        img = Image.open(pth)
+        img = img.crop((0, 75, img.size[0], img.size[1] - 150))
+        return img
+
+    async def commit(self, code: str) -> ImageFile:
+        url = f"https://github.com/{self.author}/{self.repo}/commit/{code}"
+        pth = await self._get(url)
+        img = Image.open(pth)
+        img = img.crop((0, 75, img.size[0], img.size[1] - 150))
+        return img
 
 
 @ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
@@ -227,7 +261,7 @@ class Module(ModuleClass.Module):
                 info = await video_info(bv=i)
                 path = await get_image(info[0], i)
                 result = Comm.Message(
-                    Segments.Image(f"file://{os.path.abspath(path)}", summary=f"{info[0].title}")
+                    Segments.Image(f"file://{os.path.abspath(path)}", summary=info[0].title)
                 )
 
                 await self.actions.send(group_id=self.event.group_id, message=result)
@@ -249,22 +283,28 @@ class Module(ModuleClass.Module):
             urls = re.findall(pa, str(self.event.message))
             for i in urls:
                 if "github.com/" in i:
-                    safety = github_safety_check(url=i)
-                    if not safety.safe:
-                        return
-                    content = i.replace("github.com/", "opengraph.githubassets.com/Yenai/")
-                    with open(f"./temps/github_{self.event.group_id}_{self.event.user_id}.png", "wb") as f:
-                        f.write(httpx.get(content).content)
+                    ghv = GitHubView()
+                    ghv.parse(i)
                     await self.actions.send(
-                        group_id=self.event.group_id,
-                        user_id=self.event.user_id,
+                        group_id = self.event.group_id,
+                        user_id = self.event.user_id,
                         message=Comm.Message(
-                            Segments.Image(
-                                f"file://{os.path.abspath(f'./temps/github_{self.event.group_id}_{self.event.user_id}.png')}",
-                                summary=f"{safety.address}"
-                            )
+                            Segments.Image(ghv.head_any(i), summary=f"{ghv.author}/{ghv.repo}")
                         )
                     )
-                    os.remove(f"./temps/github_{self.event.group_id}_{self.event.user_id}.png")
+                    try:
+                        (await ghv.auto(i)).save(f"./temps/github_{ghv.author}_{ghv.repo}.png")
+                        await self.actions.send(
+                            group_id=self.event.group_id,
+                            user_id=self.event.user_id,
+                            message=Comm.Message(
+                                Segments.Image(
+                                    "file://" + os.path.abspath(f"./temps/github_{ghv.author}_{ghv.repo}.png"),
+                                    summary=f"{ghv.author}/{ghv.repo}")
+                            )
+                        )
+                        os.remove(f"./temps/github_{ghv.author}_{ghv.repo}.png")
+                    except NotImplementedError:
+                        pass
         except:
             return
