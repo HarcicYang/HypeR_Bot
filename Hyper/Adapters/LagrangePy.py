@@ -13,7 +13,12 @@ class Actions(Actions):
 
     @Logger.AutoLogAsync.register(Logger.AutoLog.templates().send, logger)
     async def send(self, message: Comm.Message, group_id: int = None, user_id: int = None) -> Comm.Ret[MsgSendRsp]:
-        chain = await message.get(group_id, user_id)
+        async def get(msg: Comm.Message, gid: int = None, uin: int = None) -> list:
+            ret = []
+            for i in msg.contents:
+                ret.append(await i.to_elem(gid, uin))
+            return ret
+        chain = await get(message, group_id, user_id)
         try:
             if group_id:
                 seq = await self.client.send_grp_msg(chain, group_id)
