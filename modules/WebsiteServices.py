@@ -286,8 +286,8 @@ class Module(ModuleClass.Module):
                     ghv = GitHubView()
                     ghv.parse(i)
                     await self.actions.send(
-                        group_id = self.event.group_id,
-                        user_id = self.event.user_id,
+                        group_id=self.event.group_id,
+                        user_id=self.event.user_id,
                         message=Comm.Message(
                             Segments.Image(ghv.head_any(i), summary=f"{ghv.author}/{ghv.repo}")
                         )
