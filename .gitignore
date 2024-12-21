@@ -1,1 +1,17 @@
 /docs/
+/build/
+/dist/
+/Gensokyo/
+/hyper_bot.egg-info/
+/kritor-main/
+/lagrange/
+/Lagrange.OneBot/
+/lgr.kritor/
+/main.build/
+/main.dist/
+/meme-generator.wiki/
+/NapCat/
+/node_modules/
+/cache.db
+/config.json
+/device.json
