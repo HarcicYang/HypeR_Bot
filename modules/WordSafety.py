@@ -4,10 +4,10 @@ from jieba import lcut, set_dictionary
 from Hyper.Utils import Logic
 
 logging.getLogger("jieba").setLevel(logging.ERROR)
-try:
-    set_dictionary("./assets/jieba.dict.txt.small")
-except OSError:
-    pass
+# try:
+#     set_dictionary("./assets/jieba.dict.txt.small")
+# except OSError or Exception:
+#     pass
 
 
 class Result:

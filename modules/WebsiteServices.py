@@ -49,10 +49,15 @@ def num_format(number: int) -> str:
     return formatted_number
 
 
+img_history = {}
+
 async def get_image(info, bv_id) -> str:
+    if img_history.get(bv_id):
+        if os.path.exists(img_history.get(bv_id)):
+            return img_history.get(bv_id)
+        else:
+            pass
     catcher = await Catcher.init()
-    if os.path.exists(f"file://{os.path.abspath(f'./temps/bilibili_{bv_id}.html')}"):
-        return f"file://{os.path.abspath(f'./temps/bilibili_{bv_id}.html')}"
     cover = open_from_url(info.picture)
     if cover.size[0] < 1020 or cover.size[1] < 1080 or cover.size[1] > 1500 or cover.size[0] > 1250:
         cover = square_scale(cover, 1200)
@@ -89,6 +94,7 @@ async def get_image(info, bv_id) -> str:
     os.remove(f"./temps/cover_{bv_id}.png")
     os.remove(f"./temps/bilibili_{bv_id}.html")
     asyncio.create_task(catcher.quit())
+    img_history[bv_id] = res
     return res
 
 
