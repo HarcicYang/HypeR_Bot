@@ -26,42 +26,13 @@
 # with Client() as cli:
 #     cli.subscribe(msg_handler, GroupMessageEvent)
 #     cli.run()
-from Hyper.Utils.Screens import color_txt, rgb
-import traceback
-import sys
+from google import genai
+from google.genai import types
 
-import asyncio
+key = "AIzaSyCXvzU5i27LHIheI00e-zWIDIkQ-3dgXaw"
 
+client = genai.Client(api_key=key)
+chat = client.chats.create(model="gemini-2.0-flash-exp")
+response = chat.send_message(input("> "))
+print(response)
 
-def format_exception():
-    exc_type, exc_value, exc_traceback = sys.exc_info()
-    formatted = color_txt("Error traceback (Recent):\n", rgb(184, 246, 255))
-    tb_frames = traceback.extract_tb(exc_traceback)
-    FILE = color_txt("File", rgb(85, 173, 238))
-    LINE = color_txt("line", rgb(85, 173, 238))
-    for frame in tb_frames:
-        filename, lineno, func_name, code = frame
-        formatted += f"    {FILE} \"{color_txt(filename, rgb(104, 255, 244))}\", {LINE} {lineno}, in {color_txt(func_name, rgb(70, 172, 107))}\n"
-        formatted += f"        {color_txt(code, rgb(255, 255, 255))}\n"
-    formatted += f"{color_txt(exc_type.__name__, rgb(255, 47, 47))}: "
-    formatted += color_txt(exc_value, rgb(255, 255, 255))
-
-    return formatted
-
-
-def some_function():
-    async def test():
-        pass
-
-    async def test2():
-        asyncio.run(test())
-
-    asyncio.run(test2())
-
-
-try:
-    some_function()
-except Exception as e:
-    custom_formatted_message = format_exception()
-    print(custom_formatted_message)
-    traceback.print_exc()

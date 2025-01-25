@@ -9,7 +9,7 @@ class BotWSC(BaseConfig):
     ob_log_output: bool = False
     host: str
     port: int
-    retries: int
+    retries: int = 5
     token: str
 
 
@@ -23,7 +23,7 @@ class BotHTTPC(BaseConfig):
     port: int
     listener_host: str
     listener_port: int
-    retries: int
+    retries: int = 5
 
 
 class BotConfig(BaseConfig):

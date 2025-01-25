@@ -12,7 +12,6 @@ modules_path = os.path.dirname(__file__)
 
 
 def import_modules(path):
-    global imports
     imports = []
     for filename in os.listdir(path):
         if filename.startswith("__"):
