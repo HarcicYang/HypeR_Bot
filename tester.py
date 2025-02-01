@@ -26,5 +26,11 @@
 # with Client() as cli:
 #     cli.subscribe(msg_handler, GroupMessageEvent)
 #     cli.run()
+import httpx
+import time
 
+
+start = time.time()
+httpx.get("http://127.0.0.1/gen/BV1Agcoe4Ey6")
+print(time.time() - start)
 

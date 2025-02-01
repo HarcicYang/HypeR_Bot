@@ -1,7 +1,3 @@
-import asyncio
-import io
-import base64
-
 from Hyper import Segments
 import ModuleClass
 from Hyper.Utils import Logic
@@ -30,72 +26,6 @@ def square_scale(image: Image, height: int):
     x = height / old_height
     width = int(old_width * x)
     return image.resize((width, height))
-
-
-def num_format(number: int) -> str:
-    units = ['k', 'M', 'B', 'T']
-    suffix = ''
-    if number >= 1000:
-        magnitude = 0
-        while abs(number) >= 1000 and magnitude < len(units):
-            magnitude += 1
-            number /= 1000.0
-            suffix = units[magnitude - 1]
-
-    if number == int(number):
-        formatted_number = str(int(number)) + suffix
-    else:
-        formatted_number = f"{number:.2f}{suffix}"
-    return formatted_number
-
-
-img_history = {}
-
-async def get_image(info, bv_id) -> str:
-    if img_history.get(bv_id):
-        if os.path.exists(img_history.get(bv_id)):
-            return img_history.get(bv_id)
-        else:
-            pass
-    catcher = await Catcher.init()
-    cover = open_from_url(info.picture)
-    if cover.size[0] < 1020 or cover.size[1] < 1080 or cover.size[1] > 1500 or cover.size[0] > 1250:
-        cover = square_scale(cover, 1200)
-    size = cover.size
-    cover.save(f"./temps/cover_{bv_id}.png")
-    cover = f"file://{os.path.abspath(f'./temps/cover_{bv_id}.png')}"
-    played_times = num_format(info.views)
-    likes_text = num_format(info.likes)
-    coins_text = num_format(info.coins)
-    favorites_text = num_format(info.favorites)
-
-    with open("./assets/bilibili/bili.html", encoding="utf-8") as f:
-        html_tmp = f.read()
-
-    html_tmp = (
-        html_tmp
-        .replace("{[bv]}", bv_id)
-        .replace("{[cover]}", cover)
-        .replace("{[head_img]}", info.uploader_face)
-        .replace("{[name]}", info.uploader)
-        .replace("{[plays]}", played_times)
-        .replace("{[likes]}", likes_text)
-        .replace("{[coins]}", coins_text)
-        .replace("{[favorites]}", favorites_text)
-        .replace("{[title]}", info.title)
-        .replace("{[desc]}", info.desc)
-    )
-
-    with open(f"./temps/bilibili_{bv_id}.html", "w", encoding="utf-8") as f:
-        f.write(html_tmp)
-
-    # res = await html2img(f"file://{os.path.abspath(f'./temps/bilibili_{bv_id}.html')}", size)
-    res = await catcher.catch(f"file://{os.path.abspath(f'./temps/bilibili_{bv_id}.html')}", size)
-    os.remove(f"./temps/cover_{bv_id}.png")
-    os.remove(f"./temps/bilibili_{bv_id}.html")
-    asyncio.create_task(catcher.quit())
-    img_history[bv_id] = res
-    return res
 
 
 @Logic.Cacher().cache
@@ -265,9 +195,8 @@ class Module(ModuleClass.Module):
         if bv_id:
             for i in bv_id:
                 info = await video_info(bv=i)
-                path = await get_image(info[0], i)
                 result = Comm.Message(
-                    Segments.Image(f"file://{os.path.abspath(path)}", summary=info[0].title)
+                    Segments.Image(f"http://127.0.0.1/gen/{i}", summary=info[0].title)
                 )
 
                 await self.actions.send(group_id=self.event.group_id, message=result)
