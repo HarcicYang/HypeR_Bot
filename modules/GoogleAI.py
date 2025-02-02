@@ -65,7 +65,7 @@ class Context:
     def __init__(self, model: genai.Client, cfg: genai_types.GenerateContentConfig):
         self.cli = model
         self.cfg = cfg
-        self.chat = self.cli.chats.create(model="gemini-2.0-flash-exp", config=self.cfg)
+        self.chat = self.cli.chats.create(model="gemini-2.0-flash-thinking-exp-01-21", config=self.cfg)
 
     def gen_content(self, content: Roles.User) -> str:
         try:
