@@ -81,7 +81,7 @@ class ChatActions:
                         new = Roles.User(*new)
                         result = cmc.get_context(ev.user_id, ev.group_id).gen_content(new)
                     elif config.others["enable"] == "deepseek":
-                        result = cmc.get_context(ev.user_id, ev.group_id).chat(str(ev.message).removeprefix(".chat "), thinking=False, timeout=120.0).text
+                        result = cmc.get_context(ev.user_id, ev.group_id).chat(str(ev.message).removeprefix(".chat "), thinking=True, timeout=120.0).text
                     else:
                         result = f"未知模型：{config.others['enable']}"
                     await ac.send(
