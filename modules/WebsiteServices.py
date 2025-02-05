@@ -58,7 +58,7 @@ async def video_info(bv: str) -> tuple[Any, dict]:
         while 1:
             try:
                 v = video.Video(bvid=bv)
-                d_urls = (await v.get_download_url(0, html5=True)).get("durl") or []
+                d_urls = (await v.get_download_url(0)).get("durl") or []
                 info = await v.get_info()
                 break
             except Exception as e:
@@ -196,7 +196,7 @@ class Module(ModuleClass.Module):
             for i in bv_id:
                 info = await video_info(bv=i)
                 result = Comm.Message(
-                    Segments.Image(f"http://127.0.0.1/gen/{i}", summary=info[0].title)
+                    Segments.Image(f"http://127.0.0.1:8080/gen/{i}", summary=info[0].title)
                 )
 
                 await self.actions.send(group_id=self.event.group_id, message=result)

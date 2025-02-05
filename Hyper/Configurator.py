@@ -36,6 +36,7 @@ class BotConfig(BaseConfig):
     connection: dict
     log_level: str = "INFO"
     uin: int
+    max_workers: int
     others: dict
 
     def custom_post(self, **kwargs):

@@ -303,6 +303,18 @@ class MessageReactionEvent(NoticeEvent):
         self.count = data.get("count")
 
 
+@em.reg("notice", "bot_online")
+class BotOnLineEvent(NoticeEvent):
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self.reason = data.get("reason")
+
+        self.print_log()
+
+    def print_log(self) -> None:
+        logger.info(f"由于 {self.reason} ，OneBot 实现与 QQ 重新连接")
+
+
 class RequestEvent(Event):
     def __init__(self, data: dict):
         super().__init__(data)

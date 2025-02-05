@@ -114,7 +114,7 @@ class Module(ModuleClass.Module):
             has_error = False
 
             try:
-                result: BytesIO = await meme(images=images, texts=texts, args=args)
+                result: BytesIO = meme(images=images, texts=texts, args=args)
 
             except exception.TextNumberMismatch:
                 if meme.params_type.min_texts == meme.params_type.max_texts:

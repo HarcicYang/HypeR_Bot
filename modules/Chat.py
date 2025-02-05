@@ -9,7 +9,7 @@ from Hyper.Listener import Actions
 from modules.GoogleAI import genai, Context, Parts, Roles, genai_types
 from modules.DeepSeekLib import Session
 
-from trafilatura import fetch_url, extract
+# from trafilatura import fetch_url, extract
 from typing import Union, Any
 import os
 
@@ -175,34 +175,34 @@ class ChatActions:
         return args
 
 
-class Tools:
-    @staticmethod
-    def read_url(url: str) -> str:
-        """
-        读取网页链接内容
-        :param url: 要读取的网页的URL
-        :return: 网页内容
-        """
-        try:
-            downloaded = fetch_url(url)
-            return extract(downloaded)
-        except Exception as e:
-            return repr(e)
-
-    @staticmethod
-    def get_wiki(key_word: str) -> dict[str, str]:
-        """
-        获取维基百科上关键词“key_word”对应的页面。
-        若你无法正常从维基百科获取信息，则请使用你现有的知识。
-        :param key_word: 关键词 (不可以有空格！)
-        :return: "text"键为页面内容；"url"键为页面url
-        """
-        url = f"https://zh.wikipedia.org/wiki/{key_word}"
-        res = {
-            "text": Tools.read_url(url),
-            "url": url
-        }
-        return res
+# class Tools:
+#     @staticmethod
+#     def read_url(url: str) -> str:
+#         """
+#         读取网页链接内容
+#         :param url: 要读取的网页的URL
+#         :return: 网页内容
+#         """
+#         try:
+#             downloaded = fetch_url(url)
+#             return extract(downloaded)
+#         except Exception as e:
+#             return repr(e)
+#
+#     @staticmethod
+#     def get_wiki(key_word: str) -> dict[str, str]:
+#         """
+#         获取维基百科上关键词“key_word”对应的页面。
+#         若你无法正常从维基百科获取信息，则请使用你现有的知识。
+#         :param key_word: 关键词 (不可以有空格！)
+#         :return: "text"键为页面内容；"url"键为页面url
+#         """
+#         url = f"https://zh.wikipedia.org/wiki/{key_word}"
+#         res = {
+#             "text": Tools.read_url(url),
+#             "url": url
+#         }
+#         return res
 
 
 # generation_config = {

@@ -26,11 +26,32 @@
 # with Client() as cli:
 #     cli.subscribe(msg_handler, GroupMessageEvent)
 #     cli.run()
-import httpx
-import time
-
-
-start = time.time()
-httpx.get("http://127.0.0.1/gen/BV1Agcoe4Ey6")
-print(time.time() - start)
-
+# import httpx
+# import time
+#
+#
+# start = time.time()
+# httpx.get("http://127.0.0.1:8080/gen/BV1Agcoe4Ey6")
+# print(time.time() - start)
+#
+#
+# def num_format(number: int) -> str:
+#     units = ['', 'k', 'M', 'B', 'T']
+#     if number < 1000:
+#         return str(number)
+#
+#     magnitude = min(len(units) - 1, int((len(str(number)) - 1) / 3))
+#     number /= 1000.0 ** magnitude
+#     suffix = units[magnitude]
+#
+#     if number == int(number):
+#         return f"{int(number)}{suffix}"
+#     else:
+#         return f"{number:.2f}{suffix}"
+#
+# print(num_format(999))      # "999"
+# print(num_format(1000))     # "1k"
+# print(num_format(1500))     # "1.50k"
+# print(num_format(1000000))  # "1M"
+# print(num_format(1234567))  # "1.23M"
+# print(num_format(1000000000))  # "1B"

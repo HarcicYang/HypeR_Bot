@@ -5,6 +5,7 @@ import asyncio
 import sys
 import subprocess
 from typing import Any, NoReturn
+# from concurrent.futures import ThreadPoolExecutor
 
 from Hyper import Network, Events, Comm
 from Hyper.Service import FuncCall, IServiceBase, IServiceStartUp
@@ -16,6 +17,7 @@ from Hyper.Events import *
 config = Configurator.BotConfig.get("hyper-bot")
 logger = Logger.Logger()
 logger.set_level(config.log_level)
+# pool = ThreadPoolExecutor(max_workers=config.max_workers)
 listener_ran = False
 
 
@@ -268,6 +270,7 @@ def run() -> NoReturn:
                 connection=connection
             )
             threading.Thread(target=lambda: __handler(data, actions), daemon=True).start()
+            # asyncio.get_event_loop().run_in_executor(pool, __handler, data, actions)
             while True:
                 try:
                     data = connection.recv()
