@@ -20,7 +20,7 @@ class Parts:
 
         @classmethod
         def upload_from_url(cls, url: str, cli: genai.Client):
-            response = httpx.get(url)
+            response = httpx.get(url, verify=False)
             path = f"./temps/google_{len(response.content)}_{len(url)}"
             with open(path, "wb") as f:
                 f.write(response.content)

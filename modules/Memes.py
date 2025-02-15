@@ -90,9 +90,9 @@ class Module(ModuleClass.Module):
                     n_msg.add(i)
                 elif type(i) is Segments.Image:
                     if str(i.file).startswith("http"):
-                        response = httpx.get(i.file)
+                        response = httpx.get(i.file, verify=False)
                     else:
-                        response = httpx.get(i.url)
+                        response = httpx.get(i.url, verify=False)
                     with open(f"./temps/img{img_num}_{self.event.user_id}.jpg", "wb") as f:
                         f.write(response.content)
                     images.append(f"./temps/img{img_num}_{self.event.user_id}.jpg")
