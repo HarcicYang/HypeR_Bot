@@ -1,6 +1,6 @@
-from Hyper import Segments, Comm
+from hyperot import segments, common
 import ModuleClass
-from Hyper.Events import *
+from hyperot.events import *
 import random
 import json
 
@@ -18,19 +18,19 @@ class Module(ModuleClass.Module):
         if isinstance(self.event, NoticeEvent):
             if isinstance(self.event, GroupMemberIncreaseEvent):
                 text = str(random.choice(quicks["group_increase"])).split("<user>")
-                await self.actions.send(group_id=self.event.group_id, message=Comm.Message(
+                await self.actions.send(group_id=self.event.group_id, message=common.Message(
                     [
-                        Segments.Text(text[0]),
-                        Segments.At(self.event.user_id),
-                        Segments.Text(text[1])
+                        segments.Text(text[0]),
+                        segments.At(self.event.user_id),
+                        segments.Text(text[1])
                     ]
                 ))
             elif isinstance(self.event, GroupMemberDecreaseEvent):
                 try:
                     text = str(random.choice(quicks["group_decrease"][self.event.sub_type])).replace("<user>", str(self.event.user_id))
-                    await self.actions.send(group_id=self.event.group_id, message=Comm.Message(
+                    await self.actions.send(group_id=self.event.group_id, message=common.Message(
                         [
-                            Segments.Text(text)
+                            segments.Text(text)
                         ]
                     ))
 
@@ -52,32 +52,32 @@ class Module(ModuleClass.Module):
                     #     ]
                     # ))
                     uinfo = await self.actions.get_stranger_info(self.event.user_id)
-                    msg = await self.actions.send(group_id=self.event.group_id, message=Comm.Message(
+                    msg = await self.actions.send(group_id=self.event.group_id, message=common.Message(
                         [
-                            Segments.Text(f"有新的入群请求，来自用户 {uinfo.data.nickname}（QQ {self.event.user_id}），请尽快处理")
+                            segments.Text(f"有新的入群请求，来自用户 {uinfo.data.nickname}（QQ {self.event.user_id}），请尽快处理")
                         ]
                     ))
                     cache[str(msg.data.message_id)] = [self.event.comment, self.event.flag]
                 elif self.event.sub_type == "invite":
-                    message = Comm.Message(
+                    message = common.Message(
                         [
-                            Segments.Text(f"HypeR Bot 通过用户 QQ {self.event.user_id}的邀请加入群组")
+                            segments.Text(f"HypeR Bot 通过用户 QQ {self.event.user_id}的邀请加入群组")
                         ]
                     )
                     await self.actions.send(group_id=self.event.group_id, message=message)
         elif isinstance(self.event, GroupMessageEvent):
             _id = None
             for i in self.event.message:
-                if isinstance(i, Segments.Reply):
+                if isinstance(i, segments.Reply):
                     _id = i.id
                     break
             if _id:
                 if ".comment" in str(self.event.message):
                     await self.actions.send(
                         group_id=self.event.group_id, user_id=self.event.user_id,
-                        message=Comm.Message(
-                            Segments.Reply(self.event.message_id),
-                            Segments.Text(cache[str(_id)][0])
+                        message=common.Message(
+                            segments.Reply(self.event.message_id),
+                            segments.Text(cache[str(_id)][0])
                         )
                     )
                 elif ".approve" in str(self.event.message):

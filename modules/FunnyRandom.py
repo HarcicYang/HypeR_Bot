@@ -6,10 +6,10 @@ from random import randint
 import dataclasses
 import json
 
-from Hyper.Comm import Message
-from Hyper.Segments import *
+from hyperot.common import Message
+from hyperot.segments import *
 from ModuleClass import ModuleRegister, Module
-from Hyper.Events import GroupMessageEvent, PrivateMessageEvent
+from hyperot.events import GroupMessageEvent, PrivateMessageEvent
 
 
 @dataclasses.dataclass

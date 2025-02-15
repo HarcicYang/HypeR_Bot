@@ -1,8 +1,8 @@
-from Hyper.Events import GroupMessageEvent
+from hyperot.events import GroupMessageEvent
 from ModuleClass import ModuleInfo, ModuleRegister, Module
-from Hyper.Segments import *
-from Hyper.Comm import Message
-from Hyper.Utils.Logic import Downloader
+from hyperot.segments import *
+from hyperot.common import Message
+from hyperot.utils.logic import Downloader
 
 from pyncm import apis
 import os

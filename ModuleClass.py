@@ -1,4 +1,4 @@
-from Hyper import Events, Listener, Logger, Configurator
+from hyperot import events, listener, hyperogger, configurator
 
 import gc
 import asyncio
@@ -6,8 +6,8 @@ import importlib
 from typing import Union
 import dataclasses
 
-config: Configurator.BotConfig = Configurator.BotConfig.get("hyper-bot")
-logger = Logger.Logger()
+config: configurator.BotConfig = configurator.BotConfig.get("hyper-bot")
+logger = hyperogger.Logger()
 logger.set_level(config.log_level)
 
 
@@ -26,24 +26,24 @@ class Module:
 
     def __init__(
             self,
-            actions: Listener.Actions,
+            actions: listener.Actions,
             event: Union[
-                Events.GroupMessageEvent,
-                Events.PrivateMessageEvent,
-                Events.GroupFileUploadEvent,
-                Events.GroupAdminEvent,
-                Events.GroupMemberDecreaseEvent,
-                Events.GroupMemberIncreaseEvent,
-                Events.GroupMuteEvent,
-                Events.FriendAddEvent,
-                Events.GroupRecallEvent,
-                Events.FriendRecallEvent,
-                Events.NotifyEvent,
-                Events.GroupEssenceEvent,
-                Events.MessageReactionEvent,
-                Events.GroupAddInviteEvent,
-                Events.HyperListenerStartNotify,
-                Events.HyperListenerStopNotify
+                events.GroupMessageEvent,
+                events.PrivateMessageEvent,
+                events.GroupFileUploadEvent,
+                events.GroupAdminEvent,
+                events.GroupMemberDecreaseEvent,
+                events.GroupMemberIncreaseEvent,
+                events.GroupMuteEvent,
+                events.FriendAddEvent,
+                events.GroupRecallEvent,
+                events.FriendRecallEvent,
+                events.NotifyEvent,
+                events.GroupEssenceEvent,
+                events.MessageReactionEvent,
+                events.GroupAddInviteEvent,
+                events.HyperListenerStartNotify,
+                events.HyperListenerStopNotify
             ]
     ):
         self.actions = actions
@@ -57,7 +57,7 @@ class Module:
         return ModuleInfo()
 
     @staticmethod
-    def filter(event: Events.Event, allowed: list) -> bool:
+    def filter(event: events.Event, allowed: list) -> bool:
         for i in allowed:
             if isinstance(event, i):
                 return True
@@ -79,11 +79,11 @@ class ModuleRegister:
     def register(*args):
         def decorator(cls):
             if len(args) < 1:
-                allowed = [Events.Event]
+                allowed = [events.Event]
             else:
                 allowed = list(args)
 
-            def init(self, actions: Listener.Actions, event: Events.Event):
+            def init(self, actions: listener.Actions, event: events.Event):
                 self.actions = actions
                 self.event = event
 

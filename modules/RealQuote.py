@@ -1,6 +1,6 @@
-from Hyper.Comm import Message
-from Hyper.Segments import Text
-from Hyper.Events import MessageEvent
+from hyperot.common import Message
+from hyperot.segments import Text
+from hyperot.events import MessageEvent
 from ModuleClass import ModuleRegister, Module
 
 import httpx

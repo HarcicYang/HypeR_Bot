@@ -3,10 +3,10 @@ import sys
 import importlib.util
 import traceback
 
-from Hyper import Configurator, Logger
+from hyperot import configurator, hyperogger
 
-config = Configurator.BotConfig.get("hyper-bot")
-logger = Logger.Logger()
+config = configurator.BotConfig.get("hyper-bot")
+logger = hyperogger.Logger()
 logger.set_level(config.log_level)
 modules_path = os.path.dirname(__file__)
 
@@ -30,7 +30,7 @@ def import_modules(path):
             spec.loader.exec_module(module)
             imports.append(module)
         except Exception as e:
-            logger.log(f"导入模块 {module_name} 时发生错误: {traceback.format_exc()}", level=Logger.levels.ERROR)
+            logger.log(f"导入模块 {module_name} 时发生错误: {traceback.format_exc()}", level=hyperogger.levels.ERROR)
 
     return imports
 

@@ -1,15 +1,15 @@
 import datetime
 
-import Hyper
-from Hyper import Events, Segments, Comm
+import hyperot
+from hyperot import events, segments, common
 import ModuleClass
-from Hyper.Events import *
+from hyperot.events import *
 
 
 @ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
 class Module(ModuleClass.Module):
     @staticmethod
-    def filter(event: Events.Event, allowed: list) -> bool:
+    def filter(event: events.Event, allowed: list) -> bool:
         if isinstance(event, HyperNotify):
             return False
 
@@ -31,10 +31,10 @@ class Module(ModuleClass.Module):
                    "\n"
                    "时间：{}\n"
                    "协议库实现：{} {}").format(
-            Hyper.HYPER_BOT_VERSION,
+            hyperot.HYPER_BOT_VERSION,
             str(datetime.datetime.now()),
             name,
             code
         )
         await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id,
-                                message=Comm.Message(Segments.Text(message)))
+                                message=common.Message(segments.Text(message)))

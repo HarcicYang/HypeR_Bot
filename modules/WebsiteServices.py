@@ -1,8 +1,8 @@
-from Hyper import Segments
+from hyperot import segments
 import ModuleClass
-from Hyper.Utils import Logic
-from Hyper.Utils.Logic import Downloader
-from Hyper.Events import *
+from hyperot.utils import logic
+from hyperot.utils.logic import Downloader
+from hyperot.events import *
 
 from typing import Any
 import re
@@ -28,7 +28,7 @@ def square_scale(image: Image, height: int):
     return image.resize((width, height))
 
 
-@Logic.Cacher().cache
+@logic.Cacher().cache
 def get_bv(text: str):
     bv_pattern = r"BV[a-zA-Z0-9]{10,12}"
     bv_list = []
@@ -51,7 +51,7 @@ def get_bv(text: str):
     return bv_list or None
 
 
-@Logic.Cacher().cache_async
+@logic.Cacher().cache_async
 async def video_info(bv: str) -> tuple[Any, dict]:
     try:
         retried = 0
@@ -184,7 +184,7 @@ class Module(ModuleClass.Module):
         if self.event.blocked or self.event.is_silent:
             return
         try:
-            if len(self.event.message) != 0 and isinstance(self.event.message[0], Segments.Json):
+            if len(self.event.message) != 0 and isinstance(self.event.message[0], segments.Json):
                 json_data = json.loads(self.event.message[0].data)
                 bv_id = get_bv(text=str(json_data))
             else:
@@ -195,8 +195,8 @@ class Module(ModuleClass.Module):
         if bv_id:
             for i in bv_id:
                 info = await video_info(bv=i)
-                result = Comm.Message(
-                    Segments.Image(f"http://127.0.0.1:8080/gen/{i}", summary=info[0].title)
+                result = common.Message(
+                    segments.Image(f"http://127.0.0.1:8080/gen/{i}", summary=info[0].title)
                 )
 
                 await self.actions.send(group_id=self.event.group_id, message=result)
@@ -207,7 +207,7 @@ class Module(ModuleClass.Module):
                             dlr = Downloader(url, f"./temps/b_video_{bv_id}.mp4", 1, True)
                             ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
                             await dlr.download(ua)
-                        msg = Comm.Message(Segments.Video.build(f"./temps/b_video_{bv_id}.mp4"))
+                        msg = common.Message(segments.Video.build(f"./temps/b_video_{bv_id}.mp4"))
                         await self.actions.send(group_id=self.event.group_id, message=msg)
                         # os.remove(f"./temps/b_video_{bv_id}.mp4")
 
@@ -223,8 +223,8 @@ class Module(ModuleClass.Module):
                     await self.actions.send(
                         group_id=self.event.group_id,
                         user_id=self.event.user_id,
-                        message=Comm.Message(
-                            Segments.Image(ghv.head_any(i), summary=f"{ghv.author}/{ghv.repo}")
+                        message=common.Message(
+                            segments.Image(ghv.head_any(i), summary=f"{ghv.author}/{ghv.repo}")
                         )
                     )
                     try:
@@ -232,8 +232,8 @@ class Module(ModuleClass.Module):
                         await self.actions.send(
                             group_id=self.event.group_id,
                             user_id=self.event.user_id,
-                            message=Comm.Message(
-                                Segments.Image(
+                            message=common.Message(
+                                segments.Image(
                                     "file://" + os.path.abspath(f"./temps/github_{ghv.author}_{ghv.repo}.png"),
                                     summary=f"{ghv.author}/{ghv.repo}")
                             )

@@ -1,8 +1,8 @@
-from Hyper.Segments import *
-from Hyper.Comm import Message
+from hyperot.segments import *
+from hyperot.common import Message
 import ModuleClass
-from Hyper.Events import *
-from Hyper.Utils.ArkSignHelper import Card, get_pic
+from hyperot.events import *
+from hyperot.utils.ArkSignHelper import Card, get_pic
 
 import time
 import json
@@ -150,7 +150,7 @@ class Test(ModuleClass.Module):
                                     message=Message([Dice()]))
 
         elif str(self.event.message) == ".test5":
-            message = Comm.Message(
+            message = common.Message(
                 [
                     Music(
                         type="custom",
@@ -167,7 +167,7 @@ class Test(ModuleClass.Module):
 
         elif str(self.event.message) == ".test6":
             echo = await self.actions.custom.get_cookies(domain="qun.qq.com")
-            print(Comm.Ret.fetch(echo).data)
+            print(common.Ret.fetch(echo).data)
 
         elif str(self.event.message) == ".test7":
             ark = Card(

@@ -4,11 +4,11 @@ import httpx
 import meme_generator
 from meme_generator import exception
 
-from Hyper import Segments, Comm
+from hyperot import segments, common
 import ModuleClass
-from Hyper.Events import *
+from hyperot.events import *
 from ModuleClass import ModuleInfo
-from Hyper.Utils.TypeExt import String
+from hyperot.utils.typextensions import String
 
 cmd = ".meme"
 
@@ -60,9 +60,9 @@ class Module(ModuleClass.Module):
                     await self.actions.send(
                         user_id=self.event.user_id,
                         group_id=self.event.group_id,
-                        message=Comm.Message(
-                            Segments.Reply(self.event.message_id),
-                            Segments.Text(
+                        message=common.Message(
+                            segments.Reply(self.event.message_id),
+                            segments.Text(
                                 f"找不到{str(message).split()[1].replace('[图片]', '')}这一模板，详见：\n"
                                 f"https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html"
                             )
@@ -72,9 +72,9 @@ class Module(ModuleClass.Module):
                     await self.actions.send(
                         user_id=self.event.user_id,
                         group_id=self.event.group_id,
-                        message=Comm.Message(
-                            Segments.Reply(self.event.message_id),
-                            Segments.Text(
+                        message=common.Message(
+                            segments.Reply(self.event.message_id),
+                            segments.Text(
                                 "https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html"
                             )
                         )
@@ -84,11 +84,11 @@ class Module(ModuleClass.Module):
             images = []
             args = {}
             img_num = 0
-            n_msg = Comm.Message()
+            n_msg = common.Message()
             for i in self.event.message:
-                if type(i) is Segments.Text:
+                if type(i) is segments.Text:
                     n_msg.add(i)
-                elif type(i) is Segments.Image:
+                elif type(i) is segments.Image:
                     if str(i.file).startswith("http"):
                         response = httpx.get(i.file, verify=False)
                     else:
@@ -139,10 +139,10 @@ class Module(ModuleClass.Module):
                 has_error = True
 
             if has_error:
-                message = Comm.Message(
-                    Segments.Reply(self.event.message_id),
-                    Segments.Text(text),
-                    Segments.Text(
+                message = common.Message(
+                    segments.Reply(self.event.message_id),
+                    segments.Text(text),
+                    segments.Text(
                         "\n详见: https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html")
                 )
                 await self.actions.send(user_id=self.event.user_id, group_id=self.event.group_id, message=message)
@@ -157,9 +157,9 @@ class Module(ModuleClass.Module):
                 await self.actions.send(
                     user_id=self.event.user_id,
                     group_id=self.event.group_id,
-                    message=Comm.Message(
-                        Segments.Reply(self.event.message_id),
-                        Segments.Image(content_text)
+                    message=common.Message(
+                        segments.Reply(self.event.message_id),
+                        segments.Image(content_text)
                     )
                 )
                 os.remove(f"./temps/meme_{self.event.user_id}.png")

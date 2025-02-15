@@ -1,7 +1,7 @@
 import logging
 from jieba import lcut, set_dictionary
 
-from Hyper.Utils import Logic
+from hyperot.utils import logic
 
 logging.getLogger("jieba").setLevel(logging.ERROR)
 # try:
@@ -27,7 +27,7 @@ with open("assets/dict.txt", "r", encoding="utf-8") as f:
     del i
 
 
-@Logic.Cacher().cache
+@logic.Cacher().cache
 def check(text: str) -> Result:
     texts = lcut(text)
     for j in words:

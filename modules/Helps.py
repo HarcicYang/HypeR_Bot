@@ -1,7 +1,7 @@
-from Hyper.Comm import Message
-from Hyper.Segments import *
+from hyperot.common import Message
+from hyperot.segments import *
 from ModuleClass import Module, ModuleRegister, InnerHandler
-from Hyper.Events import *
+from hyperot.events import *
 
 
 def searcher(checker, iter_obj: list) -> list[InnerHandler]:

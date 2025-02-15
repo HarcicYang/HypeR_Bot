@@ -1,8 +1,8 @@
 from ModuleClass import ModuleInfo
-from Hyper.Segments import *
-from Hyper.Comm import Message
+from hyperot.segments import *
+from hyperot.common import Message
 import ModuleClass
-from Hyper.Events import *
+from hyperot.events import *
 
 
 @ModuleClass.ModuleRegister.register(GroupMessageEvent)

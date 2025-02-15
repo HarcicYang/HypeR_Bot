@@ -1,6 +1,6 @@
-from Hyper import Segments
-from Hyper.Comm import Message
-from Hyper.Events import *
+from hyperot import segments
+from hyperot.common import Message
+from hyperot.events import *
 from ModuleClass import Module, ModuleInfo, ModuleRegister
 
 import os
@@ -40,7 +40,7 @@ class Quoter(Module):
 
     async def handle(self):
         if ".quote" in str(self.event.message):
-            if isinstance(self.event.message[0], Segments.Reply):
+            if isinstance(self.event.message[0], segments.Reply):
                 msg_id = self.event.message[0].id
             else:
                 return
@@ -56,8 +56,8 @@ class Quoter(Module):
                 group_id=self.event.group_id,
                 user_id=self.event.user_id,
                 message=Message(
-                    Segments.Reply(self.event.message_id),
-                    Segments.Image(f"file://{os.path.abspath(res)}")
+                    segments.Reply(self.event.message_id),
+                    segments.Image(f"file://{os.path.abspath(res)}")
                 )
             )
             os.remove(res)

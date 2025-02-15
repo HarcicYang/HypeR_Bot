@@ -1,7 +1,7 @@
-from Hyper.Comm import Message
+from hyperot.common import Message
 from ModuleClass import Module, ModuleInfo, ModuleRegister
-from Hyper.Segments import Text, Reply, At
-from Hyper.Events import GroupMessageEvent, GroupMuteEvent
+from hyperot.segments import Text, Reply, At
+from hyperot.events import GroupMessageEvent, GroupMuteEvent
 
 
 @ModuleRegister.register(GroupMessageEvent, GroupMuteEvent)

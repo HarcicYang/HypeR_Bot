@@ -1,10 +1,10 @@
 import traceback
 
-from Hyper.Events import GroupMessageEvent, PrivateMessageEvent
-from Hyper.Comm import Message
+from hyperot.events import GroupMessageEvent, PrivateMessageEvent
+from hyperot.common import Message
 from ModuleClass import ModuleRegister, Module
-from Hyper.Segments import *
-from Hyper.Listener import Actions
+from hyperot.segments import *
+from hyperot.listener import Actions
 
 from modules.GoogleAI import genai, Context, Parts, Roles, genai_types
 from modules.DeepSeekLib import Session
@@ -13,7 +13,7 @@ from modules.DeepSeekLib import Session
 from typing import Union, Any
 import os
 
-config = Configurator.BotConfig.get("hyper-bot")
+config = configurator.BotConfig.get("hyper-bot")
 
 white_list: list = config.others.get("white")
 white_list += config.owner
