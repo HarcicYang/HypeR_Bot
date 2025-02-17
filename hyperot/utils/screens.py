@@ -47,4 +47,4 @@ def play_startup():
 
 
 def play_info(version: str):
-    print(f"    HypeR Bot 版本 {version}, 正在启动...\n    View at: https://github.com/HarcicYang/HypeR_Bot\n")
+    print(f"    HypeR Bot 版本 {version}\n    https://github.com/HarcicYang/HypeR_Bot\n")

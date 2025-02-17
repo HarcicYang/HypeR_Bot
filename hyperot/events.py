@@ -1,6 +1,5 @@
 from . import configurator, hyperogger, common
 from .utils.typextensions import Integer
-from .utils.logic import private
 from .segments import message_types, At
 from .network import KritorConnection, WebsocketConnection, HTTPConnection
 from .hyperogger import levels
@@ -129,7 +128,6 @@ class PrivateMessageEvent(MessageEvent):
 
         self.print_log()
 
-    @private
     def print_log(self) -> None:
         logger.log(f"收到 {self.user_id} 的消息：{self.message}")
 
@@ -144,7 +142,6 @@ class GroupMessageEvent(MessageEvent):
 
         self.print_log()
 
-    @private
     def print_log(self) -> None:
         logger.log(f"收到来自群 {self.group_id} 中 {self.user_id} 的消息： {self.message}")
 
@@ -163,7 +160,6 @@ class GroupFileUploadEvent(NoticeEvent):
 
         self.print_log()
 
-    @private
     def print_log(self) -> None:
         logger.log(f"{self.user_id} 在 {self.group_id} 上传了文件 {self.file}")
 
@@ -176,7 +172,6 @@ class GroupAdminEvent(NoticeEvent):
 
         self.print_log()
 
-    @private
     def print_log(self) -> None:
         logger.log(
             f"用户 {self.user_id} 在群 {self.group_id} 被{'设置' if self.sub_type == 'set' else '取消'}管理员身份")
@@ -191,7 +186,6 @@ class GroupMemberDecreaseEvent(NoticeEvent):
 
         self.print_log()
 
-    @private
     def print_log(self) -> None:
         logger.log(f"{self.user_id} 离开群 {self.group_id}， [{self.sub_type}, {self.operator_id}]")
 
@@ -205,7 +199,6 @@ class GroupMemberIncreaseEvent(NoticeEvent):
 
         self.print_log()
 
-    @private
     def print_log(self) -> None:
         logger.log(f"{self.user_id} 加入群 {self.group_id}， [{self.sub_type}, {self.operator_id}]")
 
@@ -220,7 +213,6 @@ class GroupMuteEvent(NoticeEvent):
 
         self.print_log()
 
-    @private
     def print_log(self) -> None:
         logger.log(
             f"{self.user_id} 在群 {self.group_id} 被{'' if self.sub_type == 'ban' else '解除'}禁言， 时长为{self.duration}")
@@ -233,7 +225,6 @@ class FriendAddEvent(NoticeEvent):
 
         self.print_log()
 
-    @private
     def print_log(self) -> None:
         logger.log(f"收到 {self.user_id} 的好友请求")
 
@@ -247,7 +238,6 @@ class GroupRecallEvent(NoticeEvent):
 
         self.print_log()
 
-    @private
     def print_log(self) -> None:
         logger.log(f"{self.operator_id} 在群 {self.group_id} 中撤回了 {self.user_id} 的消息 {self.message_id}")
 
@@ -260,7 +250,6 @@ class FriendRecallEvent(NoticeEvent):
 
         self.print_log()
 
-    @private
     def print_log(self) -> None:
         logger.log(f"{self.user_id} 撤回了一条消息")
 
@@ -285,7 +274,6 @@ class GroupEssenceEvent(NoticeEvent):
 
         self.print_log()
 
-    @private
     def print_log(self) -> None:
         action = "设置" if self.sub_type == "add" else "移除"
         logger.log(

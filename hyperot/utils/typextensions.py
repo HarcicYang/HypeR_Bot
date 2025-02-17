@@ -159,14 +159,6 @@ class String(str):
         return String("\n".join(lines))
 
 
-class List(list):
-    def __getitem__(self, item):
-        try:
-            return super().__getitem__(item)
-        except IndexError:
-            return None
-
-
 class Integer(int):
     @classmethod
     def convert_from(cls, target):
@@ -177,15 +169,4 @@ class Integer(int):
             return cls(int(target))
         except:
             return cls(-1)
-
-
-class Enum:
-    def __init__(self, *args):
-        self.items = list(args)
-
-    def __getattr__(self, item):
-        if item in self.items:
-            return self.items.index(item)
-        else:
-            return None
 
