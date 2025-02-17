@@ -1,10 +1,7 @@
 import json
 import os
-import sys
 import shutil
-import traceback
 import asyncio
-from typing import Union, Any
 import aiohttp
 import time
 import requests
@@ -12,24 +9,7 @@ import inspect
 from functools import wraps
 
 from .. import hyperogger
-
-
-class PrivateMethodError(Exception):
-    pass
-
-
-def private(func):
-    def wrapper(self, *args, **kwargs):
-        current_frame = sys._getframe(1)
-        caller_locals = current_frame.f_locals
-        if 'self' in caller_locals and caller_locals['self'].__class__ == self.__class__:
-            pass
-        else:
-            raise PrivateMethodError()
-
-        return func(self, *args, **kwargs)
-
-    return wrapper
+from .hypetyping import Any, Union
 
 
 class Cacher:
@@ -123,61 +103,6 @@ class ErrorHandler:
             self.logger.log(f"错误在{retried}次重试后失败", level=self.level)
 
         return wrapper
-
-
-class FileManager:
-    @staticmethod
-    def create(path: str) -> bool:
-        try:
-            with open(path, "w") as f:
-                f.write("")
-        except (FileExistsError, OSError, IOError):
-            return False
-
-        return True
-
-    @staticmethod
-    def exists(path: str) -> bool:
-        try:
-            with open(path, "r") as f:
-                f.read()
-                return True
-        except FileNotFoundError:
-            return False
-
-    @staticmethod
-    @Cacher(7).cache
-    def read_as_text(path: str, encoding: str = "utf-8") -> str:
-        with open(path, "r", encoding=encoding) as f:
-            return f.read()
-
-    @staticmethod
-    @Cacher(7).cache
-    def read_as_json(path: str, encoding: str = "utf-8") -> Union[list, dict]:
-        with open(path, "r", encoding=encoding) as f:
-            return json.load(f)
-
-    @staticmethod
-    @Cacher(7).cache
-    def read_raw(path: str) -> bytes:
-        with open(path, "rb") as f:
-            return f.read()
-
-    @staticmethod
-    def delete(path: str) -> bool:
-        try:
-            os.remove(path)
-            return True
-        except (FileNotFoundError, OSError, IOError):
-            return False
-
-    @staticmethod
-    def copy(path1: str, path2: str) -> bool:
-        try:
-            shutil.copy(path1, path2)
-            return True
-        except (FileNotFoundError, OSError, IOError):
-            return False
 
 
 class ProgressBar:
@@ -384,36 +309,3 @@ class SimpleQueue:
                 return self.contents.pop(0)
             except IndexError:
                 pass
-
-
-def timer(func: callable) -> callable:
-    if inspect.iscoroutinefunction(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            start = time.time()
-            res = await func(*args, **kwargs)
-            end = time.time()
-            print(f"Func {func.__name__} took {end - start:.2f} seconds")
-            return res
-    else:
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            start = time.time()
-            res = func(*args, **kwargs)
-            end = time.time()
-            print(f"Func {func.__name__} took {end - start:.2f} seconds")
-            return res
-
-    return wrapper
-
-
-class Timer:
-    def __init__(self, name: str):
-        self.name = name
-        self.start_t = 0.0
-
-    def start(self):
-        self.start_t = time.time()
-
-    def stop(self):
-        print(f"Code scope {self.name} took {time.time() - self.start_t:.2f} seconds")

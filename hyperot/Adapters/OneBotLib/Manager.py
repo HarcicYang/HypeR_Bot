@@ -6,7 +6,6 @@ from typing import Union
 import random
 import json
 
-# reports = queue.Queue()
 reports = logic.KeyQueue()
 
 config: configurator.BotConfig
