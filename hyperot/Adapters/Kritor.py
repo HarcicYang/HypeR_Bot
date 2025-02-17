@@ -41,7 +41,6 @@ class Actions(OneBotActions):
     def __init__(self, cnt: KritorConnection):
         self.connection = cnt
 
-    @hyperogger.AutoLogAsync.register(hyperogger.AutoLog.templates().send, logger)
     async def send(
             self, message: common.Message, group_id: int = None, user_id: int = None
     ) -> common.Ret[MsgSendRsp]:
@@ -178,7 +177,7 @@ def run():
     async def hy_i_runner():
         global connection
         if handler is tester:
-            raise Errors.ListenerNotRegisteredError("No handler registered")
+            raise errors.ListenerNotRegisteredError("No handler registered")
         # connection = websocket.WebSocket()
         # if isinstance(config.connection, Configurator.WSConnectionC):
         #     connection = Network.WebsocketConnection(f"ws://{config.connection.host}:{config.connection.port}")

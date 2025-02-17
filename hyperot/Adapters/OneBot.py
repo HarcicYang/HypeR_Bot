@@ -5,7 +5,6 @@ import asyncio
 import sys
 import subprocess
 from typing import Any, NoReturn
-# from concurrent.futures import ThreadPoolExecutor
 
 from .. import network, events, common
 from ..service import FuncCall, IServiceBase, IServiceStartUp
@@ -17,7 +16,6 @@ from ..events import *
 config = configurator.BotConfig.get("hyper-bot")
 logger = hyperogger.Logger()
 logger.set_level(config.log_level)
-# pool = ThreadPoolExecutor(max_workers=config.max_workers)
 listener_ran = False
 
 
@@ -42,7 +40,6 @@ class Actions:
 
         self.custom = CustomAction(self.connection)
 
-    @hyperogger.AutoLogAsync.register(hyperogger.AutoLog.templates().send, logger)
     async def send(
             self, message: common.Message, group_id: int = None, user_id: int = None
     ) -> common.Ret[MsgSendRsp]:
@@ -61,24 +58,24 @@ class Actions:
         else:
             raise errors.ArgsInvalidError("'send' API requires 'group_id' or 'user_id' but none of them are provided.")
         packet.send_to(self.connection)
+        logger.info(f"向{(('群 ' + str(group_id)) if group_id else ('用户' + str(user_id))) + ' '}发送：{str(message)}")
         return common.Ret.fetch(packet.echo, MsgSendRsp)
 
-    @hyperogger.AutoLogAsync.register(hyperogger.AutoLog.templates().recall, logger)
     async def del_message(self, message_id: int) -> None:
         common.Packet(
             "delete_msg",
             message_id=message_id,
         ).send_to(self.connection)
+        logger.info(f"撤回 {message_id}")
 
-    @hyperogger.AutoLogAsync.register(hyperogger.AutoLog.templates().kick, logger)
     async def set_group_kick(self, group_id: int, user_id: int) -> None:
         common.Packet(
             "set_group_kick",
             group_id=group_id,
             user_id=user_id,
         ).send_to(self.connection)
+        logger.info(f"将用户 {user_id} 移出群 {group_id}")
 
-    @hyperogger.AutoLogAsync.register(hyperogger.AutoLog.templates().mute, logger)
     async def set_group_ban(self, group_id: int, user_id: int, duration: int = 60) -> None:
         common.Packet(
             "set_group_ban",
@@ -86,6 +83,7 @@ class Actions:
             user_id=user_id,
             duration=duration,
         ).send_to(self.connection)
+        logger.info(f"在群 {group_id} 将用户 {user_id} 禁言 {duration}s")
 
     async def get_login_info(self) -> common.Ret[GetLoginInfoRsp]:
         packet = common.Packet("get_login_info")
@@ -114,8 +112,7 @@ class Actions:
         packet.send_to(self.connection)
         return common.Ret.fetch(packet.echo, SendForwardRsp)
 
-    @hyperogger.AutoLogAsync.register(hyperogger.AutoLog.templates().set_req, logger)
-    async def set_group_add_request(self, flag: str, sub_type: str, approve: bool, reason: str = "Refused") -> None:
+    async def set_group_add_request(self, flag: str, sub_type: str, approve: bool, reason: str = "Not Mentioned") -> None:
         common.Packet(
             "set_group_add_request",
             flag=flag,
@@ -123,6 +120,7 @@ class Actions:
             approve=approve,
             reason=reason
         ).send_to(self.connection)
+        logger.info(f"由于 {reason}，{'通过' if approve else '拒绝'} {flag} 请求")
 
     async def get_stranger_info(self, user_id: int) -> common.Ret[GetStrInfoRsp]:
         packet = common.Packet(
@@ -157,7 +155,6 @@ class Actions:
         packet.send_to(self.connection)
         return common.Ret.fetch(packet.echo)
 
-    @hyperogger.AutoLogAsync.register(hyperogger.AutoLog.templates().set_ess, logger)
     async def set_essence_msg(self, message_id: int) -> None:
         common.Packet(
             "set_essence_msg",
