@@ -6,7 +6,7 @@ import sys
 import subprocess
 from typing import Any, NoReturn
 
-from .. import network, events, common
+from .. import network, events, common, segments
 from ..service import FuncCall, IServiceBase, IServiceStartUp
 from ..utils import errors, logic
 from ..utils.apiresponse import *
@@ -41,9 +41,11 @@ class Actions:
         self.custom = CustomAction(self.connection)
 
     async def send(
-            self, message: common.Message, group_id: int = None, user_id: int = None
+            self, message: Union[common.Message, str], group_id: int = None, user_id: int = None
     ) -> common.Ret[MsgSendRsp]:
         if group_id is not None:
+            if isinstance(message, str):
+                message = common.Message(segments.Text(message))
             packet = common.Packet(
                 "send_msg",
                 group_id=group_id,
@@ -229,7 +231,6 @@ def run() -> NoReturn:
     try:
         if handler is tester:
             raise errors.ListenerNotRegisteredError("No handler registered")
-        # connection = websocket.WebSocket()
         if isinstance(config.connection, configurator.BotWSC):
             connection = network.WebsocketConnection(f"ws://{config.connection.host}:{config.connection.port}")
         elif isinstance(config.connection, configurator.BotHTTPC):
@@ -262,7 +263,6 @@ def run() -> NoReturn:
                 connection=connection
             )
             threading.Thread(target=lambda: __handler(data, actions), daemon=True).start()
-            # asyncio.get_event_loop().run_in_executor(pool, __handler, data, actions)
             while True:
                 try:
                     data = connection.recv()
@@ -272,9 +272,7 @@ def run() -> NoReturn:
                 except json.decoder.JSONDecodeError:
                     logger.error("收到错误的JSON内容")
                     continue
-                # threading.Thread(target=lambda: asyncio.run(__handler(data, actions))).start()
                 threading.Thread(target=lambda: __handler(data, actions), daemon=True).start()
-                # asyncio.create_task(__handler(data, actions))
     except KeyboardInterrupt:
         logger.warning("正在退出(Ctrl+C)")
         try:
