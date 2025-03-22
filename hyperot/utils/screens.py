@@ -48,3 +48,26 @@ def play_startup():
 
 def play_info(version: str):
     print(f"    HypeR Bot 版本 {version}\n    https://github.com/HarcicYang/HypeR_Bot\n")
+
+
+class NerdICONs:
+    def __init__(self, enable: bool):
+        self.enable = enable
+
+    def __getattribute__(self, item) -> str:
+        if super().__getattribute__("enable"):
+            return str(super().__getattribute__(item))
+        else:
+            return " "
+
+    nf_fa_circle_info = " \uf05a"
+    nf_cod_bracket_error = " \uebe6"
+    nf_cod_error = " \uea87"
+    nf_fa_warn = " \uf071"
+    nf_cod_debug_alt = " \ueb91"
+    nf_cod_debug_breakpoint_log = " \ueaab"
+    nf_weather_time_4 = " \ue385"
+
+
+
+

@@ -1,21 +1,24 @@
 import datetime
 import typing
-import inspect
 import traceback
 import sys
-from functools import wraps
 
-from .utils.screens import color_txt, rgb
+from .utils.screens import color_txt, rgb, NerdICONs
+from . import configurator
+
+
+config = configurator.BotConfig.get("hyper-bot")
+nf_icons = NerdICONs(config.log_use_nf)
 
 
 class Levels:
     def __init__(self):
-        self.TRACE = color_txt("| Trace    |", rgb(184, 255, 254))
-        self.INFO = color_txt("| Info     |", rgb(90, 221, 225))
-        self.WARNING = color_txt("| Warning  |", rgb(82, 171, 237))
-        self.ERROR = color_txt("| Error    |", rgb(255, 48, 70))
-        self.CRITICAL = color_txt("| Critical |", rgb(178, 33, 48))
-        self.DEBUG = color_txt("| Debug    |", rgb(93, 227, 144))
+        self.TRACE = color_txt(f"|{nf_icons.nf_cod_debug_breakpoint_log} Trace    |", rgb(184, 255, 254))
+        self.INFO = color_txt(f"|{nf_icons.nf_fa_circle_info} Info     |", rgb(90, 221, 225))
+        self.WARNING = color_txt(f"|{nf_icons.nf_fa_warn} Warning  |", rgb(82, 171, 237))
+        self.ERROR = color_txt(f"|{nf_icons.nf_cod_error} Error    |", rgb(255, 48, 70))
+        self.CRITICAL = color_txt(f"|{nf_icons.nf_cod_bracket_error} Critical |", rgb(178, 33, 48))
+        self.DEBUG = color_txt(f"|{nf_icons.nf_cod_debug_alt} Debug    |", rgb(93, 227, 144))
 
         self.level_nums = {
             self.TRACE: -1,
@@ -79,7 +82,7 @@ class Logger:
             filename, lineno, func_name, code = frame
             formatted += (
                 f"  {FILE} {color_txt(filename, rgb(104, 255, 244))},"
-                f" {LINE} {lineno},"
+                f" {LINE} {color_txt(str(lineno), rgb(215, 255, 255))},"
                 f" in {color_txt(func_name, rgb(70, 172, 107))}\n"
                 f"      {color_txt(code, rgb(255, 255, 255))}\n\n"
             )
@@ -97,7 +100,7 @@ class Logger:
     def log(self, message: str, level: str = levels.INFO) -> None:
         if levels.level_nums[level] < levels.level_nums[self.log_level]:
             return
-        time = color_txt(str(datetime.datetime.now())[:-4], rgb(65, 128, 176))
+        time = color_txt(nf_icons.nf_weather_time_4 + " " + str(datetime.datetime.now())[:-4], rgb(65, 128, 176))
         if "\n" in message:
             listed = message.split("\n")
             for i in listed:
@@ -105,7 +108,7 @@ class Logger:
                     listed[0] = "\n"
                     content = f" {time} {level} {color_txt(i, rgb(215, 255, 255))}"
                 else:
-                    content = " " * 37 + color_txt(i, rgb(215, 255, 255))
+                    content = " " * int((len(f"{time}{level}") - 2) / 2) + color_txt(i, rgb(215, 255, 255))
                 print(content)
         else:
             content = f" {time} {level} {color_txt(message, rgb(215, 255, 255))}"
