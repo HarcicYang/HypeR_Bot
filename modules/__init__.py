@@ -16,8 +16,10 @@ def import_modules(path):
     for filename in os.listdir(path):
         if filename.startswith("__"):
             continue
-
-        module_name = filename[:-3] if filename.endswith(".py") else filename[:-4]
+        if os.path.isfile(os.path.join(path, filename)):
+            module_name = filename[:-3] if filename.endswith(".py") else filename[:-4]
+        else:
+            module_name = filename
         module_path = os.path.join(path, filename)
         spec = importlib.util.spec_from_file_location(module_name, module_path)
         if spec is None:
