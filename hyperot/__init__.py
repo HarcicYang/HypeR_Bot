@@ -7,7 +7,7 @@ import importlib
 import sys
 import os
 
-HYPER_BOT_VERSION = "0.80.0"
+HYPER_BOT_VERSION = "0.80.1"
 
 listener: "Listener"
 
