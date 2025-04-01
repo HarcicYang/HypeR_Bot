@@ -18,7 +18,7 @@ setup(
         "hyperot.Adapters.OneBotLib",
         "hyperot.Adapters.KritorLib",
         "hyperot.Adapters.KritorLib.protos",
-        "hyperot.Utils"
+        "hyperot.utils"
     ] + [
         f"hyperot.Adapters.KritorLib.protos.{i}"
         for i in find_packages("./hyperot/Adapters/KritorLib/protos")
