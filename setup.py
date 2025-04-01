@@ -6,6 +6,7 @@ import hyperot
 
 setup(
     name="hyper-bot",
+    provides=["hyperot"],
     version=hyperot.HYPER_BOT_VERSION,
     description="稳定高效、易于开发的QQ Bot框架",
     author="Harcic",
@@ -22,5 +23,6 @@ setup(
         f"hyperot.Adapters.KritorLib.protos.{i}"
         for i in find_packages("./hyperot/Adapters/KritorLib/protos")
     ],
+    install_requires=["ucfgr"],
     include_package_data=True
 )
