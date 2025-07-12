@@ -179,6 +179,14 @@ class Actions:
         packet.send_to(self.connection)
         return common.Ret.fetch(packet.echo, GetMsgRsp)
 
+    async def send_callback(self, group_id: int, bot_id: int, data: dict) -> None:
+        common.Packet(
+            "send_group_bot_callback",
+            group_id=group_id,
+            bot_id=bot_id,
+            **data
+        ).send_to(self.connection)
+
 
 async def tester(
         message_data: Union[Event, HyperNotify], actions: Actions

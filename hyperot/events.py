@@ -36,6 +36,7 @@ class EventManager:
         return wrapper
 
     def new(self, data: dict) -> "Event":
+        logger.trace(str(data))
         try:
             return self.event_lis[data["post_type"]][data[f"{data['post_type']}_type"]](data)
         except KeyError:

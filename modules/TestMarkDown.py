@@ -8,7 +8,7 @@ import time
 import json
 
 
-@ModuleClass.ModuleRegister.register(GroupMessageEvent)
+@ModuleClass.ModuleRegister.register(MessageEvent)
 class Test(ModuleClass.Module):
     async def handle(self):
         if len(self.event.message) != 0:
@@ -210,3 +210,18 @@ class Test(ModuleClass.Module):
                 str(await ark.get_sig(self.actions, self.event.self_id))
             )
             await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=Message(card))
+
+        elif str(self.event.message) == ".test9":
+            msg = Message(
+                StreamTest("ni shuo ni bu xiang zai zhe li wo ye bu xiang zai zhe li"),
+                StreamTest("wo ye bu xiang zai zhe li"),
+                StreamTest("dan tian hei de tai kuai xiang zou zao jiu lai bu ji"),
+                StreamTest("oh wo ai ni"),
+                StreamTest("ke xi guan xi bian cheng mei guan xi"),
+                StreamTest("wen ti shi mei wen ti"),
+                StreamTest("yu shi wo men ji xu"),
+            )
+            # msg = Message(
+            #     StreamTest("ni shuo ni bu xiang zai zhe li wo ye bu xiang zai zhe li")
+            # )
+            await self.actions.send(group_id=self.event.group_id, user_id=self.event.user_id, message=msg)

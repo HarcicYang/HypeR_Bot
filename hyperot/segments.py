@@ -47,6 +47,9 @@ class Text(SegmentBase, st="text", su="<text>"):
     text: str
 
 
+class StreamTest(SegmentBase, st="stream", su="[Stream] <text>"):
+    text: str
+
 class Image(MediaSeg, st="image", su="[Image]"):
     file: str
     url: str
