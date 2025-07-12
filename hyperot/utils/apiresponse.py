@@ -185,7 +185,8 @@ class GetMsgRsp(BaseResponse):
 
     @classmethod
     def build(
-            cls, time: int, message_type: Literal["private", "group"], message_id: int, real_id: int, sender: dict, message: dict
+            cls, time: int, message_type: Literal["private", "group"], message_id: int, real_id: int, sender: dict,
+            message: dict
     ):
         return cls(
             {
@@ -197,5 +198,3 @@ class GetMsgRsp(BaseResponse):
                 "message": message
             }
         )
-
-

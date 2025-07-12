@@ -13,8 +13,9 @@ class Test(ModuleClass.Module):
     async def handle(self):
         if len(self.event.message) != 0:
             for i in self.event.message:
-                if isinstance(i, Json):
-                    text = json.loads((await self.event.message.get())[0]["data"]["data"])
+                if isinstance(i, Forward):
+                    print(await self.actions.forward_solve(self.event.message))
+                    break
             # with open(f"debug/{int(time.time())}.json", "w", encoding="utf-8") as f:
             #     f.write(str(text))
 

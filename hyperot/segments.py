@@ -4,6 +4,7 @@ import typing
 import uuid
 
 from .utils.errors import *
+from .utils.hypetyping import Union
 from . import configurator
 
 config = configurator.BotConfig.get("hyper-bot")
@@ -102,7 +103,9 @@ class Forward(SegmentBase, st="forward", su="[Forward]"):
 
 
 class Node(SegmentBase, st="node", su="[Node]"):
-    id: str
+    user_id: str
+    nickname: str
+    content: Union[dict, "common.Message"]
 
 
 class CustomNode:

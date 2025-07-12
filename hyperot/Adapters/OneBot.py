@@ -105,6 +105,26 @@ class Actions:
         packet.send_to(self.connection)
         return common.Ret.fetch(packet.echo, SendForwardRsp)
 
+    async def get_forward_msg(self, sid: str) -> common.Ret[common.Message]:
+        packet = common.Packet(
+            "get_forward_msg",
+            id=sid,
+        )
+        packet.send_to(self.connection)
+        ret = common.Ret.fetch(packet.echo, events.gen_message)
+        for i in ret.data:
+            if isinstance(i, segments.Node):
+                i.content = gen_message({"message": i.content})
+
+        return ret
+
+    async def forward_solve(self, message: common.Message) -> common.Message:
+        for i in message:
+            if isinstance(i, segments.Forward):
+                data = await self.get_forward_msg(i.id)
+                return data.data
+        raise ValueError("Incorrect message type")
+
     async def send_group_forward_msg(self, group_id: int, message: common.Message) -> common.Ret[SendGrpForwardRsp]:
         packet = common.Packet(
             "send_group_forward_msg",
@@ -114,7 +134,8 @@ class Actions:
         packet.send_to(self.connection)
         return common.Ret.fetch(packet.echo, SendForwardRsp)
 
-    async def set_group_add_request(self, flag: str, sub_type: str, approve: bool, reason: str = "Not Mentioned") -> None:
+    async def set_group_add_request(self, flag: str, sub_type: str, approve: bool,
+                                    reason: str = "Not Mentioned") -> None:
         common.Packet(
             "set_group_add_request",
             flag=flag,
