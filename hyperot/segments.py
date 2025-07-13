@@ -8,19 +8,20 @@ from .utils.hypetyping import Union
 from . import configurator
 
 config = configurator.BotConfig.get("hyper-bot")
-if config.protocol == "OneBot":
-    # from Hyper.Adapters.OneBotLib.Res import segment_builder, Base, message_types
-    from .Adapters.OneBotLib.Res import SegmentBase, message_types
-elif config.protocol == "Satori":
-    # from Hyper.Adapters.SatoriLib.Res import segment_builder, Base, message_types
-    raise NotImplementedError()
-elif config.protocol == "Lagrange":
-    # from Hyper.Adapters.LagrangeLib.Res import segment_builder, Base, message_types
-    raise NotImplementedError()
-elif config.protocol == "Kritor":
-    # from Hyper.Adapters.KritorLib.Res import segment_builder, Base, message_types
-    from .Adapters.KritorLib.Res import SegmentBase, message_types
+# if config.protocol == "OneBot":
+#     # from Hyper.Adapters.OneBotLib.Res import segment_builder, Base, message_types
+#     from .Adapters.OneBotLib.Res import SegmentBase, message_types
+# elif config.protocol == "Satori":
+#     # from Hyper.Adapters.SatoriLib.Res import segment_builder, Base, message_types
+#     raise NotImplementedError()
+# elif config.protocol == "Lagrange":
+#     # from Hyper.Adapters.LagrangeLib.Res import segment_builder, Base, message_types
+#     raise NotImplementedError()
+# elif config.protocol == "Kritor":
+#     # from Hyper.Adapters.KritorLib.Res import segment_builder, Base, message_types
+#     from .Adapters.KritorLib.Res import SegmentBase, message_types
 
+from .Adapters.OneBotLib.Res import SegmentBase, message_types
 
 class MediaSeg(SegmentBase):
     @classmethod

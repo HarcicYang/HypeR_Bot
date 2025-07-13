@@ -8,11 +8,11 @@ import traceback
 import json
 import logging
 import threading
-from grpclib.client import Channel
-
-from .Adapters.KritorLib.protos.authentication import AuthenticationServiceStub, AuthenticateRequest
-from .Adapters.KritorLib.protos.event import EventServiceStub
-from .Adapters.KritorLib.Res import EventService
+# from grpclib.client import Channel
+#
+# from .Adapters.KritorLib.protos.authentication import AuthenticationServiceStub, AuthenticateRequest
+# from .Adapters.KritorLib.protos.event import EventServiceStub
+# from .Adapters.KritorLib.Res import EventService
 
 
 class WebsocketConnection:
@@ -131,35 +131,39 @@ class SatoriConnection:
 class KritorConnection:
     def __init__(self, host: str, port: int, account: str = None, ticket: str = None):
         # self.channel = grpc.insecure_channel(f"{host}:{port}")
-        self.channel = Channel(host=host, port=port)
-        self.account = account
-        self.ticket = ticket
+        # self.channel = Channel(host=host, port=port)
+        # self.account = account
+        # self.ticket = ticket
+        raise NotImplementedError()
 
     def connect(self) -> None:
-        if self.account and self.ticket:
-            auth_stub = AuthenticationServiceStub(self.channel)
-            response = asyncio.run(
-                auth_stub.authenticate(
-                    AuthenticateRequest(
-                        account=self.account,
-                        ticket=self.ticket
-                    )
-                )
-            )
-            if response.code != 0:
-                raise ConnectionError("鉴权失败")
-        else:
-            pass
+        # if self.account and self.ticket:
+        #     auth_stub = AuthenticationServiceStub(self.channel)
+        #     response = asyncio.run(
+        #         auth_stub.authenticate(
+        #             AuthenticateRequest(
+        #                 account=self.account,
+        #                 ticket=self.ticket
+        #             )
+        #         )
+        #     )
+        #     if response.code != 0:
+        #         raise ConnectionError("鉴权失败")
+        # else:
+        #     pass
+        raise NotImplementedError()
         # threading.Thread(target=lambda: asyncio.run(self.event_service.run())).start()
 
     def send(self, stub, payload: dict, echo: str = None) -> None:
         raise NotImplementedError()
 
     def close(self) -> None:
-        self.channel.close()
+        # self.channel.close()
+        raise NotImplementedError()
 
     async def recv(self) -> None:
-        event_service = EventService(EventServiceStub(self.channel))
-        # asyncio.run(event_service.run())
-        # asyncio.get_running_loop().run_until_complete(event_service.run())
-        await event_service.run()
+        # event_service = EventService(EventServiceStub(self.channel))
+        # # asyncio.run(event_service.run())
+        # # asyncio.get_running_loop().run_until_complete(event_service.run())
+        # await event_service.run()
+        raise NotImplementedError()

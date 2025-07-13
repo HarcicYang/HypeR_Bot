@@ -4,14 +4,16 @@ config = configurator.BotConfig.get("hyper-bot")
 
 __all__ = ["run", "stop", "Actions"]
 
-if config.protocol == "OneBot":
-    from .Adapters.OneBot import *
-elif config.protocol == "Satori":
-    raise NotImplementedError()
-elif config.protocol == "Lagrange":
-    raise NotImplementedError()
-elif config.protocol == "Kritor":
-    from .Adapters.Kritor import *
+# if config.protocol == "OneBot":
+#     from .Adapters.OneBot import *
+# elif config.protocol == "Satori":
+#     raise NotImplementedError()
+# elif config.protocol == "Lagrange":
+#     raise NotImplementedError()
+# elif config.protocol == "Kritor":
+#     from .Adapters.Kritor import *
+
+from .Adapters.OneBot import *
 
 events.init()
 

@@ -3,53 +3,42 @@ from .utils import screens
 
 from typing import Union
 import asyncio
-import importlib
 import sys
 import os
 
-HYPER_BOT_VERSION = "0.80.5"
+HYPER_BOT_VERSION = "0.80.7"
 
-listener: "Listener"
+# listener = None
 
 screens.play_startup()
 screens.play_info(HYPER_BOT_VERSION)
 
 
-def _load_listener() -> None:
-    global listener
-    listener = importlib.import_module("Hyper.Listener")
-
-
-def restart() -> None:
-    listener.stop()
-    os.execv(sys.executable, [sys.executable] + sys.argv)
-    # os._exit(1)
-
-
 class Client:
     def __init__(self):
         self.records = {}
+        self.lis = None
 
     def subscribe(
             self,
             func: callable,
             event: Union[
-                "Events.GroupMessageEvent",
-                "Events.PrivateMessageEvent",
-                "Events.GroupFileUploadEvent",
-                "Events.GroupAdminEvent",
-                "Events.GroupMemberDecreaseEvent",
-                "Events.GroupMemberIncreaseEvent",
-                "Events.GroupMuteEvent",
-                "Events.FriendAddEvent",
-                "Events.GroupRecallEvent",
-                "Events.FriendRecallEvent",
-                "Events.NotifyEvent",
-                "Events.GroupEssenceEvent",
-                "Events.MessageReactionEvent",
-                "Events.GroupAddInviteEvent",
-                "Events.HyperListenerStartNotify",
-                "Events.HyperListenerStopNotify"
+                "events.GroupMessageEvent",
+                "events.PrivateMessageEvent",
+                "events.GroupFileUploadEvent",
+                "events.GroupAdminEvent",
+                "events.GroupMemberDecreaseEvent",
+                "events.GroupMemberIncreaseEvent",
+                "events.GroupMuteEvent",
+                "events.FriendAddEvent",
+                "events.GroupRecallEvent",
+                "events.FriendRecallEvent",
+                "events.NotifyEvent",
+                "events.GroupEssenceEvent",
+                "events.MessageReactionEvent",
+                "events.GroupAddInviteEvent",
+                "events.HyperListenerStartNotify",
+                "events.HyperListenerStopNotify"
             ]
     ) -> None:
         if not self.records.get(event):
@@ -58,7 +47,7 @@ class Client:
             self.records[event].append(func)
 
     async def distributor(
-            self, message_data: Union["Events.Event", "Events.HyperNotify"], actions: "Listener.Actions"
+            self, message_data: Union["events.Event", "events.HyperNotify"], actions: "Listener.Actions"
     ) -> None:
         if type(message_data) in list(self.records.keys()):
             tasks = []
@@ -69,10 +58,16 @@ class Client:
             return
 
     def run(self):
-        _load_listener()
-        listener.reg(self.distributor)
+        from . import listener
+        self.lis = listener
+        self.lis.reg(self.distributor)
         if self.records:
-            listener.run()
+            self.lis.run()
+
+    def restart(self) -> None:
+        self.lis.stop()
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+        # os._exit(1)
 
     def __enter__(self):
         return self

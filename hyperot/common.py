@@ -7,18 +7,18 @@ from typing import Generic, Type, Self
 
 config = configurator.BotConfig.get("hyper-bot")
 
-if config.protocol == "OneBot":
-    from .Adapters.OneBotLib.Manager import *
-elif config.protocol == "Satori":
-    raise NotImplementedError()
-elif config.protocol == "Lagrange":
-    raise NotImplementedError()
-elif config.protocol == "Kritor":
-    from .Adapters.KritorLib.Manager import *
+# if config.protocol == "OneBot":
+#     from .Adapters.OneBotLib.Manager import *
+# elif config.protocol == "Satori":
+#     raise NotImplementedError()
+# elif config.protocol == "Lagrange":
+#     raise NotImplementedError()
+# elif config.protocol == "Kritor":
+#     from .Adapters.KritorLib.Manager import *
 
+from .Adapters.OneBotLib.Manager import *
 
 init()
-
 
 __all__ = ["Message", "MessageBuilder", "Packet", "Ret", "reports"]
 
