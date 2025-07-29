@@ -60,7 +60,7 @@ class StreamTest(SegmentBase, st="stream", su="[Stream] <text>"):
 @dataclasses.dataclass
 class Image(MediaSeg, st="image", su="[Image]"):
     file: str
-    url: str
+    url: str = None
     summary: str = "[Image]"
 
 
@@ -87,13 +87,13 @@ class Faces(SegmentBase, st="face", su="[Face: <id>]"):
 @dataclasses.dataclass
 class Record(MediaSeg, st="record", su="[Audio]"):
     file: str
-    url: str
+    url: str = None
 
 
 @dataclasses.dataclass
 class Video(MediaSeg, st="video", su="[Video]"):
     file: str
-    url: str
+    url: str = None
 
 
 @dataclasses.dataclass

@@ -1,6 +1,6 @@
 from hyperot import configurator
 
-from cfgr.manager import Serializers
+from cfgr.manager import Serializers  # Maybe I've forgotten sth when coding for ucfgr? IDK.
 
 try:
     configurator.BotConfig.load_from("config.json", Serializers.JSON, "hyper-bot")
