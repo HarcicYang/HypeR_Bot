@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import os.path
 import typing
@@ -23,6 +24,7 @@ config = configurator.BotConfig.get("hyper-bot")
 
 from .Adapters.OneBotLib.Res import SegmentBase, message_types
 
+
 class MediaSeg(SegmentBase):
     @classmethod
     def build(cls, file: str):
@@ -45,27 +47,34 @@ class MediaSeg(SegmentBase):
         super().__init_subclass__(**kwargs)
 
 
+@dataclasses.dataclass
 class Text(SegmentBase, st="text", su="<text>"):
     text: str
 
 
+@dataclasses.dataclass
 class StreamTest(SegmentBase, st="stream", su="[Stream] <text>"):
     text: str
 
+
+@dataclasses.dataclass
 class Image(MediaSeg, st="image", su="[Image]"):
     file: str
     url: str
     summary: str = "[Image]"
 
 
+@dataclasses.dataclass
 class At(SegmentBase, st="at", su=f"@<qq>"):
     qq: str
 
 
+@dataclasses.dataclass
 class Reply(SegmentBase, st="reply", su=""):
     id: str
 
 
+@dataclasses.dataclass
 class Faces(SegmentBase, st="face", su="[Face: <id>]"):
     id: str
 
@@ -75,22 +84,25 @@ class Faces(SegmentBase, st="face", su="[Face: <id>]"):
 #     lat: str
 #     lon: str
 
-
+@dataclasses.dataclass
 class Record(MediaSeg, st="record", su="[Audio]"):
     file: str
     url: str
 
 
+@dataclasses.dataclass
 class Video(MediaSeg, st="video", su="[Video]"):
     file: str
     url: str
 
 
+@dataclasses.dataclass
 class Poke(SegmentBase, st="poke", su="[Poke]"):
     type: str
     id: str
 
 
+@dataclasses.dataclass
 class Contact(SegmentBase, st="contact"):
     type: str
     id: str
@@ -99,10 +111,12 @@ class Contact(SegmentBase, st="contact"):
         return f"[推荐{'群' if self.type == 'group' else '用户'}: {self.id}]"
 
 
+@dataclasses.dataclass
 class Forward(SegmentBase, st="forward", su="[Forward]"):
     id: str
 
 
+@dataclasses.dataclass
 class Node(SegmentBase, st="node", su="[Node]"):
     user_id: str
     nickname: str
@@ -211,17 +225,17 @@ class MarkDown:
         return f"[MarkDown]"
 
 
-# @segment_builder("longmsg", "[<id>]")
+@dataclasses.dataclass
 class LongMessage(SegmentBase, st="longmsg", su="[Long: <id>]"):
     id: str
 
 
-# @segment_builder("json", "[Json]")
+@dataclasses.dataclass
 class Json(SegmentBase, st="json", su="[Json]"):
     data: typing.Union[dict, list, str]
 
 
-# @segment_builder("mface", "[表情]")
+@dataclasses.dataclass
 class MarketFace(SegmentBase, st="mface", su=""):
     face_id: str
     tab_id: str
@@ -238,10 +252,10 @@ class Rps(SegmentBase, st="rps", su="[RPS]"):
     pass
 
 
-# @segment_builder("music", "[音乐]")
+@dataclasses.dataclass
 class Music(SegmentBase, st="music", su="[Music]"):
     type: str
-    id: str = None
     url: str
+    id: str = None
     audio: str = None
     title: str = None
