@@ -115,7 +115,7 @@ class Funny(Module):
                     Image(url)
                 )
             )
-        elif str(self.event.message).startswith("发电"):
+        elif str(self.event.message).startswith("发电 "):
             tag = str(self.event.message).replace("发电 ", "", 1)
             word = random.choice(words).replace("{target_name}", tag)
             await self.actions.send(

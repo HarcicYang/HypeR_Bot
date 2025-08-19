@@ -1,5 +1,3 @@
-# setup.py
-
 from setuptools import setup, find_packages
 
 import hyperot
@@ -14,11 +12,13 @@ setup(
     url="https://github.com/HarcicYang/HypeR_Bot",
     packages=[
         "hyperot",
+        "hyperot.adapters",
         "hyperot.Adapters",
         "hyperot.Adapters.OneBotLib",
         "hyperot.Adapters.KritorLib",
         "hyperot.Adapters.KritorLib.protos",
-        "hyperot.utils"
+        "hyperot.utils",
+        "hytil"
     ] + [
         f"hyperot.Adapters.KritorLib.protos.{i}"
         for i in find_packages("./hyperot/Adapters/KritorLib/protos")

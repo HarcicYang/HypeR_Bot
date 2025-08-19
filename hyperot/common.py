@@ -1,26 +1,16 @@
 from . import configurator
 from .utils.typextensions import ObjectedJson
-from .utils.hypetyping import T
 from . import segments
+from .utils.hypetyping import TypeVar
 
 from typing import Generic, Type, Self
 
 config = configurator.BotConfig.get("hyper-bot")
+T = TypeVar("T")
 
-# if config.protocol == "OneBot":
-#     from .Adapters.OneBotLib.Manager import *
-# elif config.protocol == "Satori":
-#     raise NotImplementedError()
-# elif config.protocol == "Lagrange":
-#     raise NotImplementedError()
-# elif config.protocol == "Kritor":
-#     from .Adapters.KritorLib.Manager import *
-
-from .Adapters.OneBotLib.Manager import *
+from .adapters.common import *
 
 init()
-
-__all__ = ["Message", "MessageBuilder", "Packet", "Ret", "reports"]
 
 
 class MessageBuilder:

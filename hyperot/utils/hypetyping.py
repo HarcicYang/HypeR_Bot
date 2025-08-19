@@ -1,7 +1,4 @@
-from typing import Optional, TypeVar, TypedDict, Union, Any
-
-
-T = TypeVar('T')
+from typing import Optional, TypeVar, TypedDict, Union, Any, Protocol, runtime_checkable, NoReturn, Callable
 
 
 class OneBotJsonPacket(TypedDict):

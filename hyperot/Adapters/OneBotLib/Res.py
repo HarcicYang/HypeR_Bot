@@ -2,9 +2,7 @@ from abc import ABC
 
 from ...utils.hypetyping import OneBotSegReg
 
-
 message_types = {}
-
 
 class SegmentBase(ABC):
     def __init__(self, *args, **kwargs):
@@ -85,7 +83,8 @@ class SegmentBase(ABC):
                 base["data"][i] = getattr(self, i)
         return base
 
-    def __str__(self) -> str: return "__not_set__"
+    def __str__(self) -> str:
+        return "__not_set__"
 
     def __eq__(self, other) -> bool:
         if type(self) is type(other) and self.to_json() == other.to_json():

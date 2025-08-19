@@ -4,14 +4,14 @@ import time
 import asyncio
 import sys
 import subprocess
-from typing import Any, NoReturn
 
 from .. import network, events, common, segments
 from ..service import FuncCall, IServiceBase, IServiceStartUp
 from ..utils import errors, logic
 from ..utils.apiresponse import *
-from ..Adapters.OneBotLib.Manager import reports
+from ..Adapters.OneBotLib.Manager import reports, Packet
 from ..events import *
+from ..utils.hypetyping import Any, Union, NoReturn
 
 config = configurator.BotConfig.get("hyper-bot")
 logger = hyperogger.Logger()
@@ -29,7 +29,7 @@ class Actions:
 
             def __getattr__(self, item) -> callable:
                 async def wrapper(**kwargs) -> str:
-                    packet = common.Packet(
+                    packet = Packet(
                         str(item),
                         **kwargs
                     )
@@ -46,13 +46,13 @@ class Actions:
         if group_id is not None:
             if isinstance(message, str):
                 message = common.Message(segments.Text(message))
-            packet = common.Packet(
+            packet = Packet(
                 "send_msg",
                 group_id=group_id,
                 message=await message.get()
             )
         elif user_id is not None:
-            packet = common.Packet(
+            packet = Packet(
                 "send_msg",
                 user_id=user_id,
                 message=await message.get()
@@ -64,14 +64,14 @@ class Actions:
         return common.Ret.fetch(packet.echo, MsgSendRsp)
 
     async def del_message(self, message_id: int) -> None:
-        common.Packet(
+        Packet(
             "delete_msg",
             message_id=message_id,
         ).send_to(self.connection)
         logger.info(f"撤回 {message_id}")
 
     async def set_group_kick(self, group_id: int, user_id: int) -> None:
-        common.Packet(
+        Packet(
             "set_group_kick",
             group_id=group_id,
             user_id=user_id,
@@ -79,7 +79,7 @@ class Actions:
         logger.info(f"将用户 {user_id} 移出群 {group_id}")
 
     async def set_group_ban(self, group_id: int, user_id: int, duration: int = 60) -> None:
-        common.Packet(
+        Packet(
             "set_group_ban",
             group_id=group_id,
             user_id=user_id,
@@ -88,17 +88,17 @@ class Actions:
         logger.info(f"在群 {group_id} 将用户 {user_id} 禁言 {duration}s")
 
     async def get_login_info(self) -> common.Ret[GetLoginInfoRsp]:
-        packet = common.Packet("get_login_info")
+        packet = Packet("get_login_info")
         packet.send_to(self.connection)
         return common.Ret.fetch(packet.echo, GetLoginInfoRsp)
 
     async def get_version_info(self) -> common.Ret[GetVerInfoRsp]:
-        packet = common.Packet("get_version_info")
+        packet = Packet("get_version_info")
         packet.send_to(self.connection)
         return common.Ret.fetch(packet.echo, GetVerInfoRsp)
 
     async def send_forward_msg(self, message: common.Message) -> common.Ret[SendForwardRsp]:
-        packet = common.Packet(
+        packet = Packet(
             "send_forward_msg",
             messages=await message.get()
         )
@@ -106,7 +106,7 @@ class Actions:
         return common.Ret.fetch(packet.echo, SendForwardRsp)
 
     async def get_forward_msg(self, sid: str) -> common.Ret[common.Message]:
-        packet = common.Packet(
+        packet = Packet(
             "get_forward_msg",
             id=sid,
         )
@@ -126,7 +126,7 @@ class Actions:
         raise ValueError("Incorrect message type")
 
     async def send_group_forward_msg(self, group_id: int, message: common.Message) -> common.Ret[SendGrpForwardRsp]:
-        packet = common.Packet(
+        packet = Packet(
             "send_group_forward_msg",
             group_id=group_id,
             messages=await message.get()
@@ -136,7 +136,7 @@ class Actions:
 
     async def set_group_add_request(self, flag: str, sub_type: str, approve: bool,
                                     reason: str = "Not Mentioned") -> None:
-        common.Packet(
+        Packet(
             "set_group_add_request",
             flag=flag,
             sub_type=sub_type,
@@ -146,7 +146,7 @@ class Actions:
         logger.info(f"由于 {reason}，{'通过' if approve else '拒绝'} {flag} 请求")
 
     async def get_stranger_info(self, user_id: int) -> common.Ret[GetStrInfoRsp]:
-        packet = common.Packet(
+        packet = Packet(
             "get_stranger_info",
             user_id=user_id,
             no_cache=True,
@@ -155,7 +155,7 @@ class Actions:
         return common.Ret.fetch(packet.echo, GetStrInfoRsp)
 
     async def get_group_member_info(self, group_id: int, user_id: int) -> common.Ret[GetGrpMemInfoRsp]:
-        packet = common.Packet(
+        packet = Packet(
             "get_group_member_info",
             group_id=group_id,
             user_id=user_id,
@@ -165,7 +165,7 @@ class Actions:
         return common.Ret.fetch(packet.echo, GetGrpMemInfoRsp)
 
     async def get_group_info(self, group_id: int) -> common.Ret[GetGrpInfoRsp]:
-        packet = common.Packet(
+        packet = Packet(
             "get_group_info",
             group_id=group_id,
             no_cache=True
@@ -174,18 +174,18 @@ class Actions:
         return common.Ret.fetch(packet.echo, GetGrpInfoRsp)
 
     async def get_status(self) -> common.Ret:
-        packet = common.Packet("get_status")
+        packet = Packet("get_status")
         packet.send_to(self.connection)
         return common.Ret.fetch(packet.echo)
 
     async def set_essence_msg(self, message_id: int) -> None:
-        common.Packet(
+        Packet(
             "set_essence_msg",
             message_id=message_id
         ).send_to(self.connection)
 
     async def set_group_special_title(self, group_id: int, user_id: int, title: str) -> None:
-        common.Packet(
+        Packet(
             "set_group_special_title",
             group_id=group_id,
             user_id=user_id,
@@ -193,7 +193,7 @@ class Actions:
         ).send_to(self.connection)
 
     async def get_msg(self, msg_id: int) -> common.Ret[GetMsgRsp]:
-        packet = common.Packet(
+        packet = Packet(
             "get_msg",
             message_id=msg_id
         )
@@ -201,7 +201,7 @@ class Actions:
         return common.Ret.fetch(packet.echo, GetMsgRsp)
 
     async def send_callback(self, group_id: int, bot_id: int, data: dict) -> None:
-        common.Packet(
+        Packet(
             "send_group_bot_callback",
             group_id=group_id,
             bot_id=bot_id,

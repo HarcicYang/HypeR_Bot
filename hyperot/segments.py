@@ -9,20 +9,8 @@ from .utils.hypetyping import Union
 from . import configurator
 
 config = configurator.BotConfig.get("hyper-bot")
-# if config.protocol == "OneBot":
-#     # from Hyper.Adapters.OneBotLib.Res import segment_builder, Base, message_types
-#     from .Adapters.OneBotLib.Res import SegmentBase, message_types
-# elif config.protocol == "Satori":
-#     # from Hyper.Adapters.SatoriLib.Res import segment_builder, Base, message_types
-#     raise NotImplementedError()
-# elif config.protocol == "Lagrange":
-#     # from Hyper.Adapters.LagrangeLib.Res import segment_builder, Base, message_types
-#     raise NotImplementedError()
-# elif config.protocol == "Kritor":
-#     # from Hyper.Adapters.KritorLib.Res import segment_builder, Base, message_types
-#     from .Adapters.KritorLib.Res import SegmentBase, message_types
 
-from .Adapters.OneBotLib.Res import SegmentBase, message_types
+from .adapters.res import SegmentBase, message_types
 
 
 class MediaSeg(SegmentBase):
@@ -60,8 +48,8 @@ class StreamTest(SegmentBase, st="stream", su="[Stream] <text>"):
 @dataclasses.dataclass
 class Image(MediaSeg, st="image", su="[Image]"):
     file: str
-    url: str = None
     summary: str = "[Image]"
+    url: str = None
 
 
 @dataclasses.dataclass
@@ -255,7 +243,7 @@ class Rps(SegmentBase, st="rps", su="[RPS]"):
 @dataclasses.dataclass
 class Music(SegmentBase, st="music", su="[Music]"):
     type: str
-    url: str
+    url: str = None
     id: str = None
     audio: str = None
     title: str = None

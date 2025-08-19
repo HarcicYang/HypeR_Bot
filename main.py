@@ -1,3 +1,5 @@
+import asyncio, sys
+from typing import Union
 from hyperot import configurator
 
 from cfgr.manager import Serializers  # Maybe I've forgotten sth when coding for ucfgr? IDK.
@@ -8,10 +10,20 @@ except FileNotFoundError:
     configurator.BotConfig.create_and_write("config.json", Serializers.JSON)
     print("没有找到配置文件，已自动创建，请填写后重启")
     exit(-1)
+finally:
+    from hyperot import adapters
 
-if True:
-    import asyncio
-    from typing import Union
+    from hyperot.Adapters.OneBotLib import Res as OneBotRes
+
+    adapters.replace_res(OneBotRes)
+
+    from hyperot.Adapters.OneBotLib import Manager as OneBotCommon
+
+    adapters.replace_common(OneBotCommon)
+
+    from hyperot.Adapters import OneBot as OneBotListener
+
+    adapters.replace_listener(OneBotListener)
 
     from hyperot import listener, events, hyperogger
     import ModuleClass
