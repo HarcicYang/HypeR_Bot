@@ -13,15 +13,15 @@ setup(
     packages=[
         "hyperot",
         "hyperot.adapters",
-        "hyperot.Adapters",
-        "hyperot.Adapters.OneBotLib",
-        "hyperot.Adapters.KritorLib",
-        "hyperot.Adapters.KritorLib.protos",
+        "hyperot.LecAdapters",
+        "hyperot.LecAdapters.OneBotLib",
+        "hyperot.LecAdapters.KritorLib",
+        "hyperot.LecAdapters.KritorLib.protos",
         "hyperot.utils",
         "hytil"
     ] + [
-        f"hyperot.Adapters.KritorLib.protos.{i}"
-        for i in find_packages("./hyperot/Adapters/KritorLib/protos")
+        f"hyperot.LecAdapters.KritorLib.protos.{i}"
+        for i in find_packages("hyperot/LecAdapters/KritorLib/protos")
     ],
     install_requires=["ucfgr"],
     include_package_data=True

@@ -9,7 +9,7 @@ from .. import network, events, common, segments
 from ..service import FuncCall, IServiceBase, IServiceStartUp
 from ..utils import errors, logic
 from ..utils.apiresponse import *
-from ..Adapters.OneBotLib.Manager import reports, Packet
+from ..LecAdapters.OneBotLib.Manager import reports, Packet
 from ..events import *
 from ..utils.hypetyping import Any, Union, NoReturn
 

@@ -1,4 +1,4 @@
-from ...Adapters.KritorLib.protos.event import (
+from ...LecAdapters.KritorLib.protos.event import (
     EventServiceStub,
     RequestPushEvent,
     EventType,
@@ -7,7 +7,7 @@ from ...Adapters.KritorLib.protos.event import (
     GroupMemberDecreasedNoticeGroupMemberDecreasedType,
     GroupMemberIncreasedNoticeGroupMemberIncreasedType
 )
-from ...Adapters.KritorLib.protos.common import (
+from ...LecAdapters.KritorLib.protos.common import (
     ElementElementType,
     PushMessageBody,
     Scene, Element,

@@ -13,15 +13,15 @@ except FileNotFoundError:
 finally:
     from hyperot import adapters
 
-    from hyperot.Adapters.OneBotLib import Res as OneBotRes
+    from hyperot.LecAdapters.OneBotLib import Res as OneBotRes
 
     adapters.replace_res(OneBotRes)
 
-    from hyperot.Adapters.OneBotLib import Manager as OneBotCommon
+    from hyperot.LecAdapters.OneBotLib import Manager as OneBotCommon
 
     adapters.replace_common(OneBotCommon)
 
-    from hyperot.Adapters import OneBot as OneBotListener
+    from hyperot.LecAdapters import OneBot as OneBotListener
 
     adapters.replace_listener(OneBotListener)
 

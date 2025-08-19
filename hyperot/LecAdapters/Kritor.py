@@ -5,8 +5,8 @@ import threading
 import time
 
 from .. import common
-from ..Adapters.OneBot import Actions as OneBotActions
-from ..Adapters.KritorLib.Res import event_queue, to_protos, message_ids
+from ..LecAdapters.OneBot import Actions as OneBotActions
+from ..LecAdapters.KritorLib.Res import event_queue, to_protos, message_ids
 from ..events import Event, HyperNotify, HyperListenerStartNotify, em
 from ..service import FuncCall, IServiceStartUp, IServiceBase
 from ..network import KritorConnection
@@ -14,9 +14,9 @@ from ..utils import errors
 from ..utils.apiresponse import *
 from .. import configurator, hyperogger
 
-from ..Adapters.KritorLib.protos.common import Contact, Scene
-from ..Adapters.KritorLib.protos.core import GetVersionRequest, CoreServiceStub
-from ..Adapters.KritorLib.protos.message import (
+from ..LecAdapters.KritorLib.protos.common import Contact, Scene
+from ..LecAdapters.KritorLib.protos.core import GetVersionRequest, CoreServiceStub
+from ..LecAdapters.KritorLib.protos.message import (
     MessageServiceStub,
     SendMessageRequest,
     RecallMessageRequest,
