@@ -11,19 +11,9 @@ except FileNotFoundError:
     print("没有找到配置文件，已自动创建，请填写后重启")
     exit(-1)
 finally:
-    from hyperot import adapters
+    from hyperot.adapters import builtins
 
-    from hyperot.LecAdapters.OneBotLib import Res as OneBotRes
-
-    adapters.replace_res(OneBotRes)
-
-    from hyperot.LecAdapters.OneBotLib import Manager as OneBotCommon
-
-    adapters.replace_common(OneBotCommon)
-
-    from hyperot.LecAdapters import OneBot as OneBotListener
-
-    adapters.replace_listener(OneBotListener)
+    builtins.load_onebot()
 
     from hyperot import listener, events, hyperogger
     import ModuleClass
