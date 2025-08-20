@@ -10,7 +10,7 @@ except FileNotFoundError:
     configurator.BotConfig.create_and_write("config.json", Serializers.JSON)
     print("没有找到配置文件，已自动创建，请填写后重启")
     exit(-1)
-finally:
+if True:
     from hyperot.adapters import builtins as adp
 
     adp.load_onebot()
