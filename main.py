@@ -11,9 +11,9 @@ except FileNotFoundError:
     print("没有找到配置文件，已自动创建，请填写后重启")
     exit(-1)
 finally:
-    from hyperot.adapters import builtins
+    from hyperot.adapters import builtins as adp
 
-    builtins.load_onebot()
+    adp.load_onebot()
 
     from hyperot import listener, events, hyperogger
     import ModuleClass

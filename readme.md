@@ -7,48 +7,53 @@
 <img src="https://img.shields.io/static/v1?label=LICENSE&message=GPL-3.0&color=lightrey" alt="Badge">
 </div>
 
-
 ## 概览
+
 HypeR Bot是一个适配OneBot协议的机器人框架，旨在提供一个简洁、高效、可扩展的机器人运行结构。
 
-[点我跳转详细文档](https://harcicyang.github.io/hyper-bot/)
+~~[点我跳转详细文档](https://harcicyang.github.io/hyper-bot/)~~ 文档已经严重过时，以后重写吧（）
 
 ## 配置文件
+
 `config.json`:
+
 ```json
 {
-  "owner": [
-    
-  ],
+  "protocol": "OneBot",
+  "owner": [],
   "black_list": [],
-  "Connection": {
+  "silents": [],
+  "connection": {
+    "mode": "FWS",
+    "ob_auto_startup": false,
+    "ob_exec": "./Lagrange.OneBot/Lagrange.OneBot",
+    "ob_startup_path": "./Lagrange.OneBot/",
     "host": "127.0.0.1",
     "port": 5004
   },
-  "Log_level": "INFO",
-  "protocol": "Inner",
-  "Others": {
-    "Chat": {
-      "Qwen": {
-        "key": "key"
-      }
-    },
-    "uin": 0
-  }
+  "log_level": "INFO",
+  "log_use_nf": true,
+  "uin": 0,
+  "max_workers": 25,
+  "others": { ... }
 }
+
 ```
 
 其中：
-- `owner`：机器人主人的QQ号，填写在这个列表中的QQ号会被标记`is_owner = True`；
-- `black_list`：黑名单，填写在这个列表中的QQ号的消息不会被任何模块处理；
-- `Connection`：连接信息，包括主机地址和端口；
-- `Log_level`：日志等级，可选值为`DEBUG`、`TRACE`、`INFO`、`WARNING`、`ERROR`、`CRITICAL`；
-- `Others`：其他配置项，这里的内容应当由各个功能模块的作者指定，示例中的`Chat`是用于实现调用[通义千问](https://dashscope.aliyun.com/)聊天功能的模块，其配置项为`Qwen`；
-- `uin`：使用Inner协议是需要；
-- `protocol`：适配的协议。设置为“Inner”即使用内置的Lagrange-Python客户端，设置为“OneBot”即与OneBot对接
 
+- `owner`：机器人主人的QQ号，填写在这个列表中的QQ号所发送的消息会被标记`is_owner = True`；
+- `black_list`：黑名单，填写在这个列表中的QQ号所发送的的消息会被标记 `blocked = True`；
+- `connection`：连接信息，包括主机地址、端口以及自动启动OneBot实现的配置；
+- `log_level`：日志等级，可选值为`DEBUG`、`TRACE`、`INFO`、`WARNING`、`ERROR`、`CRITICAL`；
+- `others`：其他配置项；
+- `log_use_nf`：是否为日志输出启用NerdFont;
+- `protocol`：适配的协议，目前仅支持OneBot.
 
 ## 环境
+
 > 本人开发和测试均在Python 3.11.7环境进行，其他版本未经测试。
 
 所需的第三方库陈列在[`requirements.txt`](/requirements.txt)中，使用`pip install -r requirements.txt`即可。
+
+[`requirements_optional.txt`](/requirements_optional.txt)中包含部分模块所需的其他依赖，可视情况安装。
