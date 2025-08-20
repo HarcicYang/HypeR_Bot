@@ -18,11 +18,11 @@ setup(
         "hyperot.LecAdapters.KritorLib",
         "hyperot.LecAdapters.KritorLib.protos",
         "hyperot.utils",
-        "hytil"
     ] + [
         f"hyperot.LecAdapters.KritorLib.protos.{i}"
         for i in find_packages("hyperot/LecAdapters/KritorLib/protos")
     ],
+    py_modules=["hytil"],
     install_requires=["ucfgr"],
     include_package_data=True
 )
