@@ -134,7 +134,7 @@ $ python -m hytil -i -p ./path/for/your/bot
 
 OneBot implementation auto-config isn't available at present.
 
-## Plugin developer guides for full installations
+### Plugin developer guides for full installations
 
 open `/modules`, create a `.py` file, and code:
 
