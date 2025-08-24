@@ -1,4 +1,4 @@
-import asyncio, sys
+import asyncio
 from typing import Union
 from hyperot import configurator
 

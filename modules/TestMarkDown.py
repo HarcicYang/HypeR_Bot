@@ -102,9 +102,7 @@ class Test(ModuleClass.Module):
         elif str(self.event.message) == ".test3":
             result = await self.actions.get_stranger_info(2488529467)
             print(result.ret_code)
-            print(result.data)
-            result = await self.actions.get_group_info(group_id=894446744)
-            print(result.data)
+            await self.actions.send(json.dumps(result.data.raw), group_id=self.event.group_id, user_id=self.event.user_id)
 
         elif str(self.event.message) == "Ciallo～(∠・ω< )⌒★":
             row = KeyBoardRow(
