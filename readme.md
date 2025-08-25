@@ -1,5 +1,7 @@
+![banner](./ban.png)
+
 <div align="center">
-<h1><img src="logo.ico" alt="icon" width="32px"> HypeR Bot</h1>
+<h1>HypeR Bot</h1>
 </div>
 <p align="center">适配OneBot v11协议、功能模块化、易于扩展、高效的QQ机器人及框架</p>
 <div align="center">
