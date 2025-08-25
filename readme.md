@@ -14,6 +14,7 @@
 HypeR Bot是一个适配OneBot协议的机器人框架，旨在提供一个简洁、高效、可扩展的机器人运行结构。
 
 ~~[点我跳转详细文档 (Old) (Simplified Chinese)](https://harcicyang.github.io/hyper-bot/)~~
+
 [点我跳转详细文档 (New) (English)](./documents/en.md)
 
 ## 使用 `hytil` 快速开始
