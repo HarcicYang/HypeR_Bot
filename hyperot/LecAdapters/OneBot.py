@@ -43,9 +43,9 @@ class Actions:
     async def send(
             self, message: Union[common.Message, str], group_id: int = None, user_id: int = None
     ) -> common.Ret[MsgSendRsp]:
+        if isinstance(message, str):
+            message = common.Message(segments.Text(message))
         if group_id is not None:
-            if isinstance(message, str):
-                message = common.Message(segments.Text(message))
             packet = Packet(
                 "send_msg",
                 group_id=group_id,
