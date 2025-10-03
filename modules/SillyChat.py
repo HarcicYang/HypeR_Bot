@@ -10,7 +10,7 @@ from .GuesserTools.shitchatter import silly_chatter
 class Module(ModuleClass.Module):
     @staticmethod
     def filter(event: events.Event, allowed: list) -> bool:
-        if isinstance(event, PrivateMessageEvent) and str(event.message).startswith("sb"):
+        if isinstance(event, PrivateMessageEvent) and len(event.message) != 0 and str(event.message).startswith("sb"):
             return True
         elif (
                 isinstance(event, GroupMessageEvent)
