@@ -6,7 +6,7 @@ import asyncio
 import sys
 import os
 
-HYPER_BOT_VERSION = "0.81.0"
+HYPER_BOT_VERSION = "0.81.2"
 
 # listener = None
 
