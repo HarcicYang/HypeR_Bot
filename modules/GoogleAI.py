@@ -65,12 +65,10 @@ class Context:
     def __init__(self, model: genai.Client, cfg: genai_types.GenerateContentConfig):
         self.cli = model
         self.cfg = cfg
-        self.chat = self.cli.chats.create(model="gemini-2.5-flash", config=self.cfg)
+        self.chat = self.cli.chats.create(model="gemini-flash-latest", config=self.cfg)
 
     def gen_content(self, content: Roles.User) -> str:
         try:
-            # new = self.__gen_content(content)
-            # res = self.model.generate_content(contents=new, safety_settings=self.safety)
             res = self.chat.send_message(content.res())
             return res.text
         except Exception as e:

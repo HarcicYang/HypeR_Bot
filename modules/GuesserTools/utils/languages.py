@@ -163,6 +163,11 @@ class Library:
     def by_ends(self, char: str) -> "Library":
         return Library(self._ends_index[char])
 
+    def by_speech(self, speech: str) -> "Library":
+        def _filter(word: Word) -> bool:
+            return word.speech == speech
+        return self._filter_words(_filter)
+
     def by_equation(self, equation: str) -> 'Word | None':
         def _filter(word: Word) -> bool:
             return equation == word.word
@@ -197,3 +202,4 @@ class Library:
         temp_word = Word(word="", pinyin="", abbr="", length=0, vector=vector, speech=speech)
         res = self.nearest_words([temp_word], speech, exclude, top_n)
         return None if len(res) == 0 else res[0]
+

@@ -10,22 +10,6 @@ import numpy as np
 import jieba.posseg as pseg
 import re
 
-speech_map = {
-    "n": "名词",
-    "v": "动词",
-    "a": "形容词",
-    "ad": "副形容词",
-    "d": "副词",
-    "m": "数词",
-    "q": "量词",
-    "r": "代词",
-    "p": "介词",
-    "c": "连词",
-    "u": "助词",
-    "xc": "其他词",
-    "unknown": "未知词性"
-}
-
 speech_mapping = {
     'n': 1, 'eng': 2, 'x': 3, 'm': 4, 'd': 5, 'i': 6, 's': 7, 't': 8, 'l': 9, 'nr': 10, 'nz': 11, 'c': 12,
     'r': 13, 'j': 14, 'ns': 15, 'mq': 16, 'v': 17, 'a': 18, 'q': 19, 'b': 20, 'vn': 21, 'z': 22, 'u': 23,
@@ -34,18 +18,20 @@ speech_mapping = {
     'rg': 44, 'e': 45, 'vd': 46, 'uv': 47, 'k': 48, 'ud': 49, 'uj': 50, 'uz': 51, 'ug': 52, 'h': 53
 }
 
-# 结尾语气词
-endings = [" 哈哈哈~", " 你开心就好！", " 其实我也不太懂~", " 我是不是很聪明？", " 嘻嘻~"]
+for i in speech_mapping:
+    speech_mapping[i] = [j.word for j in lib_zh.by_speech(i).words]
 
 # 加载模板
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), '../../assets/templates.json')
 with open(TEMPLATE_PATH, encoding='utf-8') as f:
-    TEMPLATES = json.load(f)
+    datas = json.load(f)
+    TEMPLATES = datas["templates"]
+    # 结尾语气词
+    ENDINGS = datas["endings"]
 
 
 # 从库中随机补充词
-async def random_words_from_lib(lib: Library, speech: str, exclude: list, count: int, ref_words: list = None,
-                                times: int = 0) -> list:
+async def random_words_from_lib(lib: Library, speech: str, exclude: list, count: int, ref_words: list = None) -> list:
     pool = [w for w in lib.words if w.speech == speech and w.word not in exclude]
     if not pool:
         return []
@@ -56,8 +42,8 @@ async def random_words_from_lib(lib: Library, speech: str, exclude: list, count:
                 return ((y / (random.random() * 10)) + random.random() * 10) * np.sin(
                     (y / (random.random() * 20)) + random.random())
 
-            for i in range(0, 4):
-                x.vector.data[i] = _g(x.vector.data[i])
+            for g in range(0, 4):
+                x.vector.data[g] = _g(x.vector.data[g])
             _res = lib.nearest_words([x], speech, exclude, top_n=max(20, count * 2))
             return x if len(_res) == 0 else _res[0]
 
@@ -83,7 +69,7 @@ async def random_words_from_lib(lib: Library, speech: str, exclude: list, count:
                 top_probs = np.exp(-top_dists / (np.std(top_dists) * temp + 1e-6))
                 top_probs = top_probs / top_probs.sum()
                 chosen_top = np.random.choice(top_idx, size=min(n_top, len(top_idx)), replace=False, p=top_probs)
-                result += [candidates[i].word for i in chosen_top]
+                result += [candidates[x].word for x in chosen_top]
             # 剩余区采样：优先选距离适中（非极近、非极远）的
             if len(rest_idx) > 0 and n_rest > 0:
                 rest_dists = dists[rest_idx]
@@ -94,7 +80,7 @@ async def random_words_from_lib(lib: Library, speech: str, exclude: list, count:
                     chosen_rest = np.random.choice(mid_idx, size=n_rest, replace=False)
                 else:
                     chosen_rest = np.random.choice(rest_idx, size=min(n_rest, len(rest_idx)), replace=False)
-                result += [candidates[i].word for i in chosen_rest]
+                result += [candidates[x].word for x in chosen_rest]
             # 若不足count则优先补充未出现过的高频词
             if len(result) < count:
                 left = [w.word for w in pool if w.word not in result]
@@ -106,21 +92,22 @@ async def random_words_from_lib(lib: Library, speech: str, exclude: list, count:
 
 
 # 用模板和词列表生成句子
-def build_sentence_with_template(template, *word_lists):
-    # 构建词性到词列表的映射
-    speech_keys = [
-        'n', 'v', 'a', 'd', 'm', 'q', 'r', 'p', 'c', 'u', 'ad', 'b', 'vn', 'z', 'e'
-    ]
-    speech_map = {k: lst for k, lst in zip(speech_keys, word_lists)}
+def build_sentence_with_template(template, *word_lists) -> str:
+    # 构建完整词性映射
+    speech_keys = list(speech_mapping.keys())
+    speech_map = {k: (word_lists[g] if g < len(word_lists) else []) for g, k in enumerate(speech_keys)}
 
-    def pick(lst, num):
-        if not lst:
-            return ''
-        if num == 1:
-            return random.choice(lst)
-        return '、'.join(random.sample(lst, min(num, len(lst))))
+    def pick(_lst, _num, _key=""):
+        # 如果词表为空 → 使用兜底库
+        if not _lst:
+            _lst = random.choices(speech_mapping[_key], k=5) or ["什么"]
+        if _num == 1:
+            chosen = random.choice(_lst)
+            _lst.remove(chosen)
+            return chosen
+        return '、'.join(random.sample(_lst, min(_num, len(_lst))))
 
-    # 支持字符串和字典模板
+    # 支持字典模板
     if isinstance(template, dict):
         s = template.get('template', '')
         if 'random' in template:
@@ -132,28 +119,32 @@ def build_sentence_with_template(template, *word_lists):
                     s = s.replace('{?', opt)
                 else:
                     s = s.replace('{?', '')
+        # 清理特殊标记
         s = s.replace('{|', '').replace('{?', '')
     else:
         s = template
-    # 动态统计所有 {xxx} 变量
-    import re
-    matches = re.findall(r'\{([a-zA-Z0-9]+)\}', s)
+
+        # 动态替换 {xxx}
+    matches = re.findall(r'\{([a-zA-Z0-9]+)}', s)
     for key in set(matches):
         num = s.count(f'{{{key}}}')
         lst = speech_map.get(key, [])
         for _ in range(num):
-            s = s.replace(f'{{{key}}}', pick(lst, 1), 1)
-    # 清理所有未被替换的花括号和特殊标记
+            s = s.replace(f'{{{key}}}', pick(lst, 1, key), 1)
+
+    # 清理所有遗留占位符 {xxx}
     s = re.sub(r'\{[^{}]*\}', '', s)
-    s = s.replace('}', '')
+    s = s.replace('}', '').replace('{', '')
     return s
 
 
-async def silly_chatter(user_input: str) -> str:
+async def silly_chatter(user_input: str, history: list[str]) -> str:
     """
     使用模板驱动生成更丰富的傻瓜回复，混合用户输入和词库随机词。
     """
-    words = list(jieba.cut(user_input))
+    history = list(jieba.cut("".join(history)))
+    new_history = random.choices(history, k=min(len(history), 5))
+    words = list(jieba.cut(user_input)) + new_history
     n_list, v_list, a_list, d_list, m_list, q_list, r_list, p_list, c_list, u_list, ad_list, b_list, vn_list, z_list, e_list = [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
     proper_list = []
     other_list = []
@@ -216,12 +207,12 @@ async def silly_chatter(user_input: str) -> str:
         lst += await random_words_from_lib(lib_zh, spc, lst, random.randint(1, 2), ref_words=ref_words)
 
     tasks = []
-    for i in [
+    for k in [
         (n_list, "n"), (v_list, "v"), (a_list, "a"), (d_list, "d"), (m_list, "m"), (q_list, "q"), (r_list, "r"),
         (p_list, "p"), (c_list, "c"), (u_list, "u"), (ad_list, "ad"), (b_list, "b"), (vn_list, "vn"), (z_list, "z"),
         (e_list, "e")
     ]:
-        tasks.append(adder(i[0], i[1]))
+        tasks.append(adder(k[0], k[1]))
     await asyncio.gather(*tasks)
 
     # 生成多句回复
@@ -252,10 +243,5 @@ async def silly_chatter(user_input: str) -> str:
             sentences = ["你说的我都不懂~"]
     # 随机结尾
     if random.random() < 0.7:
-        sentences[-1] += random.choice(endings)
+        sentences[-1] += random.choice(ENDINGS)
     return " ".join(sentences)
-
-
-if __name__ == "__main__":
-    while True:
-        print(asyncio.run(silly_chatter(input("你想说什么？ "))))
