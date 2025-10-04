@@ -6,6 +6,7 @@ from .GuesserTools.shitchatter import silly_chatter
 
 
 histories = {}
+msg_ids = []
 
 @ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
 class Module(ModuleClass.Module):
@@ -17,6 +18,10 @@ class Module(ModuleClass.Module):
                 isinstance(event, GroupMessageEvent)
                 and isinstance(event.message[0], segments.At)
                 and str(event.message[0].qq) == str(event.self_id)
+        ) or (
+                isinstance(event, GroupMessageEvent)
+                and isinstance(event.message[0], segments.Reply)
+                and str(event.message[0].id) in msg_ids
         ):
             return True
 
@@ -37,9 +42,12 @@ class Module(ModuleClass.Module):
         reply = await silly_chatter(text, history)
         history.append(text)
         history.append(reply)
-        await self.actions.send(
+        # if str(self.event.group_id) == "367798007":
+        #     reply = "- " + reply
+        msg = await self.actions.send(
             group_id=self.event.group_id,
             user_id=self.event.user_id,
             message=reply
         )
+        msg_ids.append(str(msg.data.message_id))
 

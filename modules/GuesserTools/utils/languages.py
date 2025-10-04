@@ -1,56 +1,48 @@
+import asyncio
 import json
 from dataclasses import dataclass, field
-from typing import List, Callable, Dict, Literal
-from collections import defaultdict
+from typing import List, Callable, Dict, Literal, Optional
+import numpy as np
 
 from .vec import Vector, distance
 
 
-# Word对象池
+# ==============================
+# Word 对象池
+# ==============================
 class WordPool:
-    _pool = {}
+    _pool: Dict[str, "Word"] = {}
 
     @classmethod
     def get(cls, data: Dict) -> "Word":
+        """从池中获取或构造 Word"""
         key = data["word"]
         if key in cls._pool:
             return cls._pool[key]
-        # 支持 vector 字段
-        vector_data = data.get("vector")
-        vector = None
-        if vector_data is not None:
-            vector = Vector(*vector_data, dim=4)
-        obj = Word(
-            word=data["word"],
-            pinyin=data["pinyin"],
-            abbr=data.get("abbr"),
-            length=len(data["word"]),
-            explanation=data.get("explanation"),
-            speech=data.get("speech", "unknown"),
-            vector=vector
-        )
+        obj = Word.build(data)
         cls._pool[key] = obj
         return obj
 
 
-@dataclass(frozen=True)
+# ==============================
+# Word 定义
+# ==============================
+@dataclass(frozen=True, slots=True)
 class Word:
     word: str
     pinyin: str
-    abbr: str
+    abbr: Optional[str]
     length: int
-    explanation: str = None
+    explanation: Optional[str] = None
     speech: str = "unknown"
-    vector: Vector = field(default=None)
+    vector: Optional[Vector] = field(default=None)
 
     @classmethod
     def build(cls, data: Dict) -> "Word":
-        # 支持从 json list[int|float] 构建 vector 字段
-        vector_data = data.get("vec")
-        vector = None
-        if vector_data is not None:
-            vector = Vector(*vector_data, dim=4)
-        return Word(
+        """支持从 JSON 构建 Word"""
+        vector_data = data.get("vector") or data.get("vec")
+        vector = Vector(*vector_data, dim=4) if vector_data is not None else None
+        return cls(
             word=data["word"],
             pinyin=data["pinyin"],
             abbr=data.get("abbr"),
@@ -68,46 +60,48 @@ class Word:
 
     def distance_to(self, other: "Word") -> float:
         if self.vector is None or other.vector is None:
-            return float('inf')
+            return float("inf")
         return distance(self.vector, other.vector)
 
 
+# ==============================
+# Library 词库
+# ==============================
 class Library:
     def __init__(self, words: List[Word]):
-        self._words = words
-        # 用defaultdict优化索引
-        self._starts_index = defaultdict(list)
-        self._ends_index = defaultdict(list)
+        self._words: List[Word] = words
+        self._starts_index: Dict[str, List[Word]] = {}
+        self._ends_index: Dict[str, List[Word]] = {}
         for w in words:
             if w.word:
-                self._starts_index[w.word[0]].append(w)
-                self._ends_index[w.word[-1]].append(w)
+                self._starts_index.setdefault(w.word[0], []).append(w)
+                self._ends_index.setdefault(w.word[-1], []).append(w)
 
     def __repr__(self):
-        return f"Library({len(self._words)}, {self._words})"
+        return f"Library({len(self._words)}, ...)"
 
-    def __add__(self, other):
+    def __add__(self, other: "Library") -> "Library":
         return Library(self._words + other.words)
 
-    def __iadd__(self, other):
+    def __iadd__(self, other: "Library") -> "Library":
         self._words += other.words
         return self
 
-    def __radd__(self, other):
+    def __radd__(self, other: "Library") -> "Library":
         return Library(self._words + other.words)
 
     def __iter__(self):
         return iter(self._words)
 
-    def __contains__(self, word):
+    def __contains__(self, word: Word) -> bool:
         return word in self._words
 
     @classmethod
     def build(cls, file: str) -> "Library":
         with open(file, "r", encoding="utf-8") as f:
             data = json.load(f)
-            pd = list(map(lambda x: Word.build(x), data))
-            return cls(pd)
+            words = [Word.build(x) for x in data]
+            return cls(words)
 
     @property
     def length(self) -> int:
@@ -118,88 +112,125 @@ class Library:
         return self._words
 
     def _filter_words(self, func: Callable[[Word], bool]) -> "Library":
-        return type(self)(list(filter(func, self._words)))
+        return type(self)([w for w in self._words if func(w)])
 
     def by_index(self, index: int) -> Word:
         return self._words[index]
 
     def by_length(self, length: int) -> "Library":
-        def _filter(word: Word) -> bool:
-            return word.length == length
-
-        return self._filter_words(_filter)
+        return self._filter_words(lambda w: w.length == length)
 
     def by_letters(self, letters: Literal["zh", "en", "hy"]) -> "Library":
-        def _is_zh(s: Word) -> bool:
-            return all('\u4e00' <= ch <= '\u9fff' for ch in s.word) and len(s.word) > 0
-
-        def _is_en(s: Word) -> bool:
-            return all(('A' <= ch <= 'Z') or ('a' <= ch <= 'z') for ch in s.word) and len(s.word) > 0
-
-        def _is_hy(s: Word) -> bool:
-            has_chinese = False
-            has_english = False
-            for ch in s.word:
-                if '\u4e00' <= ch <= '\u9fff':
-                    has_chinese = True
-                elif ('A' <= ch <= 'Z') or ('a' <= ch <= 'z'):
-                    has_english = True
-                else:
-                    return False  # 出现了非中英文字符
-            return has_chinese and has_english
-
         if letters == "zh":
-            return self._filter_words(_is_zh)
+            return self._filter_words(
+                lambda w: len(w.word) > 0 and all("\u4e00" <= ch <= "\u9fff" for ch in w.word)
+            )
         elif letters == "en":
-            return self._filter_words(_is_en)
+            return self._filter_words(
+                lambda w: len(w.word) > 0 and all(ch.isalpha() and ch.isascii() for ch in w.word)
+            )
         elif letters == "hy":
+            def _is_hy(w: Word) -> bool:
+                has_chinese = any("\u4e00" <= ch <= "\u9fff" for ch in w.word)
+                has_english = any(ch.isalpha() and ch.isascii() for ch in w.word)
+                return has_chinese and has_english
             return self._filter_words(_is_hy)
         else:
-            raise ValueError(f"Unknown letter or character type '{letters}'")
+            raise ValueError(f"Unknown letter type '{letters}'")
 
     def by_starts(self, char: str) -> "Library":
-        return Library(self._starts_index[char])
+        return Library(self._starts_index.get(char, []))
 
     def by_ends(self, char: str) -> "Library":
-        return Library(self._ends_index[char])
+        return Library(self._ends_index.get(char, []))
 
     def by_speech(self, speech: str) -> "Library":
-        def _filter(word: Word) -> bool:
-            return word.speech == speech
-        return self._filter_words(_filter)
+        return self._filter_words(lambda w: w.speech == speech)
 
-    def by_equation(self, equation: str) -> 'Word | None':
-        def _filter(word: Word) -> bool:
-            return equation == word.word
-        filtered = self._filter_words(_filter)
-        if filtered._words:
-            return filtered._words[0]
+    def by_equation(self, equation: str) -> Optional[Word]:
+        for w in self._words:
+            if w.word == equation:
+                return w
         return None
 
-    def relatives2(self, word: Word) -> list:
-        # 直接返回合并后的list
-        return self._starts_index[word.word[0]] + self._ends_index[word.word[1]]
+    def relatives2(self, word: Word) -> List[Word]:
+        return self._starts_index.get(word.word[0], []) + self._ends_index.get(word.word[-1], [])
 
     def continuous(self, word: Word) -> "Library":
-        return self.by_starts(word.word[1])
+        return self.by_starts(word.word[1]) if len(word.word) > 1 else Library([])
 
-    def nearest_words(self, ref_words: List[Word], speech: str, exclude: List[str], top_n: int = 10) -> List[Word]:
+    def nearest_words(
+        self,
+        ref_words: List[Word],
+        speech: str,
+        exclude: List[str],
+        top_n: int = 10
+    ) -> List[Word]:
         pool = [w for w in self._words if w.speech == speech and w.word not in exclude and w.vector is not None]
-        ref_vec_words = [w for w in ref_words if w.vector is not None]
-        if not pool or not ref_vec_words:
+        ref_vecs = [w.vector.data for w in ref_words if w.vector is not None]
+        if not pool or not ref_vecs:
             return []
-        # 排除与参考词完全相同的词
-        pool = [w for w in pool if all(w.word != ref.word for ref in ref_vec_words)]
-        if not pool:
-            return []
-        # 计算每个库词到所有参考词的最小距离
-        def min_dist(word):
-            return min(word.distance_to(ref) for ref in ref_vec_words)
-        pool_sorted = sorted(pool, key=min_dist)
-        return pool_sorted[:min(top_n, len(pool_sorted))]
 
-    def by_vec(self, vector: Vector, speech: str, exclude: List[str], top_n: int = 10) -> Word:
+        pool_words = []
+        pool_vecs = []
+        for w in pool:
+            if all(w.word != ref.word for ref in ref_words):
+                pool_words.append(w)
+                pool_vecs.append(w.vector.data)
+
+        if not pool_words:
+            return []
+
+        pool_arr = np.vstack(pool_vecs)  # (N, d)
+        ref_arr = np.vstack(ref_vecs)    # (M, d)
+
+        # 距离矩阵 (N, M)
+        dists = np.linalg.norm(pool_arr[:, None, :] - ref_arr[None, :, :], axis=-1)
+        min_dists = dists.min(axis=1)
+
+        idxs = np.argsort(min_dists)[:top_n]
+        return [pool_words[i] for i in idxs]
+
+    async def nearest_words_async(
+        self,
+        ref_words: List[Word],
+        speech: str,
+        exclude: List[str],
+        top_n: int = 10
+    ) -> List[Word]:
+        pool = [w for w in self._words if w.speech == speech and w.word not in exclude and w.vector is not None]
+        ref_vecs = [w.vector.data for w in ref_words if w.vector is not None]
+        if not pool or not ref_vecs:
+            return []
+
+        pool_words = []
+        pool_vecs = []
+
+        async def _f(w: Word):
+            if all(w.word != ref.word for ref in ref_words):
+                pool_words.append(w)
+                pool_vecs.append(w.vector.data)
+
+        tasks = []
+        for w in pool:
+            tasks.append(_f(w))
+
+        await asyncio.gather(*tasks)
+
+        if not pool_words:
+            return []
+
+        pool_arr = np.vstack(pool_vecs)  # (N, d)
+        ref_arr = np.vstack(ref_vecs)    # (M, d)
+
+        # 距离矩阵 (N, M)
+        dists = np.linalg.norm(pool_arr[:, None, :] - ref_arr[None, :, :], axis=-1)
+        min_dists = dists.min(axis=1)
+
+        idxs = np.argsort(min_dists)[:top_n]
+        return [pool_words[i] for i in idxs]
+
+    def by_vec(self, vector: Vector, speech: str, exclude: List[str], top_n: int = 10) -> Optional[Word]:
         temp_word = Word(word="", pinyin="", abbr="", length=0, vector=vector, speech=speech)
         res = self.nearest_words([temp_word], speech, exclude, top_n)
-        return None if len(res) == 0 else res[0]
-
+        return res[0] if res else None
