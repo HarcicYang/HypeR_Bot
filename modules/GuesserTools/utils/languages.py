@@ -46,7 +46,7 @@ class Word:
     @classmethod
     def build(cls, data: Dict) -> "Word":
         # 支持从 json list[int|float] 构建 vector 字段
-        vector_data = data.get("vector")
+        vector_data = data.get("vec")
         vector = None
         if vector_data is not None:
             vector = Vector(*vector_data, dim=4)
@@ -192,3 +192,8 @@ class Library:
             return min(word.distance_to(ref) for ref in ref_vec_words)
         pool_sorted = sorted(pool, key=min_dist)
         return pool_sorted[:min(top_n, len(pool_sorted))]
+
+    def by_vec(self, vector: Vector, speech: str, exclude: List[str], top_n: int = 10) -> Word:
+        temp_word = Word(word="", pinyin="", abbr="", length=0, vector=vector, speech=speech)
+        res = self.nearest_words([temp_word], speech, exclude, top_n)
+        return None if len(res) == 0 else res[0]

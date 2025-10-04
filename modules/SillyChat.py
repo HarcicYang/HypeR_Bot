@@ -28,7 +28,7 @@ class Module(ModuleClass.Module):
                 continue
             pure_msg.add(i)
         text = str(pure_msg)
-        reply = silly_chatter(text)
+        reply = await silly_chatter(text)
         await self.actions.send(
             group_id=self.event.group_id,
             user_id=self.event.user_id,

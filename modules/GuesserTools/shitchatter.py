@@ -1,5 +1,8 @@
+import asyncio
+from typing import Union
+
 import jieba
-from .utils import lib_zh
+from .utils import lib_zh, Library, Word
 import random
 import json
 import os
@@ -35,21 +38,34 @@ speech_mapping = {
 endings = [" 哈哈哈~", " 你开心就好！", " 其实我也不太懂~", " 我是不是很聪明？", " 嘻嘻~"]
 
 # 加载模板
-TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "../../assets/templates.json")
+TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), '../../assets/templates.json')
 with open(TEMPLATE_PATH, encoding='utf-8') as f:
     TEMPLATES = json.load(f)
 
 
 # 从库中随机补充词
-def random_words_from_lib(lib, speech, exclude, count, ref_words=None):
+async def random_words_from_lib(lib: Library, speech: str, exclude: list, count: int, ref_words: list = None,
+                                times: int = 0) -> list:
     pool = [w for w in lib.words if w.speech == speech and w.word not in exclude]
     if not pool:
         return []
     # 灵活多样采样
     if ref_words:
+        def _f(x: Word) -> Word:
+            def _g(y: Union[int, float]) -> Union[int, float]:
+                return ((y / (random.random() * 10)) + random.random() * 10) * np.sin(
+                    (y / (random.random() * 20)) + random.random())
+
+            for i in range(0, 4):
+                x.vector.data[i] = _g(x.vector.data[i])
+            _res = lib.nearest_words([x], speech, exclude, top_n=max(20, count * 2))
+            return x if len(_res) == 0 else _res[0]
+
+        ref_words = list(map(_f, ref_words))
         candidates = lib.nearest_words(ref_words, speech, exclude, top_n=max(20, count * 2))
         if candidates:
-            ref_vec_words = [w for w in ref_words if hasattr(w, 'vector') and w.vector is not None]
+            ref_vec_words = [w for w in (ref_words if len(ref_words) > 12 else ref_words) if
+                             hasattr(w, 'vector') and w.vector is not None]
             dists = np.array([min(w.distance_to(ref) for ref in ref_vec_words) for w in candidates])
             # top_k动态调整，温度参数提升多样性
             top_k = max(3, min(8, count))
@@ -133,7 +149,7 @@ def build_sentence_with_template(template, *word_lists):
     return s
 
 
-def silly_chatter(user_input: str) -> str:
+async def silly_chatter(user_input: str) -> str:
     """
     使用模板驱动生成更丰富的傻瓜回复，混合用户输入和词库随机词。
     """
@@ -195,25 +211,36 @@ def silly_chatter(user_input: str) -> str:
     # 构建有效参考词列表，过滤掉None
     ref_words = [lib_zh.by_equation(w) for w in words if lib_zh.by_equation(w) is not None]
     sentence_count = min(5, max(2, len(words) // 2))
-    n_list += random_words_from_lib(lib_zh, "n", n_list, random.randint(1, 2), ref_words=ref_words)
-    v_list += random_words_from_lib(lib_zh, "v", v_list, random.randint(1, 2), ref_words=ref_words)
-    a_list += random_words_from_lib(lib_zh, "a", a_list, random.randint(1, 2), ref_words=ref_words)
-    d_list += random_words_from_lib(lib_zh, "d", d_list, random.randint(0, 1), ref_words=ref_words)
-    m_list += random_words_from_lib(lib_zh, "m", m_list, random.randint(0, 1), ref_words=ref_words)
-    q_list += random_words_from_lib(lib_zh, "q", q_list, random.randint(0, 1), ref_words=ref_words)
-    r_list += random_words_from_lib(lib_zh, "r", r_list, random.randint(0, 1), ref_words=ref_words)
-    p_list += random_words_from_lib(lib_zh, "p", p_list, random.randint(0, 1), ref_words=ref_words)
-    c_list += random_words_from_lib(lib_zh, "c", c_list, random.randint(0, 1), ref_words=ref_words)
-    u_list += random_words_from_lib(lib_zh, "u", u_list, random.randint(0, 1), ref_words=ref_words)
-    ad_list += random_words_from_lib(lib_zh, "ad", ad_list, random.randint(0, 1), ref_words=ref_words)
-    b_list += random_words_from_lib(lib_zh, "b", b_list, random.randint(0, 1), ref_words=ref_words)
-    vn_list += random_words_from_lib(lib_zh, "vn", vn_list, random.randint(0, 1), ref_words=ref_words)
-    z_list += random_words_from_lib(lib_zh, "z", z_list, random.randint(0, 1), ref_words=ref_words)
-    e_list += random_words_from_lib(lib_zh, "e", e_list, random.randint(0, 1), ref_words=ref_words)
+
+    async def adder(lst, spc):
+        lst += await random_words_from_lib(lib_zh, spc, lst, random.randint(1, 2), ref_words=ref_words)
+
+    tasks = []
+    for i in [
+        (n_list, "n"), (v_list, "v"), (a_list, "a"), (d_list, "d"), (m_list, "m"), (q_list, "q"), (r_list, "r"),
+        (p_list, "p"), (c_list, "c"), (u_list, "u"), (ad_list, "ad"), (b_list, "b"), (vn_list, "vn"), (z_list, "z"),
+        (e_list, "e")
+    ]:
+        tasks.append(adder(i[0], i[1]))
+    await asyncio.gather(*tasks)
+
     # 生成多句回复
     sentences = []
+    last_template = None
+
+    def pick_template():
+        nonlocal last_template
+        new_template = random.choice(TEMPLATES)
+        # 避免连续使用同一模板
+        while last_template is None or (new_template == last_template and len(TEMPLATES) > 1):
+            new_template = random.choice(TEMPLATES)
+            if last_template is None:
+                break
+        last_template = new_template
+        return new_template
+
     for _ in range(sentence_count):
-        template = random.choice(TEMPLATES)
+        template = pick_template()
         s = build_sentence_with_template(template, n_list, v_list, a_list, d_list, m_list, q_list, r_list, p_list,
                                          c_list, u_list, ad_list, b_list, vn_list, z_list, e_list, proper_list)
         if s.strip():
@@ -229,6 +256,6 @@ def silly_chatter(user_input: str) -> str:
     return " ".join(sentences)
 
 
-# if __name__ == "__main__":
-#     while True:
-#         print(silly_chatter(input("你想说什么？ ")))
+if __name__ == "__main__":
+    while True:
+        print(asyncio.run(silly_chatter(input("你想说什么？ "))))
