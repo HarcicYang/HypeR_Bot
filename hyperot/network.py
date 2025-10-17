@@ -34,11 +34,12 @@ class WebsocketConnection:
 
 
 class HTTPConnection:
-    def __init__(self, url: str, listener_url: str):
+    def __init__(self, url: str, listener_url: str, listener_endpoint: str = "/"):
         self.url = url
         listener_url = listener_url.replace("http://", "")
         listener_url = listener_url.replace("https://", "")
         self.listener_url = listener_url.split(":")[0]
+        self.listener_endpoint = listener_endpoint
         try:
             self.port = int(listener_url.split(":")[1])
         except IndexError:
@@ -51,7 +52,7 @@ class HTTPConnection:
         self.listener_started = False
 
     def __start_listener(self) -> None:
-        @self.app.route("/", methods=["POST"])
+        @self.app.route(self.listener_endpoint, methods=["POST"])
         def listener():
             self.reports.put(flask.request.json)
             return {}

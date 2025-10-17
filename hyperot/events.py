@@ -312,7 +312,7 @@ class RequestEvent(Event):
 
 
 @em.reg("request", "friend")
-class FriendAddEvent(RequestEvent):
+class FriendAddRequestEvent(RequestEvent):
     def __init__(self, data: dict):
         super().__init__(data)
 

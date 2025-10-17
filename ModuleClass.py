@@ -45,6 +45,7 @@ class Module:
                 events.NotifyEvent,
                 events.GroupEssenceEvent,
                 events.MessageReactionEvent,
+                events.FriendAddRequestEvent,
                 events.GroupAddInviteEvent,
                 events.HyperListenerStartNotify,
                 events.HyperListenerStopNotify

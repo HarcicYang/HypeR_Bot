@@ -11,6 +11,7 @@ class BotWSC(BaseConfig):
     port: int
     retries: int = 5
     token: str
+    auth: str
 
 
 class BotHTTPC(BaseConfig):
@@ -24,6 +25,7 @@ class BotHTTPC(BaseConfig):
     listener_host: str
     listener_port: int
     retries: int = 5
+    auth: str
 
 
 class BotConfig(BaseConfig):

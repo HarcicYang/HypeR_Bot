@@ -17,6 +17,7 @@ setup(
         "hyperot.LecAdapters.OneBotLib",
         "hyperot.LecAdapters.KritorLib",
         "hyperot.LecAdapters.KritorLib.protos",
+        "hyperot.LecAdapters.MilkyLib",
         "hyperot.utils",
     ] + [
         f"hyperot.LecAdapters.KritorLib.protos.{i}"
