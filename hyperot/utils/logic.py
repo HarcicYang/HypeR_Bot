@@ -309,3 +309,11 @@ class SimpleQueue:
                 return self.contents.pop(0)
             except IndexError:
                 pass
+
+class Matcher:
+    def __init__(self, target: Any):
+        self.target = target
+
+    def match(self, var: Any) -> bool:
+        return var == self.target
+

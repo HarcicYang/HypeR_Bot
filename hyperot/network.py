@@ -16,12 +16,16 @@ import threading
 
 
 class WebsocketConnection:
-    def __init__(self, url: str):
+    def __init__(self, url: str, auth: str = None):
         self.ws = websocket.WebSocket()
         self.url = url
+        self.auth = auth
 
     def connect(self) -> None:
-        self.ws.connect(self.url)
+        if self.auth:
+            self.ws.connect(self.url, header={"Authorization": "Bearer " + self.auth})
+        else:
+            self.ws.connect(self.url)
 
     def send(self, message: str) -> None:
         self.ws.send(message)
@@ -34,7 +38,7 @@ class WebsocketConnection:
 
 
 class HTTPConnection:
-    def __init__(self, url: str, listener_url: str, listener_endpoint: str = "/"):
+    def __init__(self, url: str, listener_url: str, listener_endpoint: str = "/", auth: str = None):
         self.url = url
         listener_url = listener_url.replace("http://", "")
         listener_url = listener_url.replace("https://", "")
@@ -48,6 +52,7 @@ class HTTPConnection:
         self.app.config["LOGGER_HANDLER_POLICY"] = "never"
         logging.getLogger("werkzeug").setLevel(logging.ERROR)
         self.reports = queue.Queue()
+        self.auth = auth
 
         self.listener_started = False
 
@@ -72,7 +77,10 @@ class HTTPConnection:
         return self.reports.get()
 
     def send(self, endpoint: str, data: dict, echo: str) -> None:
-        response = httpx.post(f"{self.url}/{endpoint}", json=data)
+        if self.auth:
+            response = httpx.post(f"{self.url}/{endpoint}", json=data, headers={"Authorization": f"Bearer {self.auth}"})
+        else:
+            response = httpx.post(f"{self.url}/{endpoint}", json=data)
         res = response.json()
         res["echo"] = echo
         self.reports.put(res)
