@@ -197,8 +197,8 @@ async def gen_page(bv_id: str) -> Response:
         global html_tmp
         info, ok = await video_info(bv_id)
         cover_avatar_future = asyncio.create_task(fetch_resources(info))
-        cover_text = f"http://127.0.0.1:8080/img/file/cover_{bv_id}.webp"
-        avatar_text = f"http://127.0.0.1:8080/img/file/avatar_{bv_id}.webp"
+        cover_text = f"http://127.0.0.1:8081/img/file/cover_{bv_id}.webp"
+        avatar_text = f"http://127.0.0.1:8081/img/file/avatar_{bv_id}.webp"
         played_times = num_format(info.views)
         likes_text = num_format(info.likes)
         coins_text = num_format(info.coins)
@@ -240,7 +240,7 @@ async def gen_result(bv_id: str) -> Response:
         else:
             page = await get_page()
             with Timer("get-page"):
-                await page.goto(f"http://127.0.0.1:8080/tmp/{bv_id}", waitUntil="networkidle0")
+                await page.goto(f"http://127.0.0.1:8081/tmp/{bv_id}", waitUntil="networkidle0")
             title = await page.title()
             path = f"../../temps/web_{''.join([str(ord(i)) for i in title][:12])}.png"
             opt = {"path": None, "quality": 18, "omitBackground": True, "type": "jpeg"}
@@ -336,7 +336,7 @@ async def main():
     for i in range(3):
         await page_pool.put(await browser.newPage())
     cfg = hypercorn.Config()
-    cfg.bind = ["127.0.0.1:8080"]
+    cfg.bind = ["127.0.0.1:8081"]
     cfg.worker_class = "uvloop"
     cfg.logLevel = "DEBUG"
     await hypercorn.asyncio.serve(app, cfg)

@@ -196,7 +196,7 @@ class Module(ModuleClass.Module):
             for i in bv_id:
                 info = await video_info(bv=i)
                 result = common.Message(
-                    segments.Image(f"http://127.0.0.1:8080/gen/{i}", summary=info[0].title)
+                    segments.Image(f"http://127.0.0.1:8081/gen/{i}", summary=info[0].title)
                 )
 
                 await self.actions.send(group_id=self.event.group_id, message=result)

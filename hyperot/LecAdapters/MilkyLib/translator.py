@@ -2,6 +2,7 @@ import httpx
 import json
 
 from hyperot.network import WebsocketConnection
+from ...common import Message
 from ...utils.logic import Matcher
 from ...adapters.obuilder import OneBotEventBuilder, OneBotJsonMessageBuilder
 
@@ -48,6 +49,12 @@ def message_translator(milky_message: list[dict], peer_id: int, scene: int = 0) 
             raise NotImplementedError  # Maybe never :(
 
     return builder.build()
+
+def to_milky_message(message: Message) -> list[dict]:
+    for i in message.contents:
+        if not hasattr(i, "milky_outgoing_seg"):
+            raise NotImplementedError(f"Segment {type(i)} not supported in Milky adapter.")
+    return [i.milky_outgoing_seg() for i in message.contents]
 
 
 class MilkyHttpConnection(WebsocketConnection):

@@ -4,7 +4,7 @@ from ..events import *
 from .. import events, network
 from ..utils import errors
 
-from .MilkyLib.translator import MilkyHttpConnection, msg_deid, msg_enid
+from .MilkyLib.translator import MilkyHttpConnection, msg_deid, msg_enid, to_milky_message
 from .MilkyLib.Manager import Packet
 
 import time
@@ -20,11 +20,11 @@ listener_ran = False
 
 
 class Actions:
-    def __init__(self, cnt: Union[network.WebsocketConnection, network.HTTPConnection]):
+    def __init__(self, cnt: MilkyHttpConnection):
         self.connection = cnt
 
         class CustomAction:
-            def __init__(self, cnt_i: Union[network.WebsocketConnection, network.HTTPConnection]):
+            def __init__(self, cnt_i: MilkyHttpConnection):
                 self.connection = cnt_i
 
             def __getattr__(self, item) -> callable:
@@ -43,7 +43,28 @@ class Actions:
     async def send(
             self, message: Union[common.Message, str], group_id: int = None, user_id: int = None
     ) -> common.Ret[MsgSendRsp]:
-        ...
+        if group_id is None:
+            res = Packet(
+                "send_private_msg",
+                user_id=user_id,
+                message=to_milky_message(common.Message(message))
+                if not isinstance(message, common.Message) else
+                to_milky_message(message),
+            ).send_to(self.connection)
+            ret = common.Ret(res)
+            ret.data = MsgSendRsp({"message_id": msg_enid(0, res["message_seq"], user_id)})
+            return ret
+        else:
+            res = Packet(
+                "send_group_msg",
+                group_id=group_id,
+                message=to_milky_message(common.Message(message))
+                if not isinstance(message, common.Message) else
+                to_milky_message(message),
+            ).send_to(self.connection)
+            ret = common.Ret(res)
+            ret.data = MsgSendRsp({"message_id": msg_enid(1, res["message_seq"], group_id)})
+            return ret
 
     async def del_message(self, message_id: int) -> None:
         ...

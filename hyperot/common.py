@@ -90,7 +90,7 @@ class Message:
 
 
 class Ret(Generic[T]):
-    def __init__(self, json_data: dict, serializer: Type[T]):
+    def __init__(self, json_data: dict, serializer: Type[T] = lambda x: x):
         self.raw = json_data.copy()
         self.status = json_data.get("status")
         self.ret_code = json_data.get("retcode")
