@@ -8,6 +8,9 @@ from hyperot.listener import Actions
 
 from modules.GoogleAI import genai, Context, Parts, Roles, genai_types
 from modules.DeepSeekLib import Session
+from modules.OpenAILib import OpenAIContext
+
+from openai import OpenAI
 
 # from trafilatura import fetch_url, extract
 from typing import Union, Any
@@ -70,7 +73,8 @@ class ChatActions:
                     if config.others["enable"] == "gemini":
                         for i in ev.message:
                             if isinstance(i, Text):
-                                new.append(Parts.Text(i.text.replace(".chat ", "", 1).replace("chat_quick_ask ", "", 1)))
+                                new.append(
+                                    Parts.Text(i.text.replace(".chat ", "", 1).replace("chat_quick_ask ", "", 1)))
                             elif isinstance(i, Image):
                                 if i.file.startswith("http"):
                                     url = i.file
@@ -81,7 +85,10 @@ class ChatActions:
                         new = Roles.User(*new)
                         result = cmc.get_context(ev.user_id, ev.group_id).gen_content(new)
                     elif config.others["enable"] == "deepseek":
-                        result = cmc.get_context(ev.user_id, ev.group_id).chat(str(ev.message).removeprefix(".chat "), thinking=True, timeout=120.0).text
+                        result = cmc.get_context(ev.user_id, ev.group_id).chat(str(ev.message).removeprefix(".chat "),
+                                                                               thinking=True, timeout=120.0).text
+                    elif config.others["enable"] == "openai":
+                        result = cmc.get_context(ev.user_id, ev.group_id).gen(str(ev.message).removeprefix(".chat "))
                     else:
                         result = f"未知模型：{config.others['enable']}"
                     await ac.send(
@@ -251,7 +258,6 @@ sys_prompt = '''
 # 挨透
 # '''
 
-
 generation_config = genai_types.GenerateContentConfig(
     temperature=1,
     top_p=0.95,
@@ -278,33 +284,40 @@ tools = []
 cli = genai.Client(api_key=key)
 
 
+cli_oai = OpenAI(
+    api_key=config.others.get("openai_key"),
+    base_url=config.others.get("openai_endpoint"),
+)
+
+
 class ContextManager:
     def __init__(self):
-        self.groups: dict[int, dict[int, Union[Context, Session]]] = {}
+        self.groups: dict[int, dict[int, Union[Context, Session, OpenAIContext]]] = {}
 
     def get_context(self, uin: int, gid: int):
         try:
             return self.groups[gid][uin]
         except KeyError:
             if self.groups.get(gid):
-                if config.others["enable"] == "gemini":
-                    self.groups[gid][uin] = Context(cli, generation_config)
-                elif config.others["enable"] == "deepseek":
-                    self.groups[gid][uin] = Session.create(
-                        config.others["ds_auth"], config.others["ds_ck"],
-                    )
-                    self.groups[gid][uin].chat(f"SYSTEM PROMPT: \n{sys_prompt}")
-                return self.groups[gid][uin]
+                pass
             else:
                 self.groups[gid] = {}
-                if config.others["enable"] == "gemini":
-                    self.groups[gid][uin] = Context(cli, generation_config)
-                elif config.others["enable"] == "deepseek":
-                    self.groups[gid][uin] = Session.create(
-                        config.others["ds_auth"], config.others["ds_ck"],
-                    )
-                    self.groups[gid][uin].chat(f"SYSTEM PROMPT: \n{sys_prompt}")
-                return self.groups[gid][uin]
+
+            if config.others["enable"] == "gemini":
+                self.groups[gid][uin] = Context(cli, generation_config)
+            elif config.others["enable"] == "deepseek":
+                self.groups[gid][uin] = Session.create(
+                    config.others["ds_auth"], config.others["ds_ck"],
+                )
+                self.groups[gid][uin].chat(f"SYSTEM PROMPT: \n{sys_prompt}")
+            elif config.others["enable"] == "openai":
+                self.groups[gid][uin] = OpenAIContext(
+                    [{"role": "system", "content": sys_prompt}],
+                    model=config.others.get("openai_model"),
+                    client=cli_oai
+                )
+
+            return self.groups[gid][uin]
 
 
 cmc = ContextManager()
