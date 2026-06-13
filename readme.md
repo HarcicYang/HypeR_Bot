@@ -16,9 +16,18 @@
 
 本人对于传统类型QQ Bot的创意已经燃尽力（悲），加之本人正在面临2027年的高考，该项目内实质性功能（如：网页解析、表情包生成）可能不再会得到积极维护。
 
-框架 / Python Package 部分可能在后期迁移到其他仓库，并继续更新。
+框架 / [Python Package](https://pypi.org/project/hyper-bot/) 部分可能在后期迁移到其他仓库，并继续更新。
 
-[新项目在这里](https://github.com/HarcicYang/HyperAG)
+### 接下来的打算
+
+既然已经回来重操旧业了，肯定不能啥也不干嘛。
+
+1. 开始新项目 [HyperAG](https://github.com/HarcicYang/HyperAG) ;
+2. 转移该项目核心（即框架 / [Python Package](https://pypi.org/project/hyper-bot/) 部分），继续维护，在尽可能少改变 API 的前提下重构并完善，重点关注多协议功能和性能;
+3. 为核心编写新的完善的文档;
+4. 高考加油（）
+
+
 
 ---
 
