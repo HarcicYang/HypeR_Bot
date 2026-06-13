@@ -14,6 +14,12 @@
 
 ## 🚧 非活跃项目
 
+若您在看`hyper-bot`，请移步[HypeR Core](https://github.com/HarcicYang/HyperBotCore)
+
+实质性功能将不再维护，截止2026年6月，他们的绝大多数仍然可以正常工作。后期的API变更也许会改变这一状况。
+
+
+
 本人对于传统类型QQ Bot的创意已经燃尽力（悲），加之本人正在面临2027年的高考，该项目内实质性功能（如：网页解析、表情包生成）可能不再会得到积极维护。
 
 框架 / [Python Package](https://pypi.org/project/hyper-bot/) 部分可能在后期迁移到其他仓库，并继续更新。
@@ -137,3 +143,13 @@ _~~直接注册个 [AI Studio](https://aistudio.google.com) 用gemini得了，ds
 所需的第三方库陈列在[`requirements.txt`](/requirements.txt)中，使用`pip install -r requirements.txt`即可。
 
 [`requirements_optional.txt`](/requirements_optional.txt)中包含部分模块所需的其他依赖，可视情况安装。
+
+
+### Finale
+
+大概没什么人能看到这里吧。
+
+我也想对我的一位故友表达我的歉意，不过，都过去了。
+
+
+瞻顾遗迹，如在昨日，令人长号不自禁。
