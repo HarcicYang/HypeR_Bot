@@ -9,6 +9,19 @@
 <img src="https://img.shields.io/static/v1?label=LICENSE&message=GPL-3.0&color=lightrey" alt="Badge">
 </div>
 
+---
+
+
+## 🚧 非活跃项目
+
+本人对于传统类型QQ Bot的创意已经燃尽力（悲），加之本人正在面临2027年的高考，该项目内实质性功能（如：网页解析、表情包生成）可能不再会得到积极维护。
+
+框架 / Python Package 部分可能在后期迁移到其他仓库，并继续更新。
+
+[新项目在这里](https://github.com/HarcicYang/HyperAG)
+
+---
+
 ## 概览
 
 HypeR Bot是一个适配OneBot协议的机器人框架，旨在提供一个简洁、高效、可扩展的机器人运行结构。
