@@ -1,16 +1,17 @@
+import os
+from typing import override
+
 from hyperot import segments
 from hyperot.common import Message
 from hyperot.events import *
+
 from ModuleClass import Module, ModuleInfo, ModuleRegister
-
-import os
-
 from modules.site_catch import Catcher
 
 
-async def get_image(quote, ava_url, name, uin):
+async def get_image(quote: str, ava_url: str, name: str, uin: int) -> str:
     catcher = await Catcher.init()
-    with open("./assets/quote.html", "r", encoding="utf-8") as f:
+    with open("./assets/quote.html", encoding="utf-8") as f:
         html = f.read()
 
     html = html.replace("{ava_url}", ava_url)
@@ -27,7 +28,8 @@ async def get_image(quote, ava_url, name, uin):
 
 
 @ModuleRegister.register(GroupMessageEvent)
-class Quoter(Module):
+class Quoter(Module[GroupMessageEvent]):
+    @override
     @staticmethod
     def info() -> ModuleInfo:
         return ModuleInfo(
@@ -35,9 +37,10 @@ class Quoter(Module):
             module_name="Quoter",
             author="Harcic#8042",
             desc="生成对名言之伟大引用",
-            helps="引用你要生成的消息，然后在消息框中输入“.quote”，哇！中了！"
+            helps="引用你要生成的消息，然后在消息框中输入“.quote”，哇！中了！",
         )
 
+    @override
     async def handle(self):
         if ".quote" in str(self.event.message):
             if isinstance(self.event.message[0], segments.Reply):
@@ -45,19 +48,20 @@ class Quoter(Module):
             else:
                 return
 
-            content = await self.actions.get_msg(msg_id)
-            name = content.data.sender.nickname if not content.data.sender.card else \
-                content.data.sender.card
+            content = await self.actions.get_msg(int(msg_id))
+            sender = content.data.sender
+            name = (sender.card if isinstance(sender, GroupSender) and sender.card else sender.nickname) or "未知用户"
             uin = content.data.sender.user_id
+            if uin is None:
+                return
             message = content.data.message
             text = str(message)
             res = await get_image(text, f"http://q2.qlogo.cn/headimg_dl?dst_uin={uin}&spec=640", name, uin)
-            await self.actions.send(
+            await self.actions.send_msg(
                 group_id=self.event.group_id,
                 user_id=self.event.user_id,
                 message=Message(
-                    segments.Reply(self.event.message_id),
-                    segments.Image(f"file://{os.path.abspath(res)}")
-                )
+                    segments.Reply(self.event.message_id), segments.Image(f"file://{os.path.abspath(res)}")
+                ),
             )
             os.remove(res)

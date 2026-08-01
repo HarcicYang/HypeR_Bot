@@ -1,32 +1,49 @@
-from hyperot import events, segments, common
-import ModuleClass
+from typing import Any, override
+
+from hyperot import common, events, segments
 from hyperot.events import GroupMessageEvent, PrivateMessageEvent
+
+import ModuleClass
 
 from .GuesserTools.shitchatter import silly_chatter
 
+histories: dict[str, list[str]] = {}
+msg_ids: list[str] = []
 
-histories = {}
-msg_ids = []
 
 @ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
-class Module(ModuleClass.Module):
+class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
+    @override
     @staticmethod
-    def filter(event: events.Event, allowed: list) -> bool:
-        if isinstance(event, PrivateMessageEvent) and len(event.message) != 0 and str(event.message).startswith("sb"):
-            return True
-        elif (
+    def info() -> ModuleClass.ModuleInfo:
+        return ModuleClass.ModuleInfo(
+            is_hidden=False,
+            module_name="SillyChat",
+            desc="基于模板的闲聊对话",
+            helps="无显式命令。通过以下方式触发：\n- 在群聊中 @Bot\n- 引用 Bot 已发送的消息\n- 私聊发送 sb 开头的消息",
+        )
+
+    @staticmethod
+    @override
+    @staticmethod
+    def filter(event: events.Event, allowed: list[Any]) -> bool:
+        return (
+            isinstance(event, PrivateMessageEvent)
+            and len(event.message) != 0
+            and str(event.message).startswith("sb")
+            or (
                 isinstance(event, GroupMessageEvent)
                 and isinstance(event.message[0], segments.At)
-                and str(event.message[0].qq) == str(event.self_id)
-        ) or (
+                and event.message[0].qq == str(event.self_id)
+            )
+            or (
                 isinstance(event, GroupMessageEvent)
                 and isinstance(event.message[0], segments.Reply)
-                and str(event.message[0].id) in msg_ids
-        ):
-            return True
+                and event.message[0].id in msg_ids
+            )
+        )
 
-        return False
-
+    @override
     async def handle(self):
         if histories.get(str(self.event.group_id)):
             history = histories[str(self.event.group_id)]
@@ -44,10 +61,5 @@ class Module(ModuleClass.Module):
         history.append(reply)
         # if str(self.event.group_id) == "367798007":
         #     reply = "- " + reply
-        msg = await self.actions.send(
-            group_id=self.event.group_id,
-            user_id=self.event.user_id,
-            message=reply
-        )
+        msg = await self.actions.send_msg(group_id=self.event.group_id, user_id=self.event.user_id, message=reply)
         msg_ids.append(str(msg.data.message_id))
-

@@ -1,8 +1,10 @@
-import httpx
 import json
-from httpx import Timeout
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Any
+
+import httpx
+from httpx import Timeout
 
 
 @dataclass
@@ -22,36 +24,31 @@ class API:
 
     @property
     def api_version_str(self) -> str:
-        return str(f"api/v{self.api_version}")
+        return f"api/v{self.api_version}"
 
     @property
     def chat_session_create(self) -> str:
-        return str(f"https://{self.base_url}/{self.api_version_str}/{self._chat_session_create}")
+        return f"https://{self.base_url}/{self.api_version_str}/{self._chat_session_create}"
 
     @property
     def completion(self) -> str:
-        return str(f"https://{self.base_url}/{self.api_version_str}/{self._completion}")
+        return f"https://{self.base_url}/{self.api_version_str}/{self._completion}"
 
     @property
     def fetch_history(self) -> str:
-        return str(f"https://{self.base_url}/{self.api_version_str}/{self._fetch_history}")
+        return f"https://{self.base_url}/{self.api_version_str}/{self._fetch_history}"
 
     @property
     def delete_session(self) -> str:
-        return str(f"https://{self.base_url}/{self.api_version_str}/{self._delete_session}")
+        return f"https://{self.base_url}/{self.api_version_str}/{self._delete_session}"
 
 
 class Session:
     api = API(
-        "chat.deepseek.com",
-        0,
-        "chat_session/create",
-        "chat/completion",
-        "chat/history_messages",
-        "chat_session/delete"
+        "chat.deepseek.com", 0, "chat_session/create", "chat/completion", "chat/history_messages", "chat_session/delete"
     )
 
-    def __init__(self, session_id: str, auth: str, cookie: str, api: API = None):
+    def __init__(self, session_id: str, auth: str, cookie: str, api: API | None = None):
         self.session_id = session_id
         self.auth = auth
         self.cookie = cookie
@@ -60,11 +57,9 @@ class Session:
         else:
             pass
 
-    def fetch_history(self) -> dict:
+    def fetch_history(self) -> dict[str, Any]:
         response = httpx.get(
-            self.api.fetch_history,
-            params={"chat_session_id": self.session_id},
-            headers={"authorization": self.auth}
+            self.api.fetch_history, params={"chat_session_id": self.session_id}, headers={"authorization": self.auth}
         )
         return response.json()
 
@@ -72,42 +67,39 @@ class Session:
         return self.fetch_history()["data"]["biz_data"]["chat_session"]["current_message_id"]
 
     @classmethod
-    def create(cls, auth: str, cookie: str, api: API = None) -> "Session":
+    def create(cls, auth: str, cookie: str, api: API | None = None) -> "Session":
         if not api:
             api = cls.api
-        response = httpx.post(
-            api.chat_session_create,
-            headers={"authorization": auth},
-            json={"character_id": None}
-        )
+        response = httpx.post(api.chat_session_create, headers={"authorization": auth}, json={"character_id": None})
         if response.json()["code"] != 0:
             raise Exception()
         ses = response.json()["data"]["biz_data"]["id"]
         return cls(ses, auth, cookie, api)
 
     def gen_completion(
-            self, prompt: str, search: bool = False, thinking: bool = False, timeout: float = 5.0
-    ) -> list[dict]:
+        self, prompt: str, search: bool = False, thinking: bool = False, timeout: float = 5.0
+    ) -> list[dict[str, Any]]:
         res = []
         with httpx.stream(
-                "POST", self.api.completion,
-                headers={
-                    "authorization": self.auth,
-                    "Cookie": self.cookie,
-                    "Origin": "https://chat.deepseek.com",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-                    "Referer": f"https://chat.deepseek.com/a/chat/s/{self.session_id}",
-                    "X-Ds-Pow-Response": "eyJhbGdvcml0aG0iOiJEZWVwU2Vla0hhc2hWMSIsImNoYWxsZW5nZSI6IjMwYjNkMjliZmM3YWMyOTkyOWIwYTgwMzNlOWQ5NGY5MDI2MzYwZDAxZGFiODZiYWQwNDdkNjVjNmJkM2NiNTUiLCJzYWx0IjoiYmE3OTE0MzAzMjA3MTg3YTBhNjQiLCJhbnN3ZXIiOjU3Mjg0LCJzaWduYXR1cmUiOiJiYzhjODI4OGZiODE0OTAxODlhYWI1ZDQ4MmNlZWI3Zjc5MzQ3NzJjNzgwNTAyODdmMTU3MGRkZWNmNTUyMGY5IiwidGFyZ2V0X3BhdGgiOiIvYXBpL3YwL2NoYXQvY29tcGxldGlvbiJ9"
-                },
-                json={
-                    "chat_session_id": self.session_id,
-                    "prompt": prompt,
-                    "parent_message_id": self.get_code(),
-                    "ref_file_ids": [],
-                    "search_enabled": search,
-                    "thinking_enabled": thinking
-                },
-                timeout=Timeout(timeout)
+            "POST",
+            self.api.completion,
+            headers={
+                "authorization": self.auth,
+                "Cookie": self.cookie,
+                "Origin": "https://chat.deepseek.com",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+                "Referer": f"https://chat.deepseek.com/a/chat/s/{self.session_id}",
+                "X-Ds-Pow-Response": "eyJhbGdvcml0aG0iOiJEZWVwU2Vla0hhc2hWMSIsImNoYWxsZW5nZSI6IjMwYjNkMjliZmM3YWMyOTkyOWIwYTgwMzNlOWQ5NGY5MDI2MzYwZDAxZGFiODZiYWQwNDdkNjVjNmJkM2NiNTUiLCJzYWx0IjoiYmE3OTE0MzAzMjA3MTg3YTBhNjQiLCJhbnN3ZXIiOjU3Mjg0LCJzaWduYXR1cmUiOiJiYzhjODI4OGZiODE0OTAxODlhYWI1ZDQ4MmNlZWI3Zjc5MzQ3NzJjNzgwNTAyODdmMTU3MGRkZWNmNTUyMGY5IiwidGFyZ2V0X3BhdGgiOiIvYXBpL3YwL2NoYXQvY29tcGxldGlvbiJ9",
+            },
+            json={
+                "chat_session_id": self.session_id,
+                "prompt": prompt,
+                "parent_message_id": self.get_code(),
+                "ref_file_ids": [],
+                "search_enabled": search,
+                "thinking_enabled": thinking,
+            },
+            timeout=Timeout(timeout),
         ) as response:
             if response.status_code == 200:
                 for i in response.iter_lines():
@@ -144,9 +136,7 @@ class Session:
 
     def delete(self) -> None:
         response = httpx.post(
-            self.api.delete_session,
-            headers={"authorization": self.auth},
-            json={"chat_session_id": self.session_id}
+            self.api.delete_session, headers={"authorization": self.auth}, json={"chat_session_id": self.session_id}
         )
         if response.json()["code"] != 0:
             print(response.text)

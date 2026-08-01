@@ -1,16 +1,16 @@
-from collections.abc import Callable
 from collections import deque
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 try:
-    from numba import njit
+    from numba import njit  # pyrefly: ignore[missing-import]  # numba 可选，未安装时走纯 Python 实现
 
     NUMBA_AVAILABLE = True
 except ImportError:
     NUMBA_AVAILABLE = False
 
-from utils import lib_zh
-from utils.languages import Word, Library
+from .utils import lib_zh
+from .utils.languages import Word
 
 my_lib = lib_zh.by_length(2)
 
@@ -20,32 +20,36 @@ class WordFound(Exception):
         self.path = path
 
 
+def _reverse_path(path: list[Word]) -> list[Word]:
+    return path[::-1]
+
+
 if NUMBA_AVAILABLE:
-    @njit
-    def _reverse_path(path):
-        return path[::-1]
-else:
-    def _reverse_path(path):
-        return path[::-1]
+    _reverse_path = njit(_reverse_path)  # pyrefly: ignore[unbound-name]
 
 
-def trans(from_word: str, to_word: str, by: Callable[[Word], list], limit: int = 10) -> list[Word]:
-    from_word = my_lib.by_equation(from_word)
-    to_word = my_lib.by_equation(to_word)
+def trans(from_word: str, to_word: str, by: Callable[[Word], list[Word]], limit: int = 10) -> list[Word]:
+    start = my_lib.by_equation(from_word)
+    target = my_lib.by_equation(to_word)
+    if start is None or target is None:
+        return []
 
-    queue = deque()
-    queue.append(from_word)
-    visited = {from_word}
-    parent = {from_word: None}
-    cache = {}
+    queue: deque[Word] = deque()
+    queue.append(start)
+    visited: set[Word] = {start}
+    parent: dict[Word, Word | None] = {start: None}
+    cache: dict[Word, list[Word]] = {}
 
     while queue:
         word = queue.popleft()
         # 回溯路径长度
         path_length = 1
         cur = word
-        while parent[cur] is not None:
-            cur = parent[cur]
+        while True:
+            p = parent[cur]
+            if p is None:
+                break
+            cur = p
             path_length += 1
         if path_length > limit:
             continue
@@ -61,12 +65,15 @@ def trans(from_word: str, to_word: str, by: Callable[[Word], list], limit: int =
             if i in visited:
                 continue
             parent[i] = word
-            if i == to_word:
+            if i == target:
                 # 回溯路径
                 path = [i]
                 cur = i
-                while parent[cur] is not None:
-                    cur = parent[cur]
+                while True:
+                    p = parent[cur]
+                    if p is None:
+                        break
+                    cur = p
                     path.append(cur)
                 path = _reverse_path(path)
                 return path
@@ -75,12 +82,13 @@ def trans(from_word: str, to_word: str, by: Callable[[Word], list], limit: int =
     return []
 
 
-def trans_batch(tasks, by: Callable[[Word], list], limit: int = 10, max_workers: int = 4):
-    results = {}
+def trans_batch(
+    tasks: Iterable[tuple[str, str]], by: Callable[[Word], list[Word]], limit: int = 10, max_workers: int = 4
+) -> dict[tuple[str, str], list[Word] | Exception]:
+    results: dict[tuple[str, str], list[Word] | Exception] = {}
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_task = {
-            executor.submit(trans, from_word, to_word, by, limit): (from_word, to_word)
-            for from_word, to_word in tasks
+            executor.submit(trans, from_word, to_word, by, limit): (from_word, to_word) for from_word, to_word in tasks
         }
         for future in as_completed(future_to_task):
             task = future_to_task[future]

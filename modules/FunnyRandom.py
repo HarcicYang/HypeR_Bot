@@ -1,15 +1,18 @@
 import asyncio
-import random
-import time
-import httpx
-from random import randint
 import dataclasses
 import json
+import os
+import random
+import time
+from random import randint
+from typing import Any, override
 
+import httpx
 from hyperot.common import Message
-from hyperot.segments import *
-from ModuleClass import ModuleRegister, Module
 from hyperot.events import GroupMessageEvent, PrivateMessageEvent
+from hyperot.segments import *
+
+from ModuleClass import Module, ModuleInfo, ModuleRegister
 
 
 @dataclasses.dataclass
@@ -38,7 +41,7 @@ class UserInfo:
 users: dict[str, UserInfo] = {}
 
 
-with open("./assets/quick.json", "r", encoding="utf-8") as f:
+with open("./assets/quick.json", encoding="utf-8") as f:
     words = json.load(f)["ele"]
 
 
@@ -47,7 +50,18 @@ setu_cache = [f"file://{os.path.abspath('./assets/serika.png')}"]
 
 
 @ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
-class Funny(Module):
+class Funny(Module[GroupMessageEvent | PrivateMessageEvent]):
+    @override
+    @staticmethod
+    def info() -> ModuleInfo:
+        return ModuleInfo(
+            is_hidden=False,
+            module_name="FunnyRandom",
+            desc="趣味随机功能",
+            helps="命令：\n今天有多棒 [@某人 / 我] - 查看今日评分\n发电 <目标名> - 生成随机发电小作文",
+        )
+
+    @override
     async def handle(self):
         global setu_last
         if "今天有多棒" in str(self.event.message):
@@ -60,39 +74,42 @@ class Funny(Module):
             else:
                 return
 
-            if str(uin) not in users.keys():
+            if str(uin) not in users:
                 users[str(uin)] = UserInfo.build()
-            msg = Message(
-                At(uin),
-                Text(
-                    f"{name}今天的分数: {users[str(uin)].goodness}\n评级: {users[str(uin)].level}")
-            )
-            await self.actions.send(
-                group_id=self.event.group_id,
-                user_id=self.event.user_id,
-                message=msg
-            )
+            msg = Message(At(uin), Text(f"{name}今天的分数: {users[str(uin)].goodness}\n评级: {users[str(uin)].level}"))
+            await self.actions.send_msg(group_id=self.event.group_id, user_id=self.event.user_id, message=msg)
         elif str(self.event.message) == "随机色图":
             if int(time.time()) - setu_last <= 15:
-                await self.actions.send(
-                    group_id=self.event.group_id,
-                    user_id=self.event.user_id,
-                    message=Message(Text("调用过于频繁"))
+                await self.actions.send_msg(
+                    group_id=self.event.group_id, user_id=self.event.user_id, message=Message(Text("调用过于频繁"))
                 )
                 return
 
             setu_last = int(time.time())
 
             url = "https://image.anosu.top/pixiv/json"
-            tags = ["原神", "崩坏", "蔚蓝档案", "水着", "萝莉", "猫娘", "明日方舟",
-                    "绯染天空", "None1", "None2", "None3", "None4", "None5"]
+            tags = [
+                "原神",
+                "崩坏",
+                "蔚蓝档案",
+                "水着",
+                "萝莉",
+                "猫娘",
+                "明日方舟",
+                "绯染天空",
+                "None1",
+                "None2",
+                "None3",
+                "None4",
+                "None5",
+            ]
             tag = random.choice(tags)
             if "None" in tag:
                 pass
             else:
                 url += f"?keyword={tag}"
             retried = 0
-            response = []
+            response: list[Any] = []
             while retried <= 5:
                 response = httpx.get(url).json()
                 if response == list():
@@ -108,21 +125,14 @@ class Funny(Module):
                 url = response[0]["url"]
                 setu_cache.append(url)
 
-            await self.actions.send(
-                group_id=self.event.group_id,
-                user_id=self.event.user_id,
-                message=Message(
-                    Image(url)
-                )
+            await self.actions.send_msg(
+                group_id=self.event.group_id, user_id=self.event.user_id, message=Message(Image(url))
             )
         elif str(self.event.message).startswith("发电 "):
             tag = str(self.event.message).replace("发电 ", "", 1)
             word = random.choice(words).replace("{target_name}", tag)
-            await self.actions.send(
+            await self.actions.send_msg(
                 group_id=self.event.group_id,
                 user_id=self.event.user_id,
-                message=Message(
-                    Reply(self.event.message_id), Text(word)
-                )
+                message=Message(Reply(self.event.message_id), Text(word)),
             )
-

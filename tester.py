@@ -1,21 +1,2 @@
-from lief import parse
-from capstone import Cs, CS_ARCH_X86, CS_MODE_64
-
-
-# path = "/opt/QQ/resources/app/wrapper.node"
-path = "./30366/wrapper.node"
-
-with open(path, "rb") as f:
-    data = f.read()
-
-binary = parse(path)
-md = Cs(CS_ARCH_X86, CS_MODE_64)
-for sym in binary.symbols:
-    # if sym.value != 0x5324025:
-    #     continue
-    print(f"{sym.name} @ 0x{sym.value}")
-    # for i in md.disasm(data[0x123456:0x123456 + 0x100], eval(f"0x{sym.value}")):
-    #     print(f"0x{i.address:x}:\t{i.mnemonic}\t{i.op_str}")
-
-for i in md.disasm(data, eval(f"0x{5324025}")):
-    print(f"0x{i.address:x}:\t{i.mnemonic}\t{i.op_str}")
+buf = b"%'\xe3\xc8\x15\x00f\x08\x1b\x10\xf0\xb6\xab\xd3\x06 \xc8\xc7\x9f\xa9\x02h\x1a\x8a\x02:\x08\xc8\xc7\x9f\xa9\x02\x10\xcdq\x18\xea\xda\xf3\xc6\x02 \x01(\xd4\xeb\xe5\xb0\r0\xbb\xe4\xcf\xa2\t8\xf0\xb6\xab\xd3\x06@\xcdqJ\x06HarcicR\x08HarcilotX\x01\xa8\x02\xcdq\xb8\x02\xc9\xe6\xef\x94\x05\x80\x03\xf1\x0f\x88\x03\x00\xb0\x03\xf1\xab\xab\xd3\x06"
+print(buf.hex())

@@ -1,0 +1,78 @@
+[project]
+name = "hyperbot"
+version = "1.0.0"
+description = "HypeR Bot — Python QQ bot framework implementing OneBot v11 protocol"
+readme = "readme.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "aiohttp",
+    "cairosvg",
+    "filetype",
+    "Flask",
+    "GitPython",
+    "google-genai",
+    "httpx",
+    "hyper-bot==1.0.0",
+    "jieba",
+    "meme-generator<0.2.0",
+    "meme-generator-contrib",
+    "numpy",
+    "openai",
+    "pillow",
+    "pyppeteer",
+    "requests",
+    "ucfgr",
+]
+
+[dependency-groups]
+dev = [
+    "pyrefly",
+    "ruff",
+]
+
+[tool.uv]
+package = false
+# hyper-bot 1.0.0 要求 websockets>=17.0.1,而 google-genai 声明 <17(仅其未使用的流式功能需要)。
+# 本 bot 的 GoogleAI 模块只用基础 REST 接口,故强制 websockets==17.0.1 以同时满足两者。
+override-dependencies = [
+    "websockets==17.0.1",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+# 模块普遍使用 `from hyperot.events import *`(hyperot 定义了 __all__,运行时可解析;
+# ruff 不解析 site-packages 源文件,故豁免这两个检查)。
+per-file-ignores = { "modules/*.py" = ["F403", "F405"] }
+
+[tool.ruff.format]
+line-ending = "lf"
+
+[tool.pyrefly]
+preset = "strict"
+project-includes = [
+    "*.py",
+    "modules/**",
+]
+project-excludes = [
+    # vendored 第三方目录(与 bot 代码无关,均为 gitignore 项目;单文件模式下 ignore 文件不生效,须在此显式排除)
+    "assets/**",
+    "build/**",
+    "docs/**",
+    "Gensokyo/**",
+    "kritor-main/**",
+    "lagrange/**",
+    "Lagrange.Milky/**",
+    "Lagrange.OneBot/**",
+    "lgr.kritor/**",
+    "main.build/**",
+    "main.dist/**",
+    "meme-generator.wiki/**",
+    "NapCat/**",
+    "node_modules/**",
+    "temps/**",
+]

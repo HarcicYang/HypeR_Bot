@@ -68,7 +68,7 @@ class Chat(Module):
         if self.event.is_owner:
             if str(self.event.message).startswith(".bot_chat_tag "):
                 self.set(int(str(self.event.message).replace(".bot_chat_tag ", "")))
-                await self.actions.send(
+                await self.actions.send_msg(
                     user_id=self.event.user_id,
                     group_id=self.event.group_id,
                     message=Message(
@@ -77,7 +77,7 @@ class Chat(Module):
                     )
                 )
             elif str(self.event.message).startswith(".bot_chat_start "):
-                await self.actions.send(
+                await self.actions.send_msg(
                     user_id=self.event.user_id,
                     group_id=self.event.group_id,
                     message=Message(
@@ -91,7 +91,7 @@ class Chat(Module):
                 if c or self.event.is_mentioned:
                     new = Roles.User(Parts.Text(str(self.event.message).replace(f"@{self.event.self_id}", "")))
                     result = cmc.get_context(self.event.user_id, self.event.group_id).gen_content(new)
-                    await self.actions.send(
+                    await self.actions.send_msg(
                         user_id=self.event.user_id,
                         group_id=self.event.group_id,
                         message=Message(

@@ -1,7 +1,9 @@
 import asyncio
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import List, Callable, Dict, Literal, Optional
+from typing import Any, Literal
+
 import numpy as np
 
 from .vec import Vector, distance
@@ -11,10 +13,10 @@ from .vec import Vector, distance
 # Word 对象池
 # ==============================
 class WordPool:
-    _pool: Dict[str, "Word"] = {}
+    _pool: dict[str, "Word"] = {}
 
     @classmethod
-    def get(cls, data: Dict) -> "Word":
+    def get(cls, data: dict[str, Any]) -> "Word":
         """从池中获取或构造 Word"""
         key = data["word"]
         if key in cls._pool:
@@ -31,14 +33,14 @@ class WordPool:
 class Word:
     word: str
     pinyin: str
-    abbr: Optional[str]
+    abbr: str | None
     length: int
-    explanation: Optional[str] = None
+    explanation: str | None = None
     speech: str = "unknown"
-    vector: Optional[Vector] = field(default=None)
+    vector: Vector | None = field(default=None)
 
     @classmethod
-    def build(cls, data: Dict) -> "Word":
+    def build(cls, data: dict[str, Any]) -> "Word":
         """支持从 JSON 构建 Word"""
         vector_data = data.get("vector") or data.get("vec")
         vector = Vector(*vector_data, dim=4) if vector_data is not None else None
@@ -49,7 +51,7 @@ class Word:
             length=len(data["word"]),
             explanation=data.get("explanation"),
             speech=data.get("speech", "unknown"),
-            vector=vector
+            vector=vector,
         )
 
     def startswith(self, char: str) -> bool:
@@ -68,10 +70,10 @@ class Word:
 # Library 词库
 # ==============================
 class Library:
-    def __init__(self, words: List[Word]):
-        self._words: List[Word] = words
-        self._starts_index: Dict[str, List[Word]] = {}
-        self._ends_index: Dict[str, List[Word]] = {}
+    def __init__(self, words: list[Word]):
+        self._words: list[Word] = words
+        self._starts_index: dict[str, list[Word]] = {}
+        self._ends_index: dict[str, list[Word]] = {}
         for w in words:
             if w.word:
                 self._starts_index.setdefault(w.word[0], []).append(w)
@@ -98,7 +100,7 @@ class Library:
 
     @classmethod
     def build(cls, file: str) -> "Library":
-        with open(file, "r", encoding="utf-8") as f:
+        with open(file, encoding="utf-8") as f:
             data = json.load(f)
             words = [Word.build(x) for x in data]
             return cls(words)
@@ -108,7 +110,7 @@ class Library:
         return len(self._words)
 
     @property
-    def words(self) -> List[Word]:
+    def words(self) -> list[Word]:
         return self._words
 
     def _filter_words(self, func: Callable[[Word], bool]) -> "Library":
@@ -122,18 +124,16 @@ class Library:
 
     def by_letters(self, letters: Literal["zh", "en", "hy"]) -> "Library":
         if letters == "zh":
-            return self._filter_words(
-                lambda w: len(w.word) > 0 and all("\u4e00" <= ch <= "\u9fff" for ch in w.word)
-            )
+            return self._filter_words(lambda w: len(w.word) > 0 and all("\u4e00" <= ch <= "\u9fff" for ch in w.word))
         elif letters == "en":
-            return self._filter_words(
-                lambda w: len(w.word) > 0 and all(ch.isalpha() and ch.isascii() for ch in w.word)
-            )
+            return self._filter_words(lambda w: len(w.word) > 0 and all(ch.isalpha() and ch.isascii() for ch in w.word))
         elif letters == "hy":
+
             def _is_hy(w: Word) -> bool:
                 has_chinese = any("\u4e00" <= ch <= "\u9fff" for ch in w.word)
                 has_english = any(ch.isalpha() and ch.isascii() for ch in w.word)
                 return has_chinese and has_english
+
             return self._filter_words(_is_hy)
         else:
             raise ValueError(f"Unknown letter type '{letters}'")
@@ -147,42 +147,39 @@ class Library:
     def by_speech(self, speech: str) -> "Library":
         return self._filter_words(lambda w: w.speech == speech)
 
-    def by_equation(self, equation: str) -> Optional[Word]:
+    def by_equation(self, equation: str) -> Word | None:
         for w in self._words:
             if w.word == equation:
                 return w
         return None
 
-    def relatives2(self, word: Word) -> List[Word]:
+    def relatives2(self, word: Word) -> list[Word]:
         return self._starts_index.get(word.word[0], []) + self._ends_index.get(word.word[-1], [])
 
     def continuous(self, word: Word) -> "Library":
         return self.by_starts(word.word[1]) if len(word.word) > 1 else Library([])
 
-    def nearest_words(
-        self,
-        ref_words: List[Word],
-        speech: str,
-        exclude: List[str],
-        top_n: int = 10
-    ) -> List[Word]:
+    def nearest_words(self, ref_words: list[Word], speech: str, exclude: list[str], top_n: int = 10) -> list[Word]:
         pool = [w for w in self._words if w.speech == speech and w.word not in exclude and w.vector is not None]
         ref_vecs = [w.vector.data for w in ref_words if w.vector is not None]
         if not pool or not ref_vecs:
             return []
 
-        pool_words = []
-        pool_vecs = []
+        pool_words: list[Word] = []
+        pool_vecs: list[Any] = []
         for w in pool:
+            vec = w.vector
+            if vec is None:
+                continue
             if all(w.word != ref.word for ref in ref_words):
                 pool_words.append(w)
-                pool_vecs.append(w.vector.data)
+                pool_vecs.append(vec.data)
 
         if not pool_words:
             return []
 
         pool_arr = np.vstack(pool_vecs)  # (N, d)
-        ref_arr = np.vstack(ref_vecs)    # (M, d)
+        ref_arr = np.vstack(ref_vecs)  # (M, d)
 
         # 距离矩阵 (N, M)
         dists = np.linalg.norm(pool_arr[:, None, :] - ref_arr[None, :, :], axis=-1)
@@ -192,26 +189,25 @@ class Library:
         return [pool_words[i] for i in idxs]
 
     async def nearest_words_async(
-        self,
-        ref_words: List[Word],
-        speech: str,
-        exclude: List[str],
-        top_n: int = 10
-    ) -> List[Word]:
+        self, ref_words: list[Word], speech: str, exclude: list[str], top_n: int = 10
+    ) -> list[Word]:
         pool = [w for w in self._words if w.speech == speech and w.word not in exclude and w.vector is not None]
         ref_vecs = [w.vector.data for w in ref_words if w.vector is not None]
         if not pool or not ref_vecs:
             return []
 
-        pool_words = []
-        pool_vecs = []
+        pool_words: list[Word] = []
+        pool_vecs: list[Any] = []
 
-        async def _f(w: Word):
+        async def _f(w: Word) -> None:
+            vec = w.vector
+            if vec is None:
+                return
             if all(w.word != ref.word for ref in ref_words):
                 pool_words.append(w)
-                pool_vecs.append(w.vector.data)
+                pool_vecs.append(vec.data)
 
-        tasks = []
+        tasks: list[Any] = []
         for w in pool:
             tasks.append(_f(w))
 
@@ -221,7 +217,7 @@ class Library:
             return []
 
         pool_arr = np.vstack(pool_vecs)  # (N, d)
-        ref_arr = np.vstack(ref_vecs)    # (M, d)
+        ref_arr = np.vstack(ref_vecs)  # (M, d)
 
         # 距离矩阵 (N, M)
         dists = np.linalg.norm(pool_arr[:, None, :] - ref_arr[None, :, :], axis=-1)
@@ -230,7 +226,7 @@ class Library:
         idxs = np.argsort(min_dists)[:top_n]
         return [pool_words[i] for i in idxs]
 
-    def by_vec(self, vector: Vector, speech: str, exclude: List[str], top_n: int = 10) -> Optional[Word]:
+    def by_vec(self, vector: Vector, speech: str, exclude: list[str], top_n: int = 10) -> Word | None:
         temp_word = Word(word="", pinyin="", abbr="", length=0, vector=vector, speech=speech)
         res = self.nearest_words([temp_word], speech, exclude, top_n)
         return res[0] if res else None

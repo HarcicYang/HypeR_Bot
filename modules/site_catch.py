@@ -1,6 +1,5 @@
 from pyppeteer import launch
 from pyppeteer.browser import Browser
-import asyncio
 
 
 class Catcher:
@@ -10,11 +9,7 @@ class Catcher:
     async def init(cls, headless: bool = True) -> "Catcher":
         c = cls()
         c.browser = await launch(
-            headless=headless, options={
-                "handleSIGINT": False,
-                "handleSIGTERM": False,
-                "handleSIGHUP": False
-            }
+            headless=headless, options={"handleSIGINT": False, "handleSIGTERM": False, "handleSIGHUP": False}
         )
         return c
 
@@ -37,4 +32,3 @@ class Catcher:
 
     async def quit(self) -> None:
         await self.browser.close()
-

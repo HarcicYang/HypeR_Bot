@@ -1,39 +1,30 @@
 import asyncio
-from typing import Union
-from hyperot import configurator
+import traceback
 
-from cfgr.manager import Serializers  # Maybe I've forgotten sth when coding for ucfgr? IDK.
+import hyperot
 
-try:
-    configurator.BotConfig.load_from("config.json", Serializers.JSON, "hyper-bot")
-except FileNotFoundError:
-    configurator.BotConfig.create_and_write("config.json", Serializers.JSON)
-    print("没有找到配置文件，已自动创建，请填写后重启")
-    exit(-1)
-if True:
-    from hyperot.adapters import builtins as adp
+logger = hyperot.init()
 
-    adp.load_onebot()
+from hyperot import configurator, events, listener  # noqa: E402  # 需先 hyperot.init() 加载配置
 
-    from hyperot import listener, events, hyperogger
-    import ModuleClass
-    from hyperot.utils import logic
+import ModuleClass  # noqa: E402
 
 ModuleClass.load()
 
 handler_list = ModuleClass.ModuleRegister.get_registered()
 config = configurator.BotConfig.get("hyper-bot")
-logger = hyperogger.Logger()
-logger.set_level(config.log_level)
 
 
 @listener.reg
-@logic.ErrorHandler().handle_async
-async def handler(event: Union[events.Event, events.HyperNotify], actions: listener.Actions) -> None:
-    async with ModuleClass.TaskCxt() as tasks:
-        for i in handler_list:
-            if i.module.filter(event, i.allowed):
-                tasks.add(asyncio.create_task(i.module(actions, event).handle()))
+async def handler(event: events.Event | events.HyperNotify, actions: listener.Actions) -> None:
+    try:
+        # logger.debug(str(event.data))
+        async with ModuleClass.TaskCxt() as tasks:
+            for i in handler_list:
+                if i.module.filter(event, i.allowed):
+                    tasks.add(asyncio.create_task(i.module(actions, event).handle()))
+    except Exception:
+        logger.error(traceback.format_exc())
 
 
-listener.run()
+asyncio.run(listener.run())

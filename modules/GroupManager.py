@@ -1,8 +1,11 @@
-import os.path
 import json
+import os.path
 import time
-from hyperot.events import *
+from typing import Any, override
+
 from hyperot import common, segments
+from hyperot.events import *
+
 import ModuleClass
 from modules import WordSafety
 
@@ -10,18 +13,18 @@ from modules import WordSafety
 class UserInfo:
     def __init__(self):
         self.inited = False
-        self.violation_level: int = 1
-        self.violations = 0
+        self.violation_level: float = 1
+        self.violations: float = 0
         self.last_message: str = ""
         self.last_time: int = 0
         self.words_unsafe_times = 0
         self.last_punished_p: int = int(time.time())
         self.last_punished_t: int | float = 0
-        self.k1 = 1
-        self.k2 = 1
+        self.k1: float = 1
+        self.k2: float = 1
 
     def inc_violations(self, num: int | float) -> None:
-        self.violations += (num * self.k1)
+        self.violations += num * self.k1
         if self.violations <= 1:
             self.violations = 1.5
 
@@ -55,8 +58,9 @@ class UserInfo:
             return False
         elif self.violations >= (12 * self.k2) or self.words_unsafe_times >= 3:
             return True
+        return False
 
-    def update(self, last_msg, last_time) -> None:
+    def update(self, last_msg: str, last_time: int) -> None:
         self.last_message = last_msg
         self.last_time = last_time
         self.inited = True
@@ -72,7 +76,7 @@ class UserInfo:
         self.inc_violations(2)
 
     @classmethod
-    def load(cls, j_data: dict) -> "UserInfo":
+    def load(cls, j_data: dict[str, Any]) -> "UserInfo":
         obj = cls()
         obj.inited = True
         obj.violation_level = j_data["violation_level"]
@@ -83,7 +87,7 @@ class UserInfo:
 
         return obj
 
-    def dump(self) -> dict:
+    def dump(self) -> dict[str, Any]:
         return dict(
             violation_level=self.violation_level,
             violations=self.violations,
@@ -109,17 +113,17 @@ class GroupInfo:
             self.users[i].dec_violations(1)
 
     @classmethod
-    def load(cls, j_data: dict) -> "GroupInfo":
+    def load(cls, j_data: dict[str, Any]) -> "GroupInfo":
         obj = cls()
-        dic = dict()
+        dic: dict[int, UserInfo] = dict()
         for i in j_data:
             dic[int(i)] = UserInfo.load(j_data[i])
         obj.users = dic
 
         return obj
 
-    def dump(self) -> dict:
-        dic = dict()
+    def dump(self) -> dict[str, Any]:
+        dic: dict[str, Any] = dict()
         for i in self.users:
             dic[str(i)] = self.users[i].dump()
 
@@ -128,7 +132,7 @@ class GroupInfo:
     def gen_k(self) -> None:
         x = len(self.users)
         y1 = (0.0007 * x) + 1
-        y2 = (0.000002 * (x ** 2)) + 1
+        y2 = (0.000002 * (x**2)) + 1
         if y1 >= y2:
             k1 = y1
             k2 = y2
@@ -152,9 +156,9 @@ class InfoManager:
             return self.groups[gid]
 
     @classmethod
-    def load(cls, j_data: dict) -> "InfoManager":
+    def load(cls, j_data: dict[str, Any]) -> "InfoManager":
         obj = cls()
-        dic = dict()
+        dic: dict[int, GroupInfo] = dict()
         for i in j_data:
             dic[int(i)] = GroupInfo.load(j_data[i])
         obj.groups = dic
@@ -164,14 +168,14 @@ class InfoManager:
     @classmethod
     def load_from(cls, path: str) -> "InfoManager":
         if os.path.exists(path):
-            with open(path, "r") as f:
+            with open(path) as f:
                 j_data = json.load(f)
             return cls.load(j_data)
         else:
             return cls()
 
-    def dump(self) -> dict:
-        dic = dict()
+    def dump(self) -> dict[str, Any]:
+        dic: dict[str, Any] = dict()
         for i in self.groups:
             dic[str(i)] = self.groups[i].dump()
 
@@ -198,14 +202,27 @@ def string_similarity(s1: str, s2: str) -> float:
 
     try:
         similarity = 1 - diff / len(s1)
-    except:
+    except Exception:
         return 1.0
     return similarity
 
 
 @ModuleClass.ModuleRegister.register(GroupMessageEvent)
-class Module(ModuleClass.Module):
+class Module(ModuleClass.Module[GroupMessageEvent]):
+    @override
+    @staticmethod
+    def info() -> ModuleClass.ModuleInfo:
+        return ModuleClass.ModuleInfo(
+            is_hidden=True,
+            module_name="GroupManager",
+            desc="群聊反刷屏管理",
+            helps="自动检测并处罚刷屏行为（重复消息、大量消息、违禁词等），根据违规等级自动禁言。\n主人命令：.dump - 导出当前数据",
+        )
+
+    @override
     async def handle(self):
+        if self.event.group_id is None or self.event.user_id is None:
+            return
         if self.event.is_owner:
             if str(self.event.message) == ".dump":
                 print(data.dump())
@@ -273,23 +290,23 @@ class Module(ModuleClass.Module):
         data.get_group(self.event.group_id).glb_dec()
 
         if user.need_mute:
-            await self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
-                                             duration=int(120 * user.violation_level))
+            await self.actions.set_group_ban(
+                user_id=self.event.user_id, group_id=self.event.group_id, duration=int(120 * user.violation_level)
+            )
             user.punish(int(120 * user.violation_level))
 
         safety = WordSafety.check(text=str(self.event.message))
         if not safety.result:
-            await self.actions.del_message(self.event.message_id)
+            await self.actions.del_msg(int(self.event.message_id))
             user.inc_unsafe_times()
             if user.need_mute:
-                await self.actions.set_group_ban(user_id=self.event.user_id, group_id=self.event.group_id,
-                                                 duration=int(120 * user.violation_level))
-                await self.actions.send(
+                await self.actions.set_group_ban(
+                    user_id=self.event.user_id, group_id=self.event.group_id, duration=int(120 * user.violation_level)
+                )
+                await self.actions.send_msg(
                     user_id=self.event.user_id,
                     group_id=self.event.group_id,
-                    message=common.Message(
-                        segments.At(str(self.event.user_id)), segments.Text("请勿发送违禁词")
-                    )
+                    message=common.Message(segments.At(str(self.event.user_id)), segments.Text("请勿发送违禁词")),
                 )
                 user.clr_unsafe_times()
 

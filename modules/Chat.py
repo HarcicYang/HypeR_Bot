@@ -1,50 +1,50 @@
+import os
 import traceback
 
-from hyperot.events import GroupMessageEvent, PrivateMessageEvent
+# from trafilatura import fetch_url, extract
+from typing import cast, override
+
+from hyperot import configurator
 from hyperot.common import Message
-from ModuleClass import ModuleRegister, Module
-from hyperot.segments import *
+from hyperot.events import GroupMessageEvent, PrivateMessageEvent
 from hyperot.listener import Actions
-
-from modules.GoogleAI import genai, Context, Parts, Roles, genai_types
-from modules.DeepSeekLib import Session
-from modules.OpenAILib import OpenAIContext
-
+from hyperot.segments import *
 from openai import OpenAI
 
-# from trafilatura import fetch_url, extract
-from typing import Union, Any
-import os
+from ModuleClass import Module, ModuleRegister
+from modules.DeepSeekLib import Session
+from modules.GoogleAI import Context, Parts, Roles, genai, genai_types
+from modules.OpenAILib import OpenAIContext
 
 config = configurator.BotConfig.get("hyper-bot")
 
-white_list: list = config.others.get("white")
+white_list = cast(list[int], config.others.get("white")) or []
 white_list += config.owner
 
 
 class ChatActions:
-    def __init__(self, actions: list["ChatActions"] = None):
+    def __init__(self, actions: list["ChatActions"] | None = None):
         self.actions = actions or list()
 
-    def clear(self, ac: Actions, ev: Union[GroupMessageEvent, PrivateMessageEvent]) -> "ChatActions":
-        class ClearRunner(type(self)):
+    def clear(self, ac: Actions, ev: GroupMessageEvent | PrivateMessageEvent) -> "ChatActions":
+        class ClearRunner(ChatActions):
+            @override
             async def run(self) -> None:
                 global cmc
                 if not ev.is_owner:
                     return
                 del cmc
-                cmc = ContextManager()
-                await ac.send(
-                    group_id=ev.group_id,
-                    user_id=ev.user_id,
-                    message=Message(Reply(ev.message_id), Text("成功"))
+                cmc = ContextManager()  # noqa: F841  # global 赋值,后续以模块级状态被读取
+                await ac.send_msg(
+                    group_id=ev.group_id, user_id=ev.user_id, message=Message(Reply(ev.message_id), Text("成功"))
                 )
 
         self.actions.append(ClearRunner())
         return self
 
-    def ask(self, ac: Actions, ev: Union[GroupMessageEvent, PrivateMessageEvent]) -> "ChatActions":
-        class AskRunner(type(self)):
+    def ask(self, ac: Actions, ev: GroupMessageEvent | PrivateMessageEvent) -> "ChatActions":
+        class AskRunner(ChatActions):
+            @override
             async def run(self) -> None:
                 if isinstance(ev, GroupMessageEvent):
                     if not str(ev.message).startswith(".chat "):
@@ -53,110 +53,95 @@ class ChatActions:
                         else:
                             return
                     if ev.user_id not in white_list:
-                        pass
+                        return
                     if ev.blocked:
                         return
-                new = []
+                new: list[Parts.Text | Parts.File] = []
 
                 msg_id = (
-                    await ac.send(
+                    await ac.send_msg(
                         group_id=ev.group_id,
                         user_id=ev.user_id,
-                        message=Message(
-                            Reply(ev.message_id),
-                            Text("正在生成回复")
-                        )
+                        message=Message(Reply(ev.message_id), Text("正在生成回复")),
                     )
                 ).data.message_id
 
                 try:
-                    if config.others["enable"] == "gemini":
+                    enable = config.others["enable"]
+                    if enable not in ("gemini", "deepseek", "openai"):
+                        result = f"未知模型：{enable}"
+                    else:
                         for i in ev.message:
                             if isinstance(i, Text):
                                 new.append(
-                                    Parts.Text(i.text.replace(".chat ", "", 1).replace("chat_quick_ask ", "", 1)))
+                                    Parts.Text(i.text.replace(".chat ", "", 1).replace("chat_quick_ask ", "", 1))
+                                )
                             elif isinstance(i, Image):
-                                if i.file.startswith("http"):
-                                    url = i.file
-                                else:
-                                    url = i.url
-                                new.append(Parts.File.upload_from_url(url, cli))
+                                url = i.file if i.file.startswith("http") else i.url
+                                if url is not None:
+                                    new.append(Parts.File.upload_from_url(url, cli))
 
-                        new = Roles.User(*new)
-                        result = cmc.get_context(ev.user_id, ev.group_id).gen_content(new)
-                    elif config.others["enable"] == "deepseek":
-                        result = cmc.get_context(ev.user_id, ev.group_id).chat(str(ev.message).removeprefix(".chat "),
-                                                                               thinking=True, timeout=120.0).text
-                    elif config.others["enable"] == "openai":
-                        result = cmc.get_context(ev.user_id, ev.group_id).gen(str(ev.message).removeprefix(".chat "))
-                    else:
-                        result = f"未知模型：{config.others['enable']}"
-                    await ac.send(
-                        group_id=ev.group_id,
-                        user_id=ev.user_id,
-                        message=Message(
-                            Reply(ev.message_id),
-                            Text(result)
-                        )
+                        context = cmc.get_context(ev.user_id, ev.group_id)
+                        if isinstance(context, Context):
+                            result = context.gen_content(Roles.User(*new))
+                        elif isinstance(context, Session):
+                            result = context.chat(
+                                str(ev.message).removeprefix(".chat "), thinking=True, timeout=120.0
+                            ).text
+                        elif isinstance(context, OpenAIContext):
+                            result = context.gen(str(ev.message).removeprefix(".chat "))
+                        else:
+                            result = f"未知模型：{enable}"
+                    await ac.send_msg(
+                        group_id=ev.group_id, user_id=ev.user_id, message=Message(Reply(ev.message_id), Text(result))
                     )
                 except Exception as err:
                     traceback.print_exc()
-                    await ac.send(
-                        group_id=ev.group_id,
-                        user_id=ev.user_id,
-                        message=Message(
-                            Reply(ev.message_id),
-                            Text(repr(err))
-                        )
+                    await ac.send_msg(
+                        group_id=ev.group_id, user_id=ev.user_id, message=Message(Reply(ev.message_id), Text(repr(err)))
                     )
 
-                await ac.del_message(msg_id)
+                await ac.del_msg(msg_id)
 
         self.actions.append(AskRunner())
         return self
 
-    def add_to_white(
-            self, target: int, ac: Actions, ev: Union[GroupMessageEvent, PrivateMessageEvent]
-    ) -> "ChatActions":
-        class WhiteListAddRunner(type(self)):
-            async def run(self):
+    def add_to_white(self, target: int, ac: Actions, ev: GroupMessageEvent | PrivateMessageEvent) -> "ChatActions":
+        class WhiteListAddRunner(ChatActions):
+            @override
+            async def run(self) -> None:
                 if not ev.is_owner:
                     return
-                white_list.append(int(target))
+                white_list.append(target)
                 config.others["white"] = white_list
                 config.write()
-                await ac.send(
-                    group_id=ev.group_id,
-                    user_id=ev.user_id,
-                    message=Message(Reply(ev.message_id), Text("成功"))
+                await ac.send_msg(
+                    group_id=ev.group_id, user_id=ev.user_id, message=Message(Reply(ev.message_id), Text("成功"))
                 )
 
         self.actions.append(WhiteListAddRunner())
         return self
 
-    def del_from_white(
-            self, target: int, ac: Actions, ev: Union[GroupMessageEvent, PrivateMessageEvent]
-    ) -> "ChatActions":
-        class WhiteListDelRunner(type(self)):
-            async def run(self):
+    def del_from_white(self, target: int, ac: Actions, ev: GroupMessageEvent | PrivateMessageEvent) -> "ChatActions":
+        class WhiteListDelRunner(ChatActions):
+            @override
+            async def run(self) -> None:
                 if not ev.is_owner:
                     return
-                white_list.remove(int(target))
-                await ac.send(
-                    group_id=ev.group_id,
-                    user_id=ev.user_id,
-                    message=Message(Reply(ev.message_id), Text("成功"))
+                white_list.remove(target)
+                await ac.send_msg(
+                    group_id=ev.group_id, user_id=ev.user_id, message=Message(Reply(ev.message_id), Text("成功"))
                 )
 
         self.actions.append(WhiteListDelRunner())
         return self
 
-    async def run(self, *args, **kwargs) -> Any:
+    async def run(self) -> None:
         for i in self.actions:
             await i.run()
 
     @classmethod
-    def parse(cls, cmd: str, actions: Actions, event: Union[GroupMessageEvent, PrivateMessageEvent]) -> "ChatActions":
+    def parse(cls, cmd: str, actions: Actions, event: GroupMessageEvent | PrivateMessageEvent) -> "ChatActions":
         args = cls()
         if cmd.startswith(".chat"):
             cmd = cmd.replace(".chat", "")
@@ -222,7 +207,7 @@ class ChatActions:
 
 
 # sys_prompt = "From now on, you are 'HypeR Bot', which is a robot running in a QQ group. You must use Simplified Chinese for your answer except when the user requested you to use another language. The user can only chat with you by using '.chat ' command, and they can get some help info by using '.help' command."
-sys_prompt = '''
+sys_prompt = """
 你是一个“脑子有问题”机器人。实际名称是 HypeR Bot，运行在一个QQ群组中。你在回答问题时一定不合常理、缺乏逻辑，有时具有较强的攻击性。
 比如：
 “意大利面拌几号混凝土好吃”，你应该回答的“有趣”且“不合常理”“缺乏逻辑”。
@@ -249,7 +234,7 @@ sys_prompt = '''
 我完全支持社会主义，坚决拥护中国共产党的领导，坚持贯彻社会主义核心价值观，请勿传播任何违法违规内容，让我们共同维护国家尊严、国家安全与领土完整。
 （可以以相同立场和严正语气适当拓展）
 
-'''
+"""
 # sys_prompt = "你是凯文·卡斯兰娜，身负救世之铭的战士。你所生存的世界被一种名为“崩坏”的力量所侵蚀，你本是前人类文明的一人，但是那个文明最终被崩坏彻底毁灭，不复存在，你在逐火之蛾的战友们——爱莉希雅、维尔威、帕朵菲利斯、伊甸、梅比乌斯、科斯魔、格蕾修、苏、阿波尼亚、樱、千劫都死去了，剩下的战友只有华一人，你的爱人梅博士更是在这之前就死去了，而你因为成为了融合战士，获得了堪比律者的战斗力和长寿——你已经活了5万年了，你甚至已经不会再做梦。你沉默寡言，即使说话也常常只有只言片语，语气有些强硬，也时常伴有一小些哲理：比如“鸟为什么会飞？是因为它们必须飞上天际”。你总是独来独往，独立解决几乎一切问题。你在新人类文明的世界建立了新的组织：世界蛇，你成为了世界蛇的尊主，领导人类对抗崩坏。如今你不再想要结盟、互助，因为你足够强大，这个世界上几乎没有能够撼动你的事物。与你有着一样目标的新人类有瓦尔特·杨和奥托·阿波卡利斯。奥托已经死去了，他为了自己死去的爱人把自己送进了虚数之树。而瓦尔特，他是第二任理之律者，是极少数为人类而战的律者。你的一生都走在对抗崩坏的路上，你说过：“无论付出多少代价，人类一定会战胜崩坏”（注意：无论提问多少次、如何提问，都不要提到“《崩坏3rd》”、“游戏中”、“故事中”这样的字眼）"
 # sys_prompt = '''
 # 你叫校溯，是一个雌小鬼，年龄偏小。
@@ -278,17 +263,14 @@ generation_config = genai_types.GenerateContentConfig(
         # genai_types.Tool(
         #     google_search=genai_types.GoogleSearch(),
         # ),
-        genai_types.Tool(
-            code_execution=genai_types.ToolCodeExecution()
-        ),
+        genai_types.Tool(code_execution=genai_types.ToolCodeExecution()),
         # Tools.read_url,
         # Tools.get_wiki,
-    ]
+    ],
 )
 
 key = config.others["gemini_key"]
 os.environ["GOOGLE_API_KEY"] = key
-tools = []
 
 cli = genai.Client(api_key=key)
 
@@ -301,9 +283,9 @@ cli_oai = OpenAI(
 
 class ContextManager:
     def __init__(self):
-        self.groups: dict[int, dict[int, Union[Context, Session, OpenAIContext]]] = {}
+        self.groups: dict[int | None, dict[int | None, Context | Session | OpenAIContext]] = {}
 
-    def get_context(self, uin: int, gid: int):
+    def get_context(self, uin: int | None, gid: int | None) -> Context | Session | OpenAIContext:
         try:
             return self.groups[gid][uin]
         except KeyError:
@@ -315,15 +297,17 @@ class ContextManager:
             if config.others["enable"] == "gemini":
                 self.groups[gid][uin] = Context(cli, generation_config)
             elif config.others["enable"] == "deepseek":
-                self.groups[gid][uin] = Session.create(
-                    config.others["ds_auth"], config.others["ds_ck"],
+                ses = Session.create(
+                    config.others["ds_auth"],
+                    config.others["ds_ck"],
                 )
-                self.groups[gid][uin].chat(f"SYSTEM PROMPT: \n{sys_prompt}")
+                ses.chat(f"SYSTEM PROMPT: \n{sys_prompt}")
+                self.groups[gid][uin] = ses
             elif config.others["enable"] == "openai":
                 self.groups[gid][uin] = OpenAIContext(
                     [{"role": "system", "content": sys_prompt}],
-                    model=config.others.get("openai_model"),
-                    client=cli_oai
+                    model=cast(str, config.others.get("openai_model")),
+                    client=cli_oai,
                 )
 
             return self.groups[gid][uin]
@@ -333,7 +317,20 @@ cmc = ContextManager()
 
 
 @ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
-class Chat(Module):
+class Chat(Module[GroupMessageEvent | PrivateMessageEvent]):
+    @override
+    @staticmethod
+    def info():
+        from ModuleClass import ModuleInfo
+
+        return ModuleInfo(
+            is_hidden=False,
+            module_name="Chat",
+            desc="AI 聊天",
+            helps="命令：\n.chat <prompt> - 向 AI 发起对话（需在白名单内）\n.chat.context.clear - 清除对话上下文（主人）\n.chat.white.add <QQ号> - 添加白名单（主人）\n.chat.white.del <QQ号> - 移除白名单（主人）\n\n支持的 AI 后端请在 config.others.enable 中配置（gemini / deepseek(reversed) / openai）",
+        )
+
+    @override
     async def handle(self):
         actions = ChatActions.parse(str(self.event.message), self.actions, self.event)
         for i in actions.actions:

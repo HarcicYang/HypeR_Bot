@@ -1,6 +1,6 @@
+import importlib.util
 import os
 import sys
-import importlib.util
 import traceback
 
 from hyperot import configurator, hyperogger
@@ -11,7 +11,7 @@ logger.set_level(config.log_level)
 modules_path = os.path.dirname(__file__)
 
 
-def import_modules(path):
+def import_modules(path: str):
     imports = []
     for filename in os.listdir(path):
         if filename.startswith("__") or filename.endswith(".dis"):
@@ -25,7 +25,7 @@ def import_modules(path):
             module = importlib.import_module("modules." + module_name)
             sys.modules[module_name] = module
             imports.append(module)
-        except Exception as e:
+        except Exception:
             logger.log(f"导入模块 {module_name} 时发生错误: {traceback.format_exc()}", level=hyperogger.levels.ERROR)
 
     return imports

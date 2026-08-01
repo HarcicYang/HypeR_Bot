@@ -1,0 +1,46 @@
+from Hyper.Events import GroupMessageEvent
+from ModuleClass import ModuleRegister, Module
+
+from pathlib import Path
+import json
+import random
+
+TARGET_UIN = 1449924494
+# TARGET_UIN = 2488529467
+
+
+with open(Path(".") / "assets" / "qface.json", "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+
+def get_id() -> str:
+    # d = random.choice(data)
+    # if data.index(d) == 1:
+    #     d = random.choice(data)
+    #     if data.index(d) == 1:
+    #         return str(random.choice(d["2"])["4"])
+    #     else:
+    #         return str(random.choice(d["2"])["1"])
+    # else:
+    #     return str(random.choice(d["2"])["1"])
+    return str(random.choice(data[0]["2"])["1"])
+
+
+@ModuleRegister.register(GroupMessageEvent)
+class Mark(Module):
+    async def handle(self):
+        if int(self.event.user_id) == TARGET_UIN:
+            await self.actions.custom.set_group_reaction(
+                group_id=int(self.event.group_id),
+                message_id=int(self.event.message_id),
+                code="76",
+                is_add=True
+            )
+        elif int(self.event.user_id) in self.config.owner:
+            id_ = get_id()
+            await self.actions.custom.set_group_reaction(
+                group_id=int(self.event.group_id),
+                message_id=int(self.event.message_id),
+                code=id_,
+                is_add=True
+            )

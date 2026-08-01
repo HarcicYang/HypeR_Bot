@@ -1,8 +1,9 @@
-from typing import Union
+from typing import Any
+
+import filetype
+import httpx
 from google import genai
 from google.genai import types as genai_types
-import httpx
-import filetype
 
 
 class Parts:
@@ -14,8 +15,9 @@ class Parts:
         @classmethod
         def upload_from_file(cls, path: str, cli: genai.Client):
             with open(path, "rb") as f:
-                mime = filetype.guess(f.read()).mime
-            file = cli.files.upload(path=path, config=genai_types.UploadFileConfig(mime_type=mime))
+                guessed = filetype.guess(f.read())
+                mime = "application/octet-stream" if guessed is None else guessed.mime
+            file = cli.files.upload(file=path, config=genai_types.UploadFileConfig(mime_type=mime))
             return cls(file)
 
         @classmethod
@@ -39,24 +41,24 @@ class Parts:
 
 
 class BaseRole:
-    def __init__(self, *args: Union[Parts.File, Parts.Text]):
+    def __init__(self, *args: Parts.File | Parts.Text):
         self.content = list(args)
         self.tag = "none"
 
-    def res(self) -> list:
+    def res(self) -> list[Any]:
         return [i.to_raw() for i in self.content]
 
 
 class Roles:
     @staticmethod
     class User(BaseRole):
-        def __init__(self, *args: Union[Parts.File, Parts.Text]):
+        def __init__(self, *args: Parts.File | Parts.Text):
             super().__init__(*args)
             self.tag = "user"
 
     @staticmethod
     class Model(BaseRole):
-        def __init__(self, *args: Union[Parts.File, Parts.Text]):
+        def __init__(self, *args: Parts.File | Parts.Text):
             super().__init__(*args)
             self.tag = "model"
 
@@ -70,6 +72,6 @@ class Context:
     def gen_content(self, content: Roles.User) -> str:
         try:
             res = self.chat.send_message(content.res())
-            return res.text
+            return res.text or ""
         except Exception as e:
             raise e

@@ -1,15 +1,30 @@
+from collections.abc import Callable
+from typing import override
+
 from hyperot.common import Message
-from hyperot.segments import *
-from ModuleClass import Module, ModuleRegister, InnerHandler
 from hyperot.events import *
+from hyperot.segments import *
+
+from ModuleClass import InnerHandler, Module, ModuleInfo, ModuleRegister
 
 
-def searcher(checker, iter_obj: list) -> list[InnerHandler]:
+def searcher(checker: Callable[[InnerHandler], bool], iter_obj: list[InnerHandler]) -> list[InnerHandler]:
     return list(filter(checker, iter_obj))
 
 
 @ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
-class Helper(Module):
+class Helper(Module[GroupMessageEvent | PrivateMessageEvent]):
+    @override
+    @staticmethod
+    def info() -> ModuleInfo:
+        return ModuleInfo(
+            is_hidden=True,
+            module_name="Helper",
+            desc="显示机器人帮助信息",
+            helps="命令：\n.help - 列出所有模块\n.help <模块名> - 显示某个模块的详细帮助",
+        )
+
+    @override
     async def handle(self):
         if str(self.event.message).startswith(".help"):
             try:
@@ -27,18 +42,14 @@ class Helper(Module):
                 help_info += "\n\n使用命令“.help <module name>”获得更多信息\n\nHypeR Bot操作手册：https://harcicyang.github.io/hyper-bot/usage/qq_usage/"
 
             else:
-                def check(x: InnerHandler):
-                    if x.module.info().module_name == name:
-                        return True
-                    return False
-                res = searcher(check, ModuleRegister.get_registered())
-                if len(res) == 0:
-                    help_info = "未找到这个模块"
-                else:
-                    help_info = (f"--- {name} 帮助 ---\n"
-                                 f"{res[0].module.info().helps}")
 
-            await self.actions.send(
+                def check(x: InnerHandler):
+                    return x.module.info().module_name == name
+
+                res = searcher(check, ModuleRegister.get_registered())
+                help_info = f"--- {name} 帮助 ---\n{res[0].module.info().helps}" if len(res) != 0 else "未找到这个模块"
+
+            await self.actions.send_msg(
                 group_id=self.event.group_id,
                 user_id=self.event.user_id,
                 message=Message(Text(help_info)),

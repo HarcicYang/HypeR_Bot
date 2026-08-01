@@ -1,0 +1,29 @@
+from Hyper import Events, Segments, Comm
+import ModuleClass
+from Hyper.Events import *
+import Hyper
+
+
+@ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
+class Module(ModuleClass.Module):
+    @staticmethod
+    def filter(event: Events.Event, allowed: list) -> bool:
+        if isinstance(event, HyperNotify):
+            return False
+
+        if not event.is_owner:
+            return False
+        else:
+            if isinstance(event, MessageEvent):
+                if str(event.message) == ".restart":
+                    return True
+
+        return False
+
+    async def handle(self):
+        await self.actions.send_msg(
+            group_id=self.event.group_id,
+            user_id=self.event.user_id,
+            message=Comm.Message(Segments.Text("正在执行"))
+        )
+        Hyper.restart()

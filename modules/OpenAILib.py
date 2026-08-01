@@ -1,12 +1,12 @@
 from dataclasses import dataclass
-from typing import Union, Any
+from typing import Any
 
 from openai import OpenAI
 
 
 @dataclass
 class OpenAIContext:
-    content: list[Union[dict, Any]]
+    content: list[Any]
     model: str
     client: OpenAI
 
@@ -18,4 +18,4 @@ class OpenAIContext:
             stream=False,
         )
         self.content.append(response.choices[0].message)
-        return response.choices[0].message.content
+        return response.choices[0].message.content or ""

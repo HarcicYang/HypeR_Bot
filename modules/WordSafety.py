@@ -1,7 +1,6 @@
 import logging
-from jieba import lcut, set_dictionary
 
-from hyperot.utils import logic
+from jieba import lcut
 
 logging.getLogger("jieba").setLevel(logging.ERROR)
 # try:
@@ -16,7 +15,7 @@ class Result:
         self.result = result
 
 
-with open("assets/dict.txt", "r", encoding="utf-8") as f:
+with open("assets/dict.txt", encoding="utf-8") as f:
     words: list[dict[str, str]] = []
     word = f.read()
     word = word.split("\n")
@@ -27,7 +26,6 @@ with open("assets/dict.txt", "r", encoding="utf-8") as f:
     del i
 
 
-@logic.Cacher().cache
 def check(text: str) -> Result:
     texts = lcut(text)
     for j in words:

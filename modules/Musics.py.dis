@@ -125,7 +125,7 @@ class Musics(Module):
                 res_word = "搜索结果：\n\n" + "\n".join(res_list) + "\n\n冒号前为该歌曲的id，若要播放，请使用如下命令：\n.music play 歌曲id"
 
                 msg = Message(Reply(self.event.message_id), Text(res_word))
-                await self.actions.send(group_id=self.event.group_id, message=msg)
+                await self.actions.send_msg(group_id=self.event.group_id, message=msg)
                 custom_row = []
                 for i in rec_list:
                     custom_row.append(
@@ -140,11 +140,11 @@ class Musics(Module):
                         )
                     )
 
-                await self.actions.send(group_id=self.event.group_id, message=Message(KeyBoard(custom_row)))
+                await self.actions.send_msg(group_id=self.event.group_id, message=Message(KeyBoard(custom_row)))
 
             elif action in ["播放", "play", "ncm_qa_play"]:
                 song_id = int(cmd[2])
-                msg_res = await self.actions.send(
+                msg_res = await self.actions.send_msg(
                     group_id=self.event.group_id,
                     message=Message(
                         Reply(self.event.message_id),
@@ -156,14 +156,14 @@ class Musics(Module):
                 if res[0]:
                     path = res[2]
                     url = res[3]
-                    await self.actions.send(
+                    await self.actions.send_msg(
                         group_id=self.event.group_id, message=Message(Music(type="163", id=song_id))
                     )
                     msg = Message(Record(f"file://{path}"))
-                    await self.actions.send(group_id=self.event.group_id, message=msg)
+                    await self.actions.send_msg(group_id=self.event.group_id, message=msg)
                     await self.actions.del_message(message_id=msg_id)
                 else:
                     err_msg = res[1]
                     await self.actions.del_message(message_id=msg_id)
                     msg = Message(Reply(self.event.message_id), Text(err_msg))
-                    await self.actions.send(group_id=self.event.group_id, message=msg)
+                    await self.actions.send_msg(group_id=self.event.group_id, message=msg)
