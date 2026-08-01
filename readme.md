@@ -99,7 +99,7 @@ AI 聊天模块（`.chat`）需要在 `others` 中配置后端：
   }
 ```
 
-`enable` 可选 `gemini` / `deepseek` / `openai`；`white` 为聊天白名单。
+`enable` 可选 `gemini` / `deepseek` / `openai`；`white` 为聊天白名单。(注：Deepseek为逆向工程实现，并非官方API,要使用DeepSeek API, 请选择 openai)
 
 ## 环境
 
