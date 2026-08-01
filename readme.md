@@ -11,80 +11,44 @@
 
 ---
 
+## 项目状态
 
-## 🚧 非活跃项目
-
-若您在看`hyper-bot`，请移步[HypeR Core](https://github.com/HarcicYang/HyperBotCore)
-
-实质性功能将不再维护，截止2026年6月，他们的绝大多数仍然可以正常工作。后期的API变更也许会改变这一状况。
-
-
-
-本人对于传统类型QQ Bot的创意已经燃尽力（悲），加之本人正在面临2027年的高考，该项目内实质性功能（如：网页解析、表情包生成）可能不再会得到积极维护。
-
-框架 / [Python Package](https://pypi.org/project/hyper-bot/) 部分可能在后期迁移到其他仓库，并继续更新。
-
-### 接下来的打算
-
-既然已经回来重操旧业了，肯定不能啥也不干嘛。
-
-1. 开始新项目 [HyperAG](https://github.com/HarcicYang/HyperAG) ;
-2. 转移该项目核心（即框架 / [Python Package](https://pypi.org/project/hyper-bot/) 部分），继续维护，在尽可能少改变 API 的前提下重构并完善，重点关注多协议功能和性能;
-3. 为核心编写新的完善的文档;
-4. 高考加油（）
-
-
+- 框架（即 [hyper-bot](https://pypi.org/project/hyper-bot/) / `hyperot` 核心）已在 [HyperBotCore](https://github.com/HarcicYang/HyperBotCore) 仓库继续独立维护，本仓库不再包含框架源码，仅作为 bot 本体使用。
+- 本仓库已迁移至 **uv** 管理依赖（Python 3.12。
 
 ---
 
 ## 概览
 
-HypeR Bot是一个适配OneBot协议的机器人框架，旨在提供一个简洁、高效、可扩展的机器人运行结构。
+HypeR Bot是一个适配 OneBot 和 Milky 协议并支持拓展自定义协议的机器人框架，旨在提供一个简洁、高效、可扩展的机器人运行结构。
 
-~~[点我跳转详细文档 (Old) (Simplified Chinese)](https://harcicyang.github.io/hyper-bot/)~~
+## 快速开始
 
-[点我跳转详细文档 (New) (English)](./documents/en.md)
+### 环境要求
 
-## 使用 `hytil` 快速开始
+- Python 3.12
+- [uv](https://docs.astral.sh/uv/)（依赖管理，`uv.lock` 锁定全部版本）
 
-`hytil` 于 HypeR Bot 0.81.0 版本加入，是一个支持您快速配置完整 HypeR Bot 的实用工具。
-
-### 安装 HypeR Bot
-
-```shell
-pip install hyper_bot
-```
-
-### 使用 `hytil`
+### 安装与运行
 
 ```shell
-$ python -m hytil
-usage: hytil.py [-h] [-v] [-i] [-p PATH]
-
-HypeR Bot Utils 版本 0.0.1
-
-options:
-  -h, --help            show this help message and exit
-  -v, --version         显示版本信息
-  -i, --install         安装完整的HypeR Bot到本地
-  -p PATH, --path PATH  指定操作路径
-
+uv sync          # 安装运行时与开发依赖到 .venv
+uv run python main.py
 ```
 
-在开始前，确认一个空文件夹，该文件夹将用于安装 HypeR Bot。
-```shell
-$ mkdir bot
-$ ls
-bot ...
-```
+首次运行会自动生成 `config.json`，编辑后重启即可。
 
-现在，使用如下命令将完整的 HypeR Bot 下载到本地：
+### 开发工具
 
 ```shell
-python -m hytil -i -p ./bot
+uv run ruff check       # lint
+uv run ruff format      # 格式化
+uv run pyrefly check    # 类型检查（strict 预设，无参数的项目模式）
 ```
 
-下载完成后，您将会收到运行 `main.py` 的提示，此时，请您进入安装目录，在该目录下执行`python main.py`，配置文件 `config.json`将随后创建，请根据下方指引编辑配置文件。
+### 模块系统
+
+功能模块位于 `modules/` 目录，由 `modules/__init__.py` 自动发现加载（`.py` 文件与子目录均可）。禁用模块：将 `.py` 重命名为 `.dis`。
 
 ## 配置文件
 
@@ -123,7 +87,7 @@ python -m hytil -i -p ./bot
 - `log_use_nf`：是否为日志输出启用NerdFont;
 - `protocol`：适配的协议，目前仅支持OneBot.
 
-若您正在使用完整的 HypeR Bot 安装，您需要如下设置 `others` 部分以正常使用 AI 聊天功能：
+AI 聊天模块（`.chat`）需要在 `others` 中配置后端：
 
 ```json
 "others": {
@@ -134,22 +98,11 @@ python -m hytil -i -p ./bot
     "white": []
   }
 ```
-_~~直接注册个 [AI Studio](https://aistudio.google.com) 用gemini得了，ds我自己逆向的，懒得写文档了（~~_
+
+`enable` 可选 `gemini` / `deepseek` / `openai`；`white` 为聊天白名单。
 
 ## 环境
 
-> 本人开发和测试均在Python 3.11.7环境进行，其他版本未经测试，理论上支持 Python 3.9 及以上版本。
-
-所需的第三方库陈列在[`requirements.txt`](/requirements.txt)中，使用`pip install -r requirements.txt`即可。
-
-[`requirements_optional.txt`](/requirements_optional.txt)中包含部分模块所需的其他依赖，可视情况安装。
-
-
-### Finale
-
-大概没什么人能看到这里吧。
-
-我也想对我的一位故友表达我的歉意，不过，都过去了。
-
-
-瞻顾遗迹，如在昨日，令人长号不自禁。
+- Python 3.12（`.python-version` 锁定；`pyproject.toml` 声明 `requires-python = ">=3.12,<3.13"`）
+- 依赖声明于 `pyproject.toml`，版本锁定于 `uv.lock`
+- 代码质量：ruff（lint + format）与 pyrefly（strict 类型检查），配置均在 `pyproject.toml`
