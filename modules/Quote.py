@@ -10,21 +10,21 @@ from modules.site_catch import Catcher
 
 
 async def get_image(quote: str, ava_url: str, name: str, uin: int) -> str:
-    catcher = await Catcher.init()
-    with open("./assets/quote.html", encoding="utf-8") as f:
-        html = f.read()
+    catcher = await Catcher.init()  # 共享浏览器，进程内只启动一次
+    try:
+        with open("./assets/quote.html", encoding="utf-8") as f:
+            html = f.read()
 
-    html = html.replace("{ava_url}", ava_url)
-    html = html.replace("{quote}", quote)
-    html = html.replace("{name}", name)
+        html = html.replace("{ava_url}", ava_url)
+        html = html.replace("{quote}", quote)
+        html = html.replace("{name}", name)
 
-    with open(f"./temps/quote_{uin}.html", "w", encoding="utf-8") as f:
-        f.write(html)
-    # res = await html2img(f"file://{os.path.abspath(f'./temps/quote_{uin}.html')}")
-    res = await catcher.catch(f"file://{os.path.abspath(f'./temps/quote_{uin}.html')}", (1280, 640))
-    os.remove(f"./temps/quote_{uin}.html")
-    await catcher.quit()
-    return res
+        with open(f"./temps/quote_{uin}.html", "w", encoding="utf-8") as f:
+            f.write(html)
+        # res = await html2img(f"file://{os.path.abspath(f'./temps/quote_{uin}.html')}")
+        return await catcher.catch(f"file://{os.path.abspath(f'./temps/quote_{uin}.html')}", (1280, 640))
+    finally:
+        os.remove(f"./temps/quote_{uin}.html")
 
 
 @ModuleRegister.register(GroupMessageEvent)

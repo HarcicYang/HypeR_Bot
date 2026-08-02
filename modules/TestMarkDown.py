@@ -5,6 +5,7 @@ from typing import override
 from hyperot.common import Message, Ret
 from hyperot.events import *
 from hyperot.segments import *
+from hyperot.segments import Reply
 from hyperot.utils.ark_sign_helper import Card, get_pic
 
 import ModuleClass
@@ -120,7 +121,9 @@ class Test(ModuleClass.Module[MessageEvent]):
             result = await self.actions.get_stranger_info(2488529467)
             print(result.ret_code)
             await self.actions.send_msg(
-                json.dumps(result.data.raw), group_id=self.event.group_id, user_id=self.event.user_id
+                Message(Reply(self.event.message_id), Text(json.dumps(result.data.raw))),
+                group_id=self.event.group_id,
+                user_id=self.event.user_id,
             )
 
         elif str(self.event.message) == "Ciallo～(∠・ω< )⌒★":

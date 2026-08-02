@@ -78,12 +78,10 @@ class GitHubView:
 
     @staticmethod
     async def _get(url: str) -> str:
-        cth = await Catcher.init()
+        cth = await Catcher.init()  # 共享浏览器，进程内只启动一次
         # pth = await cth.catch("https://github.com/LagrangeDev/Lagrange.Core/issues/444")
         # pth = await cth.catch("https://github.com/LagrangeDev/Lagrange.Core/pull/703")
-        pth = await cth.catch(url)
-        await cth.quit()
-        return pth
+        return await cth.catch(url)
 
     def head(self) -> str:
         return f"https://opengraph.githubassets.com/Yenai/{self.author}/{self.repo}"
@@ -172,7 +170,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         except AttributeError:
             return
 
-        if bv_id:
+        if bv_id and (self.event.group_id != 983497968 or self.event.user_id == 2488529467):
             for i in bv_id:
                 try:
                     data, ok = await video_info(bv=i)
@@ -221,5 +219,8 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
                         os.remove(f"./temps/github_{ghv.author}_{ghv.repo}.png")
                     except NotImplementedError:
                         pass
-        except Exception:
+        except Exception as e:
+            import traceback as _tb
+
+            print(f"GitHub 预览失败: {e}\n{_tb.format_exc()}")
             return

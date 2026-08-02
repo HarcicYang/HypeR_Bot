@@ -9,6 +9,7 @@ from hyperot.common import Message
 from hyperot.events import GroupMessageEvent, PrivateMessageEvent
 from hyperot.listener import Actions
 from hyperot.segments import *
+from hyperot.segments import CustomNode, Forward, Text
 from openai import OpenAI
 
 from ModuleClass import Module, ModuleRegister
@@ -92,9 +93,17 @@ class ChatActions:
                             result = context.gen(str(ev.message).removeprefix(".chat "))
                         else:
                             result = f"未知模型：{enable}"
-                    await ac.send_msg(
-                        group_id=ev.group_id, user_id=ev.user_id, message=Message(Reply(ev.message_id), Text(result))
+                    msg = Message(
+                        Forward(
+                            content=[
+                                CustomNode(user_id=str(ev.user_id or 0), nick_name="", content=ev.message).to_json(),
+                                CustomNode(
+                                    user_id=str(ev.self_id), nick_name="", content=Message(Text(result))
+                                ).to_json(),
+                            ]
+                        )
                     )
+                    await ac.send_msg(group_id=ev.group_id, user_id=ev.user_id, message=msg)
                 except Exception as err:
                     traceback.print_exc()
                     await ac.send_msg(
