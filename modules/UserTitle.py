@@ -1,8 +1,7 @@
-from typing import override
-
 from hyperot.common import Message
 from hyperot.events import *
 from hyperot.segments import *
+from typing_extensions import override
 
 import ModuleClass
 from ModuleClass import ModuleInfo

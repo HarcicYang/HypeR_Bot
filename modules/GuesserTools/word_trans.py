@@ -1,16 +1,18 @@
 from collections import deque
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-try:
-    from numba import njit  # pyrefly: ignore[missing-import]  # numba 可选，未安装时走纯 Python 实现
-
-    NUMBA_AVAILABLE = True
-except ImportError:
-    NUMBA_AVAILABLE = False
+from importlib import import_module
+from typing import Any
 
 from .utils import lib_zh
 from .utils.languages import Word
+
+njit: Any = None
+try:
+    njit = import_module("numba").njit  # numba 可选，未安装时走纯 Python 实现
+    NUMBA_AVAILABLE = True
+except (ImportError, AttributeError):
+    NUMBA_AVAILABLE = False
 
 my_lib = lib_zh.by_length(2)
 
@@ -25,7 +27,7 @@ def _reverse_path(path: list[Word]) -> list[Word]:
 
 
 if NUMBA_AVAILABLE:
-    _reverse_path = njit(_reverse_path)  # pyrefly: ignore[unbound-name]
+    _reverse_path = njit(_reverse_path)
 
 
 def trans(from_word: str, to_word: str, by: Callable[[Word], list[Word]], limit: int = 10) -> list[Word]:

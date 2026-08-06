@@ -1,9 +1,9 @@
 from collections.abc import Callable
-from typing import override
 
 from hyperot.common import Message
 from hyperot.events import *
 from hyperot.segments import *
+from typing_extensions import override
 
 from ModuleClass import InnerHandler, Module, ModuleInfo, ModuleRegister
 

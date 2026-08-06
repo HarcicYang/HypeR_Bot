@@ -6,9 +6,10 @@ import inspect
 import json
 import re
 from collections.abc import Callable
-from typing import Any, TypeVar, Union, override
+from typing import Any, Generic, TypeVar, Union
 
 from hyperot import configurator, events, hyperogger, listener
+from typing_extensions import override
 
 EventT = TypeVar("EventT", bound=events.Event | events.HyperNotify)
 
@@ -170,7 +171,7 @@ class ModuleInfo:
     helps: str = "None"
 
 
-class Module[EventT]:
+class Module(Generic[EventT]):
     config = config
 
     def __init__(self, actions: listener.Actions, event: EventT) -> None:

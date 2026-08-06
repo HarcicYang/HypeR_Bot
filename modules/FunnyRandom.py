@@ -1,18 +1,19 @@
 import asyncio
 import dataclasses
 import json
-import os
 import random
 import time
 from random import randint
-from typing import Any, override
+from typing import Any
 
 import httpx
 from hyperot.common import Message
 from hyperot.events import GroupMessageEvent, PrivateMessageEvent
 from hyperot.segments import *
+from typing_extensions import override
 
 from ModuleClass import Module, ModuleInfo, ModuleRegister
+from modules.site_catch import file_url
 
 
 @dataclasses.dataclass
@@ -46,7 +47,7 @@ with open("./assets/quick.json", encoding="utf-8") as f:
 
 
 setu_last = int(time.time())
-setu_cache = [f"file://{os.path.abspath('./assets/serika.png')}"]
+setu_cache = [file_url("./assets/serika.png")]
 
 
 @ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)

@@ -3,7 +3,7 @@ name = "hyperbot"
 version = "1.0.0"
 description = "HypeR Bot — Python QQ bot framework implementing OneBot v11 protocol"
 readme = "readme.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "aiohttp",
     "cairosvg",
@@ -12,15 +12,16 @@ dependencies = [
     "GitPython",
     "google-genai",
     "httpx",
-    "hyper-bot==1.0.0",
+    "hyper-bot==1.0.0.post1",
     "jieba",
     "meme-generator<0.2.0",
     "meme-generator-contrib",
     "numpy",
     "openai",
     "pillow",
-    "pyppeteer",
+    "playwright>=1.62.0",
     "requests",
+    "typing-extensions",
     "ucfgr",
 ]
 
@@ -39,7 +40,7 @@ override-dependencies = [
 ]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py311"
 line-length = 120
 
 [tool.ruff.lint]

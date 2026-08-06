@@ -1,12 +1,12 @@
 import os
-from typing import override
 
 from hyperot import segments
 from hyperot.common import Message
 from hyperot.events import *
+from typing_extensions import override
 
 from ModuleClass import Module, ModuleInfo, ModuleRegister
-from modules.site_catch import Catcher
+from modules.site_catch import Catcher, file_url
 
 
 async def get_image(quote: str, ava_url: str, name: str, uin: int) -> str:
@@ -21,8 +21,7 @@ async def get_image(quote: str, ava_url: str, name: str, uin: int) -> str:
 
         with open(f"./temps/quote_{uin}.html", "w", encoding="utf-8") as f:
             f.write(html)
-        # res = await html2img(f"file://{os.path.abspath(f'./temps/quote_{uin}.html')}")
-        return await catcher.catch(f"file://{os.path.abspath(f'./temps/quote_{uin}.html')}", (1280, 640))
+        return await catcher.catch(file_url(f"./temps/quote_{uin}.html"), (1280, 640))
     finally:
         os.remove(f"./temps/quote_{uin}.html")
 
@@ -60,8 +59,6 @@ class Quoter(Module[GroupMessageEvent]):
             await self.actions.send_msg(
                 group_id=self.event.group_id,
                 user_id=self.event.user_id,
-                message=Message(
-                    segments.Reply(self.event.message_id), segments.Image(f"file://{os.path.abspath(res)}")
-                ),
+                message=Message(segments.Reply(self.event.message_id), segments.Image(file_url(res))),
             )
             os.remove(res)

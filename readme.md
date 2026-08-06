@@ -14,7 +14,7 @@
 ## 项目状态
 
 - 框架（即 [hyper-bot](https://pypi.org/project/hyper-bot/) / `hyperot` 核心）已在 [HyperBotCore](https://github.com/HarcicYang/HyperBotCore) 仓库继续独立维护，本仓库不再包含框架源码，仅作为 bot 本体使用。
-- 本仓库已迁移至 **uv** 管理依赖（Python 3.12。
+- 本仓库已迁移至 **uv** 管理依赖（Python 3.11）。
 
 ---
 
@@ -103,6 +103,6 @@ AI 聊天模块（`.chat`）需要在 `others` 中配置后端：
 
 ## 环境
 
-- Python 3.12（`.python-version` 锁定；`pyproject.toml` 声明 `requires-python = ">=3.12,<3.13"`）
+- Python 3.11（`.python-version` 锁定；`pyproject.toml` 声明 `requires-python = ">=3.11,<3.13"`）
 - 依赖声明于 `pyproject.toml`，版本锁定于 `uv.lock`
 - 代码质量：ruff（lint + format）与 pyrefly（strict 类型检查），配置均在 `pyproject.toml`

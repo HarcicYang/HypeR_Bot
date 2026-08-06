@@ -2,7 +2,7 @@ import os
 import traceback
 
 # from trafilatura import fetch_url, extract
-from typing import cast, override
+from typing import cast
 
 from hyperot import configurator
 from hyperot.common import Message
@@ -11,6 +11,7 @@ from hyperot.listener import Actions
 from hyperot.segments import *
 from hyperot.segments import CustomNode, Forward, Text
 from openai import OpenAI
+from typing_extensions import override
 
 from ModuleClass import Module, ModuleRegister
 from modules.DeepSeekLib import Session
@@ -53,8 +54,8 @@ class ChatActions:
                             pass
                         else:
                             return
-                    if ev.user_id not in white_list:
-                        return
+                    # if ev.user_id not in white_list:
+                    #     return
                     if ev.blocked:
                         return
                 new: list[Parts.Text | Parts.File] = []

@@ -1,9 +1,10 @@
 import datetime
-from typing import Any, override
+from typing import Any
 
 import hyperot
 from hyperot import common, events, segments
 from hyperot.events import *
+from typing_extensions import override
 
 import ModuleClass
 
@@ -27,7 +28,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         if isinstance(event, HyperNotify) or event.blocked:
             return False
 
-        return isinstance(event, (GroupMessageEvent, PrivateMessageEvent)) and str(event.message) == ".info"
+        return isinstance(event, GroupMessageEvent | PrivateMessageEvent) and str(event.message) == ".info"
 
     @override
     async def handle(self):

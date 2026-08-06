@@ -1,7 +1,8 @@
-from typing import Any
+from typing import Any, cast
 
 import requests
 from flask import Flask, request
+from werkzeug.wrappers.response import Response as WerkzeugResponse
 
 app = Flask(__name__)
 
@@ -25,7 +26,8 @@ def proxy(path: str):
     excluded_headers = ["content-encoding", "content-length", "transfer-encoding", "connection"]
     resp_headers = [(name, value) for (name, value) in resp.raw.headers.items() if name.lower() not in excluded_headers]
 
-    response = app.response_class(resp.content, resp.status_code, resp_headers)
+    response = cast(WerkzeugResponse, app.response_class(status=resp.status_code, headers=resp_headers))
+    response.set_data(resp.content)
     return response
 
 

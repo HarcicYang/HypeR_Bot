@@ -1,9 +1,9 @@
 import json
 import random
-from typing import override
 
 from hyperot import common, segments
 from hyperot.events import *
+from typing_extensions import override
 
 import ModuleClass
 

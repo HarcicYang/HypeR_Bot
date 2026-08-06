@@ -23,7 +23,7 @@ uv run python main.py
 
 - On first run, `config.json` is auto-created; edit it before restarting.
 - Config must exist **before** importing `hyperot.adapters` — the import order in `main.py` is intentional.
-- Dependency management uses **uv**: `uv sync` (installs runtime + dev deps into `.venv`, Python 3.12).
+- Dependency management uses **uv**: `uv sync` (installs runtime + dev deps into `.venv`, Python 3.11).
   Versions are locked in `uv.lock`; `pyproject.toml` is the single source of dependency truth.
 
 ## Module system
@@ -111,7 +111,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
 
 ## Environment
 
-- Python 3.12 (locked via `.python-version`; `requires-python = ">=3.12,<3.13"` in `pyproject.toml`)
+- Python 3.11 (locked via `.python-version`; `requires-python = ">=3.11,<3.13"` in `pyproject.toml`)
 - Virtualenv: `.venv/` (managed by uv; old `active/`/`venvback/` removed)
 - Dependencies: declared in `pyproject.toml`, locked in `uv.lock` — no `requirements*.txt` files
 - Linting/formatting: **ruff** (`uv run ruff check` / `uv run ruff format`, line-length 120, config in `pyproject.toml`)

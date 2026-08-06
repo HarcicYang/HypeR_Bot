@@ -1,7 +1,8 @@
-from typing import Any, override
+from typing import Any
 
 from hyperot import common, events, segments
 from hyperot.events import GroupMessageEvent, PrivateMessageEvent
+from typing_extensions import override
 
 import ModuleClass
 

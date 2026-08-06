@@ -1,16 +1,17 @@
 import json
 import os
 import re
-from typing import override
+import time
 
 import httpx
 from hyperot import common, segments
 from hyperot.events import *
 from PIL import Image
+from typing_extensions import override
 
 import ModuleClass
 from modules.bili_renderer import fetch_resources, render, video_info
-from modules.site_catch import Catcher
+from modules.site_catch import Catcher, file_url
 
 
 def get_bv(text: str):
@@ -38,6 +39,30 @@ def get_bv(text: str):
     return bv_list or None
 
 
+# 频率限制：同一聊天会话内，同一项目（GitHub 仓库 / B站视频）5 分钟内只解析一次。
+_RATE_LIMIT_SECONDS = 300
+_MAX_RECORDS = 2048
+_LAST_PARSED: dict[tuple[int, str], float] = {}
+
+
+def _rate_limited(session: int | None, project: str) -> bool:
+    """返回 True 表示该项目在本会话内处于限频窗口，应跳过本次解析。"""
+    if session is None:
+        return False
+    last = _LAST_PARSED.get((session, project))
+    return last is not None and time.monotonic() - last < _RATE_LIMIT_SECONDS
+
+
+def _mark_parsed(session: int | None, project: str) -> None:
+    """记录一次成功的解析；仅记录成功，解析失败不占用限频窗口。"""
+    if session is None:
+        return
+    _LAST_PARSED[(session, project)] = time.monotonic()
+    if len(_LAST_PARSED) > _MAX_RECORDS:  # 防膨胀：顺带清理已过期的记录
+        for key in [k for k, t in _LAST_PARSED.items() if time.monotonic() - t >= _RATE_LIMIT_SECONDS]:
+            del _LAST_PARSED[key]
+
+
 class GitHubView:
     def __init__(self, author: str | None = None, repo: str | None = None):
         self.author = author
@@ -50,11 +75,21 @@ class GitHubView:
             if i == "github.com":
                 base_index = url.index(i)
                 break
-        if not base_index:
+        if base_index is None:
             return self
-        self.author = url[base_index + 1]
-        self.repo = url[base_index + 2]
+        self.author = url[base_index + 1] if base_index + 1 < len(url) and url[base_index + 1] else None
+        self.repo = url[base_index + 2] if base_index + 2 < len(url) and url[base_index + 2] else None
         return self
+
+    @property
+    def full_name(self) -> str:
+        """展示名：author/repo，无 repo 时仅为 author。"""
+        return f"{self.author}/{self.repo}" if self.repo is not None else str(self.author)
+
+    @property
+    def file_name(self) -> str:
+        """文件名安全形式（以 _ 代替 /）。"""
+        return self.full_name.replace("/", "_")
 
     async def auto(self, url: str) -> Image.Image:
         self.parse(url)
@@ -78,9 +113,7 @@ class GitHubView:
 
     @staticmethod
     async def _get(url: str) -> str:
-        cth = await Catcher.init()  # 共享浏览器，进程内只启动一次
-        # pth = await cth.catch("https://github.com/LagrangeDev/Lagrange.Core/issues/444")
-        # pth = await cth.catch("https://github.com/LagrangeDev/Lagrange.Core/pull/703")
+        cth = await Catcher.init()
         return await cth.catch(url)
 
     def head(self) -> str:
@@ -138,7 +171,7 @@ class GitHubView:
         return img
 
     async def repo_page(self, url: str) -> Image.Image:
-        url = f"https://github.com/{self.author}/{self.repo}"
+        url = f"https://github.com/{self.author}" + (f"/{self.repo}" if self.repo is not None else "")
         pth = await self._get(url)
         img = Image.open(pth)
         img = img.crop((0, 75, img.size[0], img.size[1] - 220))
@@ -161,6 +194,8 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
     async def handle(self):
         if self.event.blocked or self.event.is_silent:
             return
+        # 限频的会话标识：群消息按群计（全群共享），私聊按用户计。
+        session = self.event.group_id if self.event.group_id is not None else self.event.user_id
         try:
             if len(self.event.message) != 0 and isinstance(self.event.message[0], segments.Json):
                 json_data = json.loads(str(self.event.message[0].data))
@@ -172,6 +207,8 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
 
         if bv_id and (self.event.group_id != 983497968 or self.event.user_id == 2488529467):
             for i in bv_id:
+                if _rate_limited(session, f"bili:{i}"):
+                    continue
                 try:
                     data, ok = await video_info(bv=i)
                     cover, avatar = await fetch_resources(data)
@@ -181,12 +218,9 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
                         f.write(jpeg_bytes)
                     await self.actions.send_msg(
                         group_id=self.event.group_id,
-                        message=common.Message(
-                            segments.Image(
-                                "file://" + os.path.abspath(path).replace("\\", "/"), summary=data.get("title", "")
-                            )
-                        ),
+                        message=common.Message(segments.Image(file_url(path), summary=data.get("title", ""))),
                     )
+                    _mark_parsed(session, f"bili:{i}")
                 except Exception as e:
                     import traceback as _tb
 
@@ -199,26 +233,34 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
                 if "github.com/" in i:
                     ghv = GitHubView()
                     ghv.parse(i)
-                    await self.actions.send_msg(
-                        group_id=self.event.group_id,
-                        user_id=self.event.user_id,
-                        message=common.Message(segments.Image(ghv.head_any(i), summary=f"{ghv.author}/{ghv.repo}")),
-                    )
+                    if ghv.author is None:
+                        continue
+                    if _rate_limited(session, f"github:{ghv.full_name}"):
+                        continue
+                    if ghv.repo is not None:
+                        await self.actions.send_msg(
+                            group_id=self.event.group_id,
+                            user_id=self.event.user_id,
+                            message=common.Message(segments.Image(ghv.head_any(i), summary=ghv.full_name)),
+                        )
                     try:
-                        (await ghv.auto(i)).save(f"./temps/github_{ghv.author}_{ghv.repo}.png")
+                        (await ghv.auto(i)).save(f"./temps/github_{ghv.file_name}.png")
                         await self.actions.send_msg(
                             group_id=self.event.group_id,
                             user_id=self.event.user_id,
                             message=common.Message(
                                 segments.Image(
-                                    "file://" + os.path.abspath(f"./temps/github_{ghv.author}_{ghv.repo}.png"),
-                                    summary=f"{ghv.author}/{ghv.repo}",
+                                    file_url(f"./temps/github_{ghv.file_name}.png"),
+                                    summary=ghv.full_name,
                                 )
                             ),
                         )
-                        os.remove(f"./temps/github_{ghv.author}_{ghv.repo}.png")
+                        os.remove(f"./temps/github_{ghv.file_name}.png")
+                        _mark_parsed(session, f"github:{ghv.full_name}")
                     except NotImplementedError:
                         pass
+                    except Exception as e:
+                        ModuleClass.logger.error(f"GitHub 预览失败: {e}")
         except Exception as e:
             import traceback as _tb
 

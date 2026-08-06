@@ -1,9 +1,9 @@
 import datetime
-from typing import override
 
 import hyperot
 from hyperot import common, segments
 from hyperot.events import *
+from typing_extensions import override
 
 import ModuleClass
 

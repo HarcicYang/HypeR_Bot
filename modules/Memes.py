@@ -1,10 +1,12 @@
 import os.path
-from typing import override
+from io import BytesIO
 
 import httpx
 import meme_generator
 from hyperot import common, segments
 from hyperot.events import *
+from meme_generator import exception
+from typing_extensions import override
 
 import ModuleClass
 from ModuleClass import ModuleInfo, String
@@ -12,9 +14,16 @@ from ModuleClass import ModuleInfo, String
 cmd = ".meme"
 
 
+def _count_mismatch_text(kind: str, min_: int, max_: int, actual: int) -> str:
+    if min_ == max_:
+        return f"{kind}参数数量不正确，应当为{min_}，但实际为{actual}"
+    return f"{kind}参数数量不正确，应当不少于{min_}，不多于{max_}，但实际为{actual}"
+
+
 def get_meme(key: str) -> meme_generator.Meme:
+    # 官方 .pyi 过时：运行时 keywords 是 Meme 的直接属性（.pyi 误写为 info.keywords）。
     def f(x: meme_generator.Meme, key_word: str) -> bool:
-        return key_word in x.info.keywords
+        return key_word in x.keywords  # pyrefly: ignore[missing-attribute]
 
     memes: list[meme_generator.Meme] = meme_generator.get_memes()
     res = filter(lambda x: f(x, key), memes)  # pyrefly: ignore[implicit-any-lambda]
@@ -81,9 +90,8 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
             return
 
         texts: list[str] = []
-        images: list[tuple[str, bytes]] = []
+        images: list[bytes] = []
         args: dict[str, bool | str | int | float] = {}
-        img_num = 0
         n_msg = common.Message()
         for i in self.event.message:
             if type(i) is segments.Text:
@@ -93,8 +101,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
                 if file is None:
                     continue
                 response = httpx.get(file.replace("https://", "http://"), verify=False)
-                images.append((f"img{img_num}.jpg", response.content))
-                img_num += 1
+                images.append(response.content)
 
         for i in String(str(n_msg).replace(f".meme {keyword}", "")).cmdl_parse():
             if isinstance(i, String):
@@ -107,12 +114,25 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
                     arg = False
                 args[list(i.keys())[0]] = arg
 
-        # 运行时为编译版扩展，签名是 generate(images, texts, options)；官方 .pyi 已过时（误写为 text）。
-        result = meme.generate(images=images, texts=texts, options=args)  # pyrefly: ignore[missing-argument, unexpected-keyword]
-
-        if isinstance(result, bytes):
+        # meme_generator 0.1.x：Meme 为可调用对象，成功返回 BytesIO，失败抛出 exception 子类异常。
+        # 官方 .pyi 过时（描述为新版 generate API），故此处与 get_meme 均需忽略类型误报。
+        try:
+            result: BytesIO = meme(images=images, texts=texts, args=args)  # pyrefly: ignore[not-callable]
+        except exception.ImageNumberMismatch as e:
+            text = _count_mismatch_text("图片", e.min_images, e.max_images, len(images))
+        except exception.TextNumberMismatch as e:
+            text = _count_mismatch_text("文字", e.min_texts, e.max_texts, len(texts))
+        except exception.TextOverLength as e:
+            text = f"文本过长: {e.text}"
+        except exception.MemeFeedback as e:
+            text = e.message
+        except exception.ArgMismatch:
+            text = "参数不正确"
+        except exception.MemeGeneratorException as e:
+            text = f"生成失败: {e}"
+        else:
             with open(f"./temps/meme_{self.event.user_id}.png", "wb") as f:
-                f.write(result)
+                f.write(result.getvalue())
             content_text = f"file://{os.path.abspath(f'./temps/meme_{self.event.user_id}.png')}".replace("\\", "/")
             await self.actions.send_msg(
                 user_id=self.event.user_id,
@@ -121,20 +141,6 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
             )
             os.remove(f"./temps/meme_{self.event.user_id}.png")
             return
-
-        if isinstance(result, (meme_generator.ImageNumberMismatch, meme_generator.TextNumberMismatch)):
-            if result.min == result.max:
-                kind = "图片" if isinstance(result, meme_generator.ImageNumberMismatch) else "文字"
-                text = f"{kind}参数数量不正确，应当为{result.min}，但实际为{result.actual}"
-            else:
-                kind = "图片" if isinstance(result, meme_generator.ImageNumberMismatch) else "文字"
-                text = f"{kind}参数数量不正确，应当不少于{result.min}，不多于{result.max}，但实际为{result.actual}"
-        elif isinstance(result, meme_generator.TextOverLength):
-            text = f"文本过长: {result.text}"
-        elif isinstance(result, meme_generator.MemeFeedback):
-            text = result.feedback
-        else:
-            text = "生成失败"
 
         await self.actions.send_msg(
             user_id=self.event.user_id,

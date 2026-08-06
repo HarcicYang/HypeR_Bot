@@ -1,9 +1,8 @@
-from typing import override
-
 import httpx
 from hyperot.common import Message
 from hyperot.events import MessageEvent
 from hyperot.segments import Text
+from typing_extensions import override
 
 from ModuleClass import Module, ModuleInfo, ModuleRegister
 

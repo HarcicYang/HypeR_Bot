@@ -1,10 +1,11 @@
 import json
 import os.path
 import time
-from typing import Any, override
+from typing import Any
 
 from hyperot import common, segments
 from hyperot.events import *
+from typing_extensions import override
 
 import ModuleClass
 from modules import WordSafety
