@@ -186,7 +186,7 @@ class Test(ModuleClass.Module[MessageEvent]):
                 tag="",
                 preview="https://p.qlogo.cn/homework/0/hw_h_owx0c2pifdccko66c04ddfbdc62/0",
             )
-            card = Json(str(await ark.get_sig(self.actions, self.event.self_id)))
+            card = Json(await ark.get_sig(self.actions, self.event.self_id))
             await self.actions.send_msg(group_id=self.event.group_id, user_id=self.event.user_id, message=Message(card))
 
         elif str(self.event.message) == ".test8":
@@ -208,7 +208,7 @@ class Test(ModuleClass.Module[MessageEvent]):
                 "view": "contact",
             }
             ark = Card.any(c)
-            card = Json(str(await ark.get_sig(self.actions, self.event.self_id)))
+            card = Json(await ark.get_sig(self.actions, self.event.self_id))
             await self.actions.send_msg(group_id=self.event.group_id, user_id=self.event.user_id, message=Message(card))
 
         elif str(self.event.message) == ".test9":

@@ -1,33 +1,30 @@
-import os
-import sys
+import httpx
 
-from openai import OpenAI
+response1 = httpx.post(
+    "https://sign.lagrangecore.org/api/sign/sec-sign",
+    headers={"Content-Type": "application/json", "Authorization": "Bearer 85a20362-dc40-4ea3-b4ec-a6d0b9c8d422"},
+    json={
+        "uin": 3672492480,
+        "command": "MessageSvc.PbSendMsg",
+        "seq": 8954,
+        "body": "0a08120608c8c79fa90212060801100018001a4f0a4d123e0a3c0a07404861726369631a0d000100000007009453f23b000062221802200028004a18755f6763445f4664794c646255526f6246547053737248775800120b0a090a073139313938313020fb4528bbfab0b906",
+        "guid": "cfcd208495d565ef66e7dff9f98764da",
+        "qua": "V1_LNX_NQ_3.2.26_46494_GW_B",
+    },
+)
 
-_USE_COLOR = sys.stdout.isatty() and os.getenv("NO_COLOR") is None
-_REASONING_COLOR = "\033[90m" if _USE_COLOR else ""
-_RESET_COLOR = "\033[0m" if _USE_COLOR else ""
-
-client = OpenAI(
-    base_url="https://integrate.api.nvidia.com/v1",
-    api_key="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",
+response2 = httpx.post(
+    "https://sign.lagrangecore.org/api/sign/sec-sign",
+    headers={"Content-Type": "application/json", "Authorization": "Bearer 85a20362-dc40-4ea3-b4ec-a6d0b9c8d422"},
+    json={
+        "uin": 3672492480,
+        "command": "MessageSvc.PbSendMsg",
+        "seq": 8954,
+        "body": "0a08120608c8c79fa90212060801100018001a4f0a4d123e0a3c0a07404861726369631a0d000100000007009453f23b000062221802200028004a18755f6763445f4664794c646255526f6246547053737248775800120b0a090a073139313938313020fb4528bbfab0b906",
+        "guid": "cfcd208495d565ef66e7dff9f98764da",
+        "qua": "V1_LNX_NQ_3.2.26_46494_GW_B",
+    },
 )
 
 
-completion = client.chat.completions.create(
-    model="deepseek-ai/deepseek-v4-flash",
-    messages=[{"role": "user", "content": "自我介绍一下"}],
-    temperature=1,
-    top_p=1,
-    max_tokens=16384,
-    seed=42,
-    stream=True,
-)
-
-for chunk in completion:
-    if not getattr(chunk, "choices", None):
-        continue
-    if len(chunk.choices) == 0 or getattr(chunk.choices[0], "delta", None) is None:
-        continue
-    delta = chunk.choices[0].delta
-    if getattr(delta, "content", None) is not None:
-        print(delta.content, end="")
+print(response1.content.decode() == response2.content.decode())
