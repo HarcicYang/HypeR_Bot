@@ -5,11 +5,11 @@
 HypeR Bot — a Python QQ bot framework implementing OneBot v11 protocol.
 Core library: `hyperot` (pip: `hyper-bot`), using `cfgr` (pip: `ucfgr`) for config management.
 
-**HypeR Bot ≠ HyperBotCore (`hyperot`).** They originated from the same project but are now split into separate repos. This repo's public mirror is no longer updated; the canonical `hyperot` source is at <https://github.com/HarcicYang/HyperotBotCore>.
+**HypeR Bot ≠ HyperBotCore (`hyperot`).** They originated from the same project but are now split into separate repos. This repo's public mirror is no longer updated; the canonical `hyperot` source is at <https://github.com/HarcicYang/HyperBotCore>.
 
 ### Documentation status
 
-`documents/` and `readme.md` are **outdated** — do not rely on them. The source code (especially `ModuleClass.py`, `main.py`, and modules under `modules/`) is the only current reference. When in doubt about `hyperot` APIs, consult the HyperotBotCore repo above.
+`documents/` and `readme.md` are **outdated** — do not rely on them. The source code (especially `ModuleClass.py`, `main.py`, and modules under `modules/`) is the only current reference. When in doubt about `hyperot` APIs, consult the HyperBotCore repo above.
 
 ### Functional modules
 

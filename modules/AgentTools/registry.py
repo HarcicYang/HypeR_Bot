@@ -119,6 +119,15 @@ class ToolRegistration:
     schema: dict[str, Any]
     required: list[str]
     hints: dict[str, Any]  # 参数类型注解(用于参数注入时的类型强制转换)
+    release: bool = False  # 调用后释放本轮:主 Agent 不再请求后续 Completion(用于投喂 SubAgent 等长程任务)
+    group: str = "general"  # 工具分组(声明用途分类,如 qq/info/code/github/memory/subagent)
+    main_visible: bool = True  # 主 Agent 可见
+    sub_visible: bool = True  # SubAgent 可见
+
+    def visible_for(self, role: str) -> bool:
+        if role == "sub":
+            return self.sub_visible
+        return self.main_visible
 
     def serialize_openai(self) -> dict[str, Any]:
         params = dict(self.schema)
@@ -173,6 +182,10 @@ class ToolRegistry:
         scenes: tuple[str, ...],
         instance: Any,
         method: Callable[..., Any],
+        release: bool = False,
+        group: str = "general",
+        main_visible: bool = True,
+        sub_visible: bool = True,
     ) -> None:
         hints = get_type_hints(method)
         sig = inspect.signature(method)
@@ -196,17 +209,24 @@ class ToolRegistry:
             schema={"type": "object", "properties": properties},
             required=required,
             hints=hints,
+            release=release,
+            group=group,
+            main_visible=main_visible,
+            sub_visible=sub_visible,
         )
 
     @classmethod
-    def schema(cls) -> list[dict[str, Any]]:
-        return [t.serialize_openai() for t in cls._tools.values()]
+    def schema(cls, role: str = "main") -> list[dict[str, Any]]:
+        """按角色返回可见工具的 OpenAI schema(SubAgent 看不到未对其开放的工具)。"""
+        return [t.serialize_openai() for t in cls._tools.values() if t.visible_for(role)]
 
     @classmethod
     async def dispatch(cls, name: str, params: dict[str, Any], ctx: "ToolContext") -> Any:
         reg = cls._tools.get(name)
         if reg is None:
             raise NotImplementedError(f"工具类型 {name} 非法")
+        if not reg.visible_for(ctx.role):
+            return f"调用不合法：工具 {name} 不向当前角色({ctx.role})开放"
         if PERM_LEVEL[reg.perm] > PERM_LEVEL[ctx.perm_group]:
             return f"调用不合法：工具 {name} 需要 {reg.perm} 权限，当前为 {ctx.perm_group}"
         if ctx.ev_type not in reg.scenes:
@@ -215,7 +235,10 @@ class ToolRegistry:
             kwargs = reg.inject_params(params)
         except ToolParamError as e:
             return repr(e)
-        return await reg.method(ctx, **kwargs)
+        result = await reg.method(ctx, **kwargs)
+        if reg.release:
+            ctx.release_requested = True
+        return result
 
 
 def tool(
@@ -223,9 +246,22 @@ def tool(
     desc: str = "",
     perm: str = "member",
     scenes: tuple[str, ...] = ("group", "private", "system"),
+    release: bool = False,
+    group: str = "general",
+    main_visible: bool = True,
+    sub_visible: bool = True,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        cast(Any, func).__agent_tool__ = (name or func.__name__, desc, perm, scenes)
+        cast(Any, func).__agent_tool__ = (
+            name or func.__name__,
+            desc,
+            perm,
+            scenes,
+            release,
+            group,
+            main_visible,
+            sub_visible,
+        )
         return func
 
     return decorator
@@ -241,8 +277,10 @@ class AgentToolBase:
             spec = getattr(attr, "__agent_tool__", None)
             if spec is None:
                 continue
-            name, desc, perm, scenes = spec
-            ToolRegistry.register(name, desc, perm, scenes, instance, getattr(instance, name))
+            name, desc, perm, scenes, release, group, main_visible, sub_visible = spec
+            ToolRegistry.register(
+                name, desc, perm, scenes, instance, getattr(instance, name), release, group, main_visible, sub_visible
+            )
 
 
 # --------------------------------------------------------------------------- #
@@ -257,7 +295,10 @@ class ToolContext:
     scene_id: int
     perm_group: str = "member"  # member / whitelist / bot_owner
     principal_id: int | None = None  # 触发者 QQ
+    self_id: int | None = None  # bot 自身 QQ
     runtime: Any = None  # Agent 核心暴露的受限接口
+    release_requested: bool = False  # 由 release=True 的工具置位:本轮处理应结束(长程任务交给后台)
+    role: str = "main"  # main / sub —— 决定工具可见性(QQ 操作、sub_reply 不向 SubAgent 开放;sub_report 仅 SubAgent)
 
     async def create_msg(self, raw_mess: Any) -> common.Message:
         new_mess: list[Any] = []

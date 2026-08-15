@@ -140,6 +140,33 @@ class Catcher:
         self.browser = await self._get_browser()
         return await asyncio.wait_for(self._catch(url, size), timeout=LOAD_TIMEOUT + 15)
 
+    async def catch_text(self, url: str) -> tuple[str, str]:
+        """真实渲染后提取网页正文文本,返回 (标题, 正文)。
+
+        与 catch 共用共享浏览器与加载策略;正文优先取 main/article/[role=main] 容器,
+        兜底 document.body.innerText(上限 20000 字符),并压缩多余空白。
+        """
+        self.browser = await self._get_browser()
+
+        async def _do() -> tuple[str, str]:
+            page = await self.browser.new_page()
+            try:
+                await self._load(page, url)
+                title = await page.title()
+                text = await page.evaluate(
+                    """() => {
+                        const main = document.querySelector('main, article, [role="main"]');
+                        const el = main || document.body;
+                        return (el.innerText || '').slice(0, 20000);
+                    }"""
+                )
+                return title, text
+            finally:
+                with contextlib.suppress(Exception):
+                    await page.close()
+
+        return await asyncio.wait_for(_do(), timeout=LOAD_TIMEOUT + 15)
+
     @staticmethod
     async def _load(page: Page, url: str) -> None:
         for attempt in (1, 2):

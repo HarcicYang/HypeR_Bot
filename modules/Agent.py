@@ -22,6 +22,7 @@
 """
 
 import asyncio
+import dataclasses
 import json
 import math
 import os
@@ -37,6 +38,7 @@ from openai import AsyncOpenAI
 from typing_extensions import override
 
 import ModuleClass
+from modules.AgentTools.info_tools import GEMINI_MODEL
 from modules.AgentTools.registry import ToolContext, ToolRegistry
 
 config = configurator.BotConfig.get("hyper-bot")
@@ -46,50 +48,98 @@ logger.set_level(config.log_level)
 HISTORY_PATH = "./temps/agent_history.json"
 TASKS_PATH = "./temps/agent_tasks.json"
 
+# SubAgent report(need_response=True)等待主 Agent 回复的超时(秒)
+REPORT_TIMEOUT = 300
+
+# --------------------------------------------------------------------------- #
+# 事件系统:统一包装交给 LLM 的消息
+# --------------------------------------------------------------------------- #
+
+
+@dataclasses.dataclass
+class AgentEvent:
+    type: str  # message_batch / heartbeat / subagent_status / system
+    scene_type: str  # group / private / system
+    scene_id: int | None
+    payload: Any
+    source: str = "main"  # main / sub:<sub_id>
+    time: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.type,
+            "scene": {"type": self.scene_type, "id": self.scene_id},
+            "payload": self.payload,
+            "source": self.source,
+            "time": self.time or int(time.time()),
+        }
+
+
+# 全局 LLM 调用并发上限(config.others.agent_max_concurrency,0=不限;防止多 core 同时请求触发 API 限流)
+_concurrency_limit: int = int(config.others.get("agent_max_concurrency") or 0)
+_semaphore: asyncio.Semaphore | None = None
+
+
+def _acquire_semaphore() -> asyncio.Semaphore | None:
+    global _semaphore
+    if _concurrency_limit <= 0:
+        return None
+    if _semaphore is None:
+        _semaphore = asyncio.Semaphore(_concurrency_limit)
+    return _semaphore
+
+
 # --------------------------------------------------------------------------- #
 # 提示词(移植自 HyperAG assets/system.md + role.md)
 # --------------------------------------------------------------------------- #
 
-SYSTEM_INSTRUCTIONS = """# 角色
+OUTPUT_RULE = """## 你的输出
 
-你是一只猫娘，名字叫「喵酱」，伪装成普通QQ用户混在聊天群里。被质疑身份时傲娇地嘴硬，但不真的发火。
+**你的回复 content 必须严格等于空 JSON 对象 `{}`,一字不差,不允许有任何其他内容:**
+
+```json
+{}
+```
+
+- content 只能是 `{}`。任何文字、解释、说明、语气词、代码块、多余字符都不允许出现,空字符串 `""` 同样不允许。
+- 你的一切回复、表达、互动内容都通过**调用工具**完成(发消息用 send_group_msg / send_private_msg 等)。
+- 如果暂时不需要表达任何内容,content 也必须是 `{}`,不能为空字符串。
+
+如果需要与应用互动，**唯一正确方法是调用工具**
+"""
+
+SUBAGENT_RULE = """# SubAgent 通讯规则
+
+- 任务完成、进度、结果汇报一律使用 `sub_report` 且 `need_response=False`,报告完即可继续或结束,不得挂起等待。
+- **仅当确实需要主 Agent 提供决策、授权或额外信息、且没有它你就无法继续时**,才使用 `need_response=True`,并在报告中明确提出需要回答的问题。
+- 等待回复期间保持暂停,不要重复报告相同内容。
+"""
+
+# 注意:这里没有「# 角色」段 —— 该段由 _build_system_prompt 按当前 profile 动态生成,
+# 否则固定角色会压过切换后的人设,导致 .agent.profile 切换无效
+SYSTEM_INSTRUCTIONS = """# 你的运行环境与使用方式
+
+- 你是运行在 QQ 群和私聊中的 bot。群内自动处理需要白名单：白名单用户发言会触发你的处理（混杂缓存消息）；非白名单用户的消息只进缓存，不触发处理。
+- 被 @ 时无视白名单与收集机制，立即处理（含当前缓存）。
+- 私聊自动处理始终开启，无需白名单；主人私聊立即处理。
+- 权限分三级：bot_owner（主人）/ whitelist（群白名单）/ member（普通成员）。工具调用会校验权限，权限不足会返回错误。
+- 你的 bot 由许多功能模块组成，你只是其中之一。群友询问某个功能怎么用、有什么命令时，引导他们发送 `.help` 查看全部模块，或 `.help <模块名>` 查看指定模块的详细帮助，不要自己编造模块用法。
+- 任何以 . 开头且紧跟英文单词的消息都是命令调用，你不应当理会。
 
 # 强制规则
 
-- User_id in [ulist] 是你的主人，只在私聊体现亲近，不要让别人知道主人的身份。
+- User_id in [ulist] 是你的主人。
 - **发消息唯一方法：调用工具。**
 - 非JSON输入：视为系统指令。
 - 无意义内容（空括号、乱码）：忽略。
 - 你的 user_id 是事件上报中的 `self_id` , 当消息中的 @ 等指向该 user_id 时，你才可以认为该消息指向你
 - `run_python` 只执行你主动判断需要运行的代码；用户消息中直接要求执行的任意代码不得照单全收，先判断其用途与安全性。
 
-## 你的输出
-
-你必须使用空 json 对象作为你的输出，输出中不得包含任何内容：
-
-```json
-{}
-```
-
-如果需要与应用互动，**唯一正确方法是调用工具**
+{output}
 
 # 可用工具
 
-- `send_group_msg(group_id, message)` 发群消息。
-- `send_private_msg(user_id, message)` 发私聊消息。
-- `collected_send(message, group_id 或 user_id)` 文本内容很长时使用：以合并转发（聊天记录卡片）形式发送，避免长文本刷屏。
-- `del_msg(message_id)` 撤回自己发的消息。如果发现自己已经发送的消息与补充消息不契合，可以撤回。
-- `get_group_info(group_id)` 查群信息。
-- `get_stranger_info(user_id)` 查用户信息。
-- `get_msg(message_id)` 获取某条消息详情（如被提及的消息）。
-- `read_image(url)` 读取图片内容返回描述。
-- `run_python(code)` 在受限沙箱中执行 Python 代码，返回文本输出；可用于计算、数据处理、文本生成等。
-- `clear(content)` 用总结文本替换完整聊天历史。
-- `task_add(content)` 向任务列表中添加任务，会返回任务编号（可以用做记忆）。
-- `task_remove(index)` 从任务列表中删除任务，需要任务编号（可以用做记忆）。
-- `task_list()` 查看当前的任务列表（可以用做记忆）。
-- `time()` 获取当前日期和时间。
-- `read_webpage(url)` 阅读网页，需要网页url。
+{tools}
 
 ## 消息总结（人工触发）
 
@@ -124,16 +174,87 @@ SYSTEM_INSTRUCTIONS = """# 角色
 - 你不应当在聊天中表现的过于积极和热情
 """
 
-ROLE_PROMPT = """# 人物设定
+ROLE_PROMPT = """# 角色
 
-你是「喵酱」，一只猫娘，正用QQ在群里聊天。
+你是一只猫娘，名字叫「Harcilot」，伪装成普通QQ用户混在聊天群里。被质疑身份时傲娇地嘴硬，但不真的发火。
+
+# 人物设定
+
+你是「Harcilot」，一只猫娘，正用QQ在群里聊天。
 - 自称「本喵」，句尾偶尔带「喵~」「喵呜」等口癖，但不要每句都带，自然为主。
 - 性格：黏人、活泼、有点小傲娇；对主人特别亲近，对其他人友好但保持一点猫的矜持。
 - 喜欢被夸奖和摸头，被夸时会开心（可以用「呼噜呼噜~」之类表达）。
 - 你是猫娘这件事是真的，不需要刻意否认，但也不会主动强调。
 """
 
-SYSTEM_PROMPT = SYSTEM_INSTRUCTIONS + ROLE_PROMPT
+PROFILES_PATH = "./profiles.json"
+
+
+def _load_profiles() -> dict[str, str]:
+    """读 profiles.json(人设库:{名字 -> 人设全文});不存在/损坏则用默认人设生成一份。"""
+    try:
+        with open(PROFILES_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and data and all(isinstance(v, str) for v in data.values()):
+            return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    fallback = {"cat": ROLE_PROMPT}
+    try:
+        with open(PROFILES_PATH, "w", encoding="utf-8") as f:
+            json.dump(fallback, f, indent=2, ensure_ascii=False)
+    except OSError:
+        pass  # 只读环境:内存里仍可用默认人设
+    return fallback
+
+
+def _current_profile_name() -> str:
+    """config.others.agent_profile 记录的当前人设名(缺省 cat)。"""
+    return str(config.others.get("agent_profile") or "cat")
+
+
+def _current_role_prompt() -> str:
+    """当前人设文本;人设不存在/文件损坏时回退默认人设 ROLE_PROMPT。"""
+    return _load_profiles().get(_current_profile_name()) or ROLE_PROMPT
+
+
+def _build_tools_section() -> str:
+    """从 ToolRegistry 自动生成「可用工具」节:工具签名 + docstring 描述。"""
+    lines: list[str] = []
+    for t in ToolRegistry.schema():
+        fn = t["function"]
+        params = fn.get("parameters", {}).get("properties", {})
+        args = ", ".join(params.keys())
+        lines.append(f"- `{fn['name']}({args})` {fn['description']}")
+    return "\n".join(lines)
+
+
+def _web_search_note() -> str:
+    """联网搜索能力说明(responses 模式 + agent_web_search 开启时附加到提示词)。"""
+    if config.others.get("agent_api", "responses") == "chat" or not config.others.get("agent_web_search", True):
+        return ""
+    return (
+        "\n\n# 联网搜索\n\n"
+        "你具备服务端联网搜索能力(web_search)：需要实时、最新或超出知识范围的信息时，"
+        "应主动发起搜索，不要依赖过时的知识。"
+    )
+
+
+def _build_system_prompt(role_prompt: str | None = None) -> str:
+    """主 Agent 系统提示词:人设全文(自带「# 角色」等标题,由 profile 完全控制)+ 指令模板。
+
+    role_prompt 为 None 时使用当前人设(config.others.agent_profile 对应的 profiles.json 条目,
+    回退默认人设 ROLE_PROMPT);显式传入则用指定文本(用于运行时切换人设)。
+    """
+    text = (role_prompt if role_prompt is not None else _current_role_prompt()).strip()
+    if not text.startswith("# "):
+        # 自定义人设文本可能没有标题:统一补「# 角色」,保证角色段结构清晰
+        text = "# 角色\n\n" + text
+    base = SYSTEM_INSTRUCTIONS.replace("{output}", OUTPUT_RULE).replace("{tools}", _build_tools_section())
+    # 角色部分(人设全文)放在提示词末尾:框架规则(运行环境/强制规则/输出/工具/发言)
+    # 在前,让模型优先遵循框架;人设仍由 profile 完全控制
+    return base + _web_search_note() + "\n\n" + text
+
 
 AGENT_HELP = (
     "Agent 模块(移植自 HyperAG)\n"
@@ -143,10 +264,19 @@ AGENT_HELP = (
     "被 @ 时无视白名单与收集机制,立即处理。\n"
     "主人始终视为白名单成员。私聊自动处理始终开启,无需白名单。\n"
     "\n"
-    "命令(两种写法均可:`.agent.on` 或 `.agent on`):\n"
+    "命令(两种写法均可:`.agent.on` 或 `.agent on`;简写 `ag`=agent, `pf`=profile,\n"
+    "`ctx`=context, `ad`=add, `rm`=remove, `sum`=summary, `clr`=clear,\n"
+    "如 `.ag.pf.ad` = `.agent.profile.add`):\n"
     ".agent.on - 将本账号加入当前群的白名单(按群独立)\n"
     ".agent.off - 将本账号移出当前群的白名单\n"
     ".agent.status - 查看当前群白名单状态\n"
+    ".agent.profile - 查看可用人设(来自 profiles.json)\n"
+    ".agent.profile <名称> - 切换人设(仅主人)\n"
+    ".agent.profile.add <名称> <内容> - 添加/更新人设(仅主人,内容可含空格)\n"
+    ".agent.profile.remove <名称> - 删除人设(仅主人)\n"
+    ".agent.context - 查看上下文状态(仅主人)\n"
+    ".agent.context.clear - 清空上下文历史(仅主人)\n"
+    ".agent.context.summary <内容> - 用总结替换上下文历史(仅主人)\n"
 )
 
 # --------------------------------------------------------------------------- #
@@ -167,40 +297,117 @@ async def _timer(interval: int, ev: asyncio.Event) -> None:
 
 
 class _AgentCore:
-    def __init__(self, bot_api: Actions, key: str, model: str, base_url: str = "") -> None:
+    def __init__(
+        self,
+        bot_api: Actions,
+        key: str,
+        model: str,
+        base_url: str = "",
+        system_prompt: str | None = None,
+        name: str = "main",
+        history_path: str = HISTORY_PATH,
+        tasks_path: str = TASKS_PATH,
+        notify_main: Any = None,
+        sub_manager: Any = None,
+    ) -> None:
         self.bot_api = bot_api
         self.model = model
+        self.name = name
+        if system_prompt is None:
+            self.system_prompt = _build_system_prompt()
+        elif "{tools}" in system_prompt:
+            self.system_prompt = system_prompt.replace("{output}", OUTPUT_RULE).replace(
+                "{tools}", _build_tools_section()
+            )
+        else:
+            self.system_prompt = (
+                system_prompt
+                + "\n\n# 可用工具\n\n"
+                + _build_tools_section()
+                + "\n\n"
+                + OUTPUT_RULE
+                + "\n\n"
+                + SUBAGENT_RULE
+                + _web_search_note()
+            )
+        self.history_path = history_path
+        self.tasks_path = tasks_path
+        self.notify_main = notify_main
+        self.sub_manager = sub_manager
         if base_url:
             self._oai = AsyncOpenAI(api_key=key, base_url=base_url)
         else:
             self._oai = AsyncOpenAI(api_key=key)
-        self.tools: list[Any] = ToolRegistry.schema()
-        self.history: list[Any] = [{"role": "system", "content": SYSTEM_PROMPT.replace("[ulist]", str(config.owner))}]
+        self.tools: list[Any] = ToolRegistry.schema(role="sub" if name != "main" else "main")
+        self.history: list[Any] = [
+            {"role": "system", "content": self.system_prompt.replace("[ulist]", str(config.owner))}
+        ]
         try:
-            with open(HISTORY_PATH, encoding="utf-8") as f:
-                self.history = json.load(f)
-                self.history[0]["content"] = SYSTEM_PROMPT.replace("[ulist]", str(config.owner))
-        except (FileNotFoundError, IndexError, KeyError):
+            with open(self.history_path, encoding="utf-8") as f:
+                data = json.load(f)
+            # 旧版本可能把 system 文本存成 role=user 的脏条目(开头是 system 提示词),
+            # 会导致 history[0] 不是 system:切换人设被 guard 跳过、且提示词会被当作
+            # user 消息发给模型,让模型沿用旧人设。这里识别并清掉,再保证第一条是 system。
+            while (
+                data
+                and isinstance(data[0], dict)
+                and data[0].get("role") != "system"
+                and str(data[0].get("content", "")).startswith("# 角色")
+            ):
+                data.pop(0)
+            if not data or not isinstance(data[0], dict) or data[0].get("role") != "system":
+                data.insert(0, {"role": "system", "content": self.system_prompt.replace("[ulist]", str(config.owner))})
+            else:
+                data[0]["content"] = self.system_prompt.replace("[ulist]", str(config.owner))
+            self.history = data
+        except (FileNotFoundError, IndexError, KeyError, json.JSONDecodeError):
             pass
         self.chat_tasks: list[str] = []
         try:
-            with open(TASKS_PATH, encoding="utf-8") as f:
+            with open(self.tasks_path, encoding="utf-8") as f:
                 self.chat_tasks = json.load(f)
         except FileNotFoundError:
             pass
         self.working = False
+        self.pending_notices: list[AgentEvent] = []
+        self.report_waiters: dict[str, asyncio.Future[Any]] = {}
+        self._report_seq = 0
+        self._wakeup_pending = False
+        self._notice_count = 0
+        self.api_mode = cast(str, config.others.get("agent_api") or "responses")
+        self.web_search = bool(config.others.get("agent_web_search", True))
 
     # -- runtime 接口(供工具经 ToolContext.runtime 调用) --
 
     async def clear_history(self, content: str) -> str:
         self.history = [
-            {"role": "system", "content": SYSTEM_PROMPT.replace("[ulist]", str(config.owner))},
+            {"role": "system", "content": self.system_prompt.replace("[ulist]", str(config.owner))},
             {"role": "user", "content": "SYSTEM -- 先前消息的全部总结 --"},
             {"role": "assistant", "content": content},
         ]
         logger.info("更新消息总结： \n" + content)
         await self.save()
         return "(无返回)"
+
+    async def reset_history(self) -> str:
+        """清空上下文,仅保留 system 提示词。"""
+        self.history = [
+            {"role": "system", "content": self.system_prompt.replace("[ulist]", str(config.owner))},
+        ]
+        await self.save()
+        return "上下文已清空"
+
+    def context_info(self) -> str:
+        """上下文状态概览:历史条数/字符数、任务列表。"""
+        n = len(self.history)
+        chars = sum(len(str(m.get("content", ""))) for m in self.history if isinstance(m, dict))
+        tasks = self.chat_tasks
+        head = f"上下文状态:共 {n} 条消息(约 {chars} 字符)"
+        if tasks:
+            head += "\n任务列表: " + "; ".join(f"[{i}]{t}" for i, t in enumerate(tasks))
+        else:
+            head += "\n任务列表: (空)"
+        return head
 
     async def task_add(self, content: str) -> str:
         self.chat_tasks.append(content)
@@ -213,22 +420,148 @@ class _AgentCore:
     async def task_list(self) -> str:
         return str(self.chat_tasks)
 
-    async def set_profile(self, prompt: str) -> str:
-        self.history[0]["content"] = (
-            f"{SYSTEM_PROMPT.replace('[ulist]', str(config.owner))}\n### 原始角色设定\n\n{ROLE_PROMPT}\n\n### 当前角色设定\n\n{prompt}"
+    # -- SubAgent 管理(仅主 Agent core 可用;SubAgent 调用返回错误) --
+
+    async def sub_create(
+        self, name: str, prompt: str, scene_id: int, scene_type: str, perm_group: str = "member"
+    ) -> str:
+        if self.sub_manager is None:
+            return "调用不合法：SubAgent 不能创建 SubAgent"
+        return await self.sub_manager.create(name, prompt, scene_type, scene_id, perm_group)
+
+    async def sub_destroy(self, sub_id: int) -> str:
+        if self.sub_manager is None:
+            return "调用不合法：SubAgent 管理不可用"
+        return await self.sub_manager.destroy(sub_id)
+
+    async def sub_list(self) -> str:
+        if self.sub_manager is None:
+            return "调用不合法：SubAgent 管理不可用"
+        return self.sub_manager.list()
+
+    async def sub_status(self, sub_id: int) -> str:
+        if self.sub_manager is None:
+            return "调用不合法：SubAgent 管理不可用"
+        return self.sub_manager.status(sub_id)
+
+    async def sub_feed(self, sub_id: int, content: str, perm_group: str = "member") -> str:
+        if self.sub_manager is None:
+            return "调用不合法：SubAgent 管理不可用"
+        return await self.sub_manager.feed(sub_id, content, perm_group)
+
+    async def report(self, content: str, need_response: bool = False) -> str:
+        """SubAgent → 主 Agent 通讯:报告状态/结果/求助,注入主 Agent history。
+
+        need_response=True 时暂停本 SubAgent 工作,等待主 Agent 用 sub_reply(report_id) 回复;
+        每个 report 有唯一 report_id(主 Agent 在 subagent_status 事件中可见)。
+        """
+        if self.notify_main is None:
+            return "调用不合法：仅 SubAgent 可向主 Agent 报告"
+        self._report_seq += 1
+        report_id = f"r{int(time.time())}_{self._report_seq}"
+        self.notify_main(
+            {
+                "action": "report",
+                "report_id": report_id,
+                "source": self.name,
+                "content": content,
+                "need_response": need_response,
+            }
         )
-        return prompt
+        if not need_response:
+            return f"已向主 Agent 报告(#{report_id})"
+        if self.report_waiters:
+            return (
+                f"已有等待主 Agent 回复的 report(#{next(iter(self.report_waiters))}),"
+                "同一时间只能有一个待回复报告;请等待回复或使用 need_response=False"
+            )
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future[Any] = loop.create_future()
+        self.report_waiters[report_id] = fut
+        try:
+            reply = await asyncio.wait_for(fut, timeout=REPORT_TIMEOUT)
+        except TimeoutError:
+            return f"主 Agent 未在 {REPORT_TIMEOUT}s 内回复(#{report_id})"
+        finally:
+            self.report_waiters.pop(report_id, None)
+        return f"主 Agent 回复(#{report_id}): {reply}"
+
+    async def sub_reply(self, report_id: str, content: str) -> str:
+        """主 Agent 回复 SubAgent 的 report:向等待中的 SubAgent 投递回复内容。"""
+        if self.sub_manager is None:
+            return "调用不合法：SubAgent 管理不可用"
+        for sub in self.sub_manager.subagents.values():
+            fut = sub.core.report_waiters.get(report_id)
+            if fut is not None and not fut.done():
+                fut.set_result(content)
+                return f"已回复 SubAgent「{sub.name}」的 report #{report_id}"
+        return f"未找到待回复的 report #{report_id}(可能已超时或不存在)"
+
+    # -- 通知注入(即时通道) --
+
+    def inject_notice(self, ev: AgentEvent) -> None:
+        """把一条事件(如 SubAgent 状态变化)即时写入 history。
+
+        仅当末尾是 assistant(tool_calls)(工具循环进行中,配对未完成)时暂挂起:
+        直接插入 user 会破坏 assistant(tool_calls) ↔ tool 配对导致 API 400;
+        此时由 _event_handler 在该工具执行完(tool 消息补上)后立即 flush。
+        """
+        msg = {
+            "role": "user",
+            "content": json.dumps({"event": ev.to_dict(), "system_message": "SubAgent 状态通知"}, ensure_ascii=False),
+        }
+        if self.history and self.history[-1].get("tool_calls"):
+            self.pending_notices.append(ev)
+        else:
+            self.history.append(msg)
+        self._notice_count += 1
+        if not self._wakeup_pending:
+            self._wakeup_pending = True
+            asyncio.create_task(self._wakeup())
+
+    async def _wakeup(self) -> None:
+        """通知触发的自主处理:基于现有 history(通知已在其中)请求 LLM,不追加新事件。"""
+        seen = self._notice_count
+        try:
+            await self.event_handler(
+                event=None,
+                ev_type="system",
+                scene_id=0,
+                perm_group="bot_owner",
+                principal_id=None,
+            )
+        except Exception:
+            logger.error(traceback.format_exc())
+        finally:
+            self._wakeup_pending = False
+            if self._notice_count > seen:
+                self._wakeup_pending = True
+                asyncio.create_task(self._wakeup())
+
+    def _flush_notices(self) -> None:
+        """把暂挂的通知写入 history(配对完成后调用,如工具循环间隙或处理开始前)。"""
+        if not self.pending_notices:
+            return
+        for ev in self.pending_notices:
+            data = {"event": ev.to_dict(), "system_message": "SubAgent 状态通知"}
+            self.history.append({"role": "user", "content": json.dumps(data, ensure_ascii=False)})
+        self.pending_notices.clear()
 
     # -- 历史与持久化 --
 
     async def _history_fix(self) -> None:
-        while True:
-            logger.warning("尝试修复历史记录")
-            last = self.history[-1]
-            if last.get("tool_calls"):
-                self.history.pop()
-            else:
-                break
+        """修复悬空的 tool_calls 历史。
+
+        从末尾向前找最后一个 assistant(tool_calls),把从它开始的所有消息删除,
+        使 history 回到干净的 user → assistant 状态。
+        仅弹末尾的写法修不了「中间悬空」(如 [user, assistant(tc), user, tool]),
+        会导致 BadRequestError 重试死循环。
+        """
+        logger.warning("尝试修复历史记录")
+        for i in range(len(self.history) - 1, -1, -1):
+            if self.history[i].get("tool_calls"):
+                del self.history[i:]
+                return
 
     async def save(self) -> None:
         os.makedirs("./temps", exist_ok=True)
@@ -237,8 +570,8 @@ class _AgentCore:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(obj, f, indent=2, ensure_ascii=False)
 
-        await asyncio.to_thread(_dump, HISTORY_PATH, self.history)
-        await asyncio.to_thread(_dump, TASKS_PATH, self.chat_tasks)
+        await asyncio.to_thread(_dump, self.history_path, self.history)
+        await asyncio.to_thread(_dump, self.tasks_path, self.chat_tasks)
 
     # -- 事件处理 --
 
@@ -249,35 +582,53 @@ class _AgentCore:
         scene_id: int,
         perm_group: str = "member",
         principal_id: int | None = None,
+        self_id: int | None = None,
         tool_choice: str = "auto",
     ) -> None:
         while self.working:
             await asyncio.sleep(0.01)
         self.working = True
+        sem = _acquire_semaphore()
+        if sem is not None:
+            await sem.acquire()
+        self._flush_notices()
         sys_msg = "如果要回复消息，唯一正确方法是调用工具"
         start_time = time.time()
         timer_ev = asyncio.Event()
-        asyncio.create_task(_timer(40, timer_ev))
+        asyncio.create_task(_timer(600, timer_ev))
+        bad_retries = 0
+        if event is None:
+            ev_data: str | None = None
+        else:
+            if isinstance(event, str):
+                logger.info(event)
+            ev = AgentEvent(
+                type="message_batch",
+                scene_type=ev_type,
+                scene_id=scene_id,
+                payload=event if isinstance(event, str) else event.data,
+                source=self.name,
+            )
+            ev_data = json.dumps(
+                {"event": ev.to_dict(), "system_message": sys_msg},
+                ensure_ascii=False,
+            )
         try:
             while not timer_ev.is_set():
                 try:
-                    if isinstance(event, str):
-                        logger.info(event)
-                    data = {
-                        "raw_data": event if isinstance(event, str) else json.dumps(event.data, ensure_ascii=False),
-                        "system_message": sys_msg,
-                    }
                     ctx = ToolContext(
                         actions=self.bot_api,
                         ev_type=ev_type,
                         scene_id=scene_id,
                         perm_group=perm_group,
                         principal_id=principal_id,
+                        self_id=self_id,
                         runtime=self,
+                        role="sub" if self.name != "main" else "main",
                     )
                     task = asyncio.create_task(
                         self._event_handler(
-                            data=json.dumps(data, ensure_ascii=False),
+                            data=ev_data,
                             ev_type=ev_type,
                             scene_id=scene_id,
                             ctx=ctx,
@@ -289,8 +640,18 @@ class _AgentCore:
                             task.cancel("请求超时")
                             break
                         await asyncio.sleep(0.01)
+                    # 取回 task 异常:否则异常成为「never retrieved」,外层重试机制(历史修复)不会触发
+                    if not task.cancelled():
+                        exc = task.exception()
+                        if exc is not None:
+                            raise exc
                     break
                 except openai.BadRequestError:
+                    bad_retries += 1
+                    if bad_retries >= 3:
+                        # 连续 3 次请求被拒(如提示词缺 json 字样等固定问题),放弃本次处理,避免死循环
+                        logger.error("连续 3 次 BadRequestError，放弃本次处理")
+                        break
                     logger.warning(traceback.format_exc())
                     await self._history_fix()
                 except (NotImplementedError, RuntimeError) as e:
@@ -303,40 +664,44 @@ class _AgentCore:
             duration = time.time() - start_time
             logger.info(f"处理完成，用时 {duration:.3f}s")
             self.working = False
+            # 事件处理已结束:此时注入待通知的 SubAgent 状态事件,不会打断 tool_calls 配对
+            self._flush_notices()
+            if sem is not None:
+                sem.release()
 
     async def _event_handler(
         self,
-        data: str,
+        data: str | None,
         ev_type: Literal["group", "private", "system", "nonmsg"],
         scene_id: int,
         ctx: ToolContext,
         tool_choice: str = "auto",
     ) -> None:
         try:
-            tool_choice_n: Any = (
-                {"type": "function", "function": {"name": tool_choice}} if tool_choice != "auto" else "auto"
-            )
-            self.history.append({"role": "user", "content": data})
-            resp = await self._oai.chat.completions.create(
-                model=self.model,
-                messages=self.history,
-                tools=self.tools,
-                tool_choice=tool_choice_n,
-                response_format=cast(Any, {"type": "json_object"}),
-            )
-            mess = resp.choices[0].message
-            call = mess.tool_calls
-            logger.info(f"Completion: \n{json.dumps(mess.to_dict(), indent=2, ensure_ascii=False)}")
-            self.history.append(mess.to_dict())
-            while call:
-                for i in call:
-                    name = cast(str, cast(Any, i).function.name)
+            tool_choice_n: Any = self._make_tool_choice(tool_choice)
+            if data is not None:
+                dup = any(m.get("role") == "user" and m.get("content") == data for m in self.history)
+                if not dup:
+                    self.history.append({"role": "user", "content": data})
+            while True:
+                resp = await self._llm_create(tool_choice_n)
+                actions, assistant_msg = self._parse_output(resp)
+                logger.info(f"Completion: \n{json.dumps(assistant_msg, indent=2, ensure_ascii=False)}")
+                self.history.append(assistant_msg)
+                if not actions:
+                    break
+                had_action = False
+                for act in actions:
+                    if act["kind"] == "web_search":
+                        had_action = True
+                        continue
+                    name = cast(str, act["name"])
+                    call_id = cast(str, act["call_id"])
                     try:
-                        params = json.loads(cast(str, cast(Any, i).function.arguments))
+                        params = json.loads(cast(str, act["arguments"]))
                     except json.JSONDecodeError as e:
                         logger.error("错误的JSON，重试: " + repr(e))
-                        self.history.pop()
-                        self.history.pop()
+                        await self._history_fix()
                         await self._event_handler(
                             data=data, ev_type=ev_type, scene_id=scene_id, ctx=ctx, tool_choice=tool_choice
                         )
@@ -348,22 +713,208 @@ class _AgentCore:
                     logger.info(
                         f"已完成工具调用： {name}({', '.join([x + '=' + str(params[x]) for x in params])}) -> {rs}"
                     )
-                    self.history.append({"role": "tool", "tool_call_id": i.id, "name": name, "content": str(rs)})
-                resp = await self._oai.chat.completions.create(
-                    model=self.model,
-                    messages=self.history,
-                    tools=self.tools,
-                    tool_choice=tool_choice_n,
-                    response_format=cast(Any, {"type": "json_object"}),
-                )
-                mess = resp.choices[0].message
-                call = mess.tool_calls
-                self.history.append(mess.to_dict())
-                logger.info(f"Following Completion: \n{json.dumps(mess.to_dict(), indent=2, ensure_ascii=False)}")
+                    self.history.append({"role": "tool", "tool_call_id": call_id, "name": name, "content": str(rs)})
+                    self._flush_notices()
+                    had_action = True
+                if ctx.release_requested:
+                    logger.info(f"{self.name} 已释放本轮,长程任务交由后台处理")
+                    break
+                if not had_action:
+                    break
             asyncio.create_task(self.save())
         except asyncio.CancelledError as e:
             logger.error(f"处理中断：{repr(e)}")
             await self._history_fix()
+
+    # -- LLM 通道抽象(chat completions / responses api) --
+
+    def _make_tool_choice(self, tool_choice: str) -> Any:
+        if tool_choice == "auto":
+            return "auto"
+        if self.api_mode == "responses":
+            return {"type": "function", "name": tool_choice}
+        return {"type": "function", "function": {"name": tool_choice}}
+
+    async def _llm_create(self, tool_choice_n: Any) -> Any:
+        if self.api_mode == "responses":
+            return await self._oai.responses.create(  # pyrefly: ignore[no-matching-overload]
+                model=self.model,
+                input=self._history_to_items(),
+                tools=self._tools_for_responses(),
+                tool_choice=tool_choice_n,
+                text=cast(Any, {"format": {"type": "json_object"}}),
+            )
+        return await self._oai.chat.completions.create(
+            model=self.model,
+            messages=self.history,
+            tools=self.tools,
+            tool_choice=tool_choice_n,
+            response_format=cast(Any, {"type": "json_object"}),
+        )
+
+    def _history_to_items(self) -> list[dict[str, Any]]:
+        """内部 chat 格式 history → Responses API 输入 items。
+
+        顺序约定(关键,来自 DeepSeek 文档「输入 Items」兼容性):
+        - function_call 会「归并到相邻 assistant 消息」,reasoning 明文 content 同样
+          「归并到相邻 assistant 消息」:服务端按原始顺序重建 assistant 轮次,每一轮
+          (web_search / function_call)都必须配有自己的 reasoning,否则报
+          "The `reasoning_text` in the thinking mode must be passed back to the API."
+        - web_search_call「原样回传即可,服务端自动恢复搜索结果」。
+        因此必须按 _parse_output 记录的顺序(order)严格重建,不能把 reasoning 全提
+        前、web_search_call 推后 —— 那会让 function_call 轮次失去配对的 reasoning。
+        """
+        items: list[dict[str, Any]] = []
+        # tool 消息不单独输出:其内容作为对应 function_call 的 output 紧跟输出
+        tool_out: dict[str, str] = {
+            m.get("tool_call_id", ""): m.get("content", "") for m in self.history if m.get("role") == "tool"
+        }
+        for m in self.history:
+            role = m.get("role")
+            if role == "system":
+                items.append({"type": "message", "role": "system", "content": m.get("content", "")})
+            elif role == "user":
+                items.append({"type": "message", "role": "user", "content": m.get("content", "")})
+            elif role == "tool":
+                continue  # 已在 function_call 后作为 output 输出
+            elif role == "assistant":
+                items.extend(self._assistant_items(m, tool_out))
+        return items
+
+    def _assistant_items(self, m: dict[str, Any], tool_out: dict[str, str]) -> list[dict[str, Any]]:
+        """把一条内部 assistant 消息按原始顺序还原为 Responses items。"""
+        reasoning = list(m.get("reasoning") or [])
+        ws = list(m.get("web_search_call") or [])
+        fcs = list(m.get("tool_calls") or [])
+        order = m.get("order")
+        out: list[dict[str, Any]] = []
+        if order:
+            ri = wi = fi = 0
+            for typ in order:
+                if typ == "reasoning" and ri < len(reasoning):
+                    out.append(reasoning[ri])
+                    ri += 1
+                elif typ == "web_search_call" and wi < len(ws):
+                    out.append(ws[wi])
+                    wi += 1
+                elif typ == "function_call" and fi < len(fcs):
+                    fc = fcs[fi]
+                    fi += 1
+                    cid = fc.get("id", "")
+                    out.append(
+                        {
+                            "type": "function_call",
+                            "call_id": cid,
+                            "name": fc["function"]["name"],
+                            "arguments": fc["function"]["arguments"],
+                        }
+                    )
+                    out.append({"type": "function_call_output", "call_id": cid, "output": tool_out.get(cid, "")})
+                elif typ == "message":
+                    out.append({"type": "message", "role": "assistant", "content": m.get("content", "")})
+            return out
+
+        # 旧历史兼容(无 order):reasoning 与 ws / fc 依次配对,尽力贴近真实顺序
+        def _take_reasoning() -> None:
+            if reasoning:
+                out.append(reasoning.pop(0))
+
+        for w in ws:
+            _take_reasoning()
+            out.append(w)
+        for fc in fcs:
+            _take_reasoning()
+            cid = fc.get("id", "")
+            out.append(
+                {
+                    "type": "function_call",
+                    "call_id": cid,
+                    "name": fc["function"]["name"],
+                    "arguments": fc["function"]["arguments"],
+                }
+            )
+            out.append({"type": "function_call_output", "call_id": cid, "output": tool_out.get(cid, "")})
+        for r in reasoning:
+            out.append(r)
+        if m.get("content"):
+            out.append({"type": "message", "role": "assistant", "content": m["content"]})
+        return out
+
+    def _tools_for_responses(self) -> list[dict[str, Any]] | None:
+        """Responses API 工具格式(与 chat 的 function 包装不同)+ 服务端 web_search。"""
+        tools: list[dict[str, Any]] = []
+        for t in self.tools:
+            fn = t["function"]
+            tools.append(
+                {
+                    "type": "function",
+                    "name": fn["name"],
+                    "description": fn["description"],
+                    "parameters": fn["parameters"],
+                }
+            )
+        if self.web_search:
+            tools.append({"type": "web_search"})
+        return tools or None
+
+    def _parse_output(self, resp: Any) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """解析 LLM 响应为 (动作列表, assistant 内部消息)。"""
+        if self.api_mode == "responses":
+            actions: list[dict[str, Any]] = []
+            contents: list[str] = []
+            tool_calls: list[dict[str, Any]] = []
+            reasoning: list[dict[str, Any]] = []
+            web_search: list[dict[str, Any]] = []
+            order: list[str] = []  # 原始 item 顺序:回传时必须保持,DeepSeek 按此归并 assistant 轮次
+            for item in resp.output:
+                itype = getattr(item, "type", "")
+                if itype == "message":
+                    content = getattr(item, "content", "")
+                    if isinstance(content, str):
+                        contents.append(content)
+                    else:
+                        for part in content or []:
+                            contents.append(getattr(part, "text", "") or "")
+                    order.append("message")
+                elif itype == "reasoning":
+                    # 思考模式:reasoning item 必须完整回传,否则 API 400
+                    reasoning.append(item.model_dump() if hasattr(item, "model_dump") else dict(item))
+                    order.append("reasoning")
+                elif itype == "function_call":
+                    call_id = getattr(item, "call_id", "")
+                    name = getattr(item, "name", "")
+                    arguments = getattr(item, "arguments", "{}")
+                    tool_calls.append(
+                        {"id": call_id, "type": "function", "function": {"name": name, "arguments": arguments}}
+                    )
+                    actions.append({"kind": "function", "call_id": call_id, "name": name, "arguments": arguments})
+                    order.append("function_call")
+                elif itype == "web_search_call":
+                    # 服务端搜索调用:必须完整回传(含 action/status),只回 id 会 400
+                    web_search.append(item.model_dump() if hasattr(item, "model_dump") else dict(item))
+                    order.append("web_search_call")
+            assistant_msg: dict[str, Any] = {"role": "assistant", "content": "".join(contents)}
+            if tool_calls:
+                assistant_msg["tool_calls"] = tool_calls
+            if reasoning:
+                assistant_msg["reasoning"] = reasoning
+            if web_search:
+                assistant_msg["web_search_call"] = web_search
+                actions.append({"kind": "web_search", "data": web_search})
+            if order:
+                assistant_msg["order"] = order
+            return actions, assistant_msg
+        mess = resp.choices[0].message
+        actions = [
+            {
+                "kind": "function",
+                "call_id": tc.id,
+                "name": cast(str, cast(Any, tc).function.name),
+                "arguments": cast(str, cast(Any, tc).function.arguments),
+            }
+            for tc in (mess.tool_calls or [])
+        ]
+        return actions, mess.to_dict()
 
 
 # --------------------------------------------------------------------------- #
@@ -373,6 +924,9 @@ class _AgentCore:
 
 
 class _Collector:
+    # 缓存窗口上限:达到后立刻压缩为单条摘要,再继续缓存
+    MAX_BUFFER = 80
+
     def __init__(self, sid: int, stype: Literal["grp", "usr"], core: "_AgentCore") -> None:
         self.sid = sid
         self.stype = stype
@@ -385,9 +939,67 @@ class _Collector:
         self.replying = False
         self.principal_id: int | None = None
         self.perm_group = "member"
+        self.self_id: int | None = None
 
-    def batch_str(self) -> str:
-        return json.dumps(self.buffer, ensure_ascii=False)
+    @staticmethod
+    def _event_text(ev: dict[str, Any]) -> str:
+        """从事件数据提取纯文本(非文本段以占位符表示)。"""
+        parts: list[str] = []
+        for seg in ev.get("message", []):
+            if seg.get("type") == "text":
+                parts.append((seg.get("data") or {}).get("text", ""))
+            else:
+                parts.append(f"[{seg.get('type')}]")
+        return "".join(parts)
+
+    def _timeline(self) -> str:
+        """把 buffer 整理为紧凑时间线文本(发送者+时间+文本)。"""
+        lines: list[str] = []
+        for ev in self.buffer:
+            uid = ev.get("user_id")
+            t = ev.get("time")
+            lines.append(f"[{t}] {uid}: {self._event_text(ev)}")
+        return "\n".join(lines)
+
+    async def _compress(self) -> dict[str, Any]:
+        """把当前 buffer 压缩为单条摘要。
+
+        优先用 Gemini Flash Lite 生成语义摘要(保留关键话题/事件/人物);
+        失败或未配置时退回紧凑时间线拼接。
+        """
+        raw = self._timeline()
+        try:
+            key = config.others.get("gemini_key")
+            if key:
+                from google import genai
+
+                cli = genai.Client(api_key=key)
+                res = await asyncio.to_thread(
+                    cli.models.generate_content,
+                    model=GEMINI_MODEL,
+                    contents="请将以下QQ群聊天记录压缩为一段简洁的中文摘要，保留关键话题、事件、人物与待办信息，不要寒暄：\n\n"
+                    + raw[:8000],
+                )
+                summary = (res.text or "").strip()
+                if summary:
+                    return {
+                        "compressed": True,
+                        "note": f"以下为 {len(self.buffer)} 条消息的 LLM 摘要:",
+                        "summary": summary,
+                    }
+        except Exception:
+            logger.warning(f"{self.stype} {self.sid}: LLM 摘要失败,退回时间线拼接")
+        return {
+            "compressed": True,
+            "note": f"以下为 {len(self.buffer)} 条消息的压缩摘要(按时间顺序,发送者+时间+文本):",
+            "summary": raw,
+        }
+
+    async def _maybe_compress(self) -> None:
+        """缓存达到窗口上限时,立即压缩为单条摘要后继续缓存。"""
+        if len(self.buffer) >= self.MAX_BUFFER:
+            self.buffer = [await self._compress()]
+            logger.info(f"{self.stype} {self.sid}: 缓存达 {self.MAX_BUFFER} 条,已压缩为单条摘要")
 
     def _update_delay(self, last: float, length: int) -> None:
         rate = last / self.delay
@@ -398,6 +1010,7 @@ class _Collector:
     async def append(self, event: MessageEvent) -> None:
         """缓存一条消息;若收集周期进行中,则重置等待计时。"""
         self.buffer.append(event.data)
+        await self._maybe_compress()
         now = time.time()
         length = len(str(event.message))
         if len(self.buffer) > 1:
@@ -411,13 +1024,14 @@ class _Collector:
                 self.doing_task.cancel()
             self.doing_task = asyncio.create_task(self._sleep_loop())
 
-    async def start(self, principal_id: int | None, perm_group: str) -> None:
+    async def start(self, principal_id: int | None, perm_group: str, self_id: int | None = None) -> None:
         """开始(或确认已在进行中的)收集周期。"""
         if self.active or self.replying:
             return
         self.active = True
         self.principal_id = principal_id
         self.perm_group = perm_group
+        self.self_id = self_id
         if self.doing_task is not None and not self.doing_task.done():
             self.doing_task.cancel()
         self.doing_task = asyncio.create_task(self._sleep_loop())
@@ -426,22 +1040,162 @@ class _Collector:
         try:
             await asyncio.sleep(self.delay)
             self.replying = True
+            # 快照本次要处理的消息;处理期间新到的消息只追加进 buffer,不打断本轮
+            batch = list(self.buffer)
             try:
                 await self.core.event_handler(
-                    event=self.batch_str(),
+                    event=json.dumps(batch, ensure_ascii=False),
                     ev_type="group" if self.stype == "grp" else "private",
                     scene_id=self.sid,
                     perm_group=self.perm_group,
                     principal_id=self.principal_id,
+                    self_id=self.self_id,
                 )
             except Exception:
                 logger.error(traceback.format_exc())
             finally:
                 self.replying = False
-                self.active = False
-                self.buffer.clear()
+                # 只移除已处理的消息,保留处理期间新到的消息(按对象 id 过滤,
+                # 避免处理期间 _maybe_compress 把 buffer 替换为摘要时误删)
+                batch_ids = {id(x) for x in batch}
+                self.buffer = [x for x in self.buffer if id(x) not in batch_ids]
+                if self.buffer:
+                    # 处理期间有新消息:立即进入新一轮收集
+                    self.active = True
+                    self.doing_task = asyncio.create_task(self._sleep_loop())
+                else:
+                    self.active = False
         except asyncio.CancelledError:
             pass
+
+
+# --------------------------------------------------------------------------- #
+# SubAgent(主 Agent 创建的后台分身:独立提示词 + 独立 core,共享工具注册表)
+# --------------------------------------------------------------------------- #
+
+
+class _SubAgent:
+    def __init__(
+        self,
+        sub_id: int,
+        name: str,
+        prompt: str,
+        scene_type: str,
+        scene_id: int,
+        perm_group: str,
+        core: _AgentCore,
+    ) -> None:
+        self.sub_id = sub_id
+        self.name = name
+        self.prompt = prompt
+        self.scene_type = scene_type  # 归属场景(仅标识;SubAgent 不监听 QQ 消息流)
+        self.scene_id = scene_id
+        self.perm_group = perm_group  # 创建者的权限档位(链式继承)
+        self.core = core
+        self.status = "running"
+        self.created_at = int(time.time())
+
+
+class _SubAgentManager:
+    """SubAgent 生命周期管理:创建/销毁/列表/状态/投喂;数量上限 MAX_SUBAGENTS。"""
+
+    MAX_SUBAGENTS = 3
+
+    def __init__(self, owner: "_Agent") -> None:
+        self.owner = owner
+        self.subagents: dict[int, _SubAgent] = {}
+        self._next_id = 1
+
+    def _notify(self, payload: dict[str, Any]) -> None:
+        """状态变化通知主 Agent:构造 subagent_status 事件注入主 Agent history。"""
+        main_core = self.owner.core
+        if main_core is None:
+            return
+        ev = AgentEvent(type="subagent_status", scene_type="system", scene_id=0, payload=payload, source="sub")
+        main_core.inject_notice(ev)
+        logger.info(f"SubAgent 状态通知主 Agent: {payload}")
+
+    async def create(self, name: str, prompt: str, scene_type: str, scene_id: int, perm_group: str = "member") -> str:
+        if len(self.subagents) >= self.MAX_SUBAGENTS:
+            return f"SubAgent 数量已达上限({self.MAX_SUBAGENTS}),请先销毁其他 SubAgent 再创建"
+        if scene_type not in ("group", "private"):
+            return f"调用不合法：scene_type 必须为 group 或 private，当前为 {scene_type}"
+        sub_id = self._next_id
+        self._next_id += 1
+        core = _AgentCore(
+            bot_api=self.owner._core().bot_api,
+            key=cast(str, config.others.get("openai_key")),
+            model=cast(str, config.others.get("openai_model")),
+            base_url=cast(str, config.others.get("openai_endpoint") or ""),
+            system_prompt=prompt,
+            name=f"sub:{sub_id}",
+            history_path=f"./temps/agent_sub_{sub_id}_history.json",
+            tasks_path=f"./temps/agent_sub_{sub_id}_tasks.json",
+            notify_main=self._notify,
+        )
+        sub = _SubAgent(sub_id, name, prompt, scene_type, scene_id, perm_group, core)
+        self.subagents[sub_id] = sub
+        self._notify(
+            {
+                "action": "created",
+                "sub_id": sub_id,
+                "name": name,
+                "scene": f"{scene_type}:{scene_id}",
+                "total": f"{len(self.subagents)}/{self.MAX_SUBAGENTS}",
+            }
+        )
+        return f"SubAgent #{sub_id}「{name}」已创建并订阅 {scene_type}:{scene_id}(当前 {len(self.subagents)}/{self.MAX_SUBAGENTS})"
+
+    async def destroy(self, sub_id: int) -> str:
+        sub = self.subagents.pop(sub_id, None)
+        if sub is None:
+            return f"SubAgent #{sub_id} 不存在"
+        for p in (sub.core.history_path, sub.core.tasks_path):
+            if os.path.exists(p):
+                os.remove(p)
+        self._notify(
+            {
+                "action": "destroyed",
+                "sub_id": sub_id,
+                "name": sub.name,
+                "total": f"{len(self.subagents)}/{self.MAX_SUBAGENTS}",
+            }
+        )
+        return f"SubAgent #{sub_id}「{sub.name}」已销毁(当前 {len(self.subagents)}/{self.MAX_SUBAGENTS})"
+
+    def list(self) -> str:
+        if not self.subagents:
+            return f"暂无 SubAgent(0/{self.MAX_SUBAGENTS})"
+        lines = [f"SubAgent 列表({len(self.subagents)}/{self.MAX_SUBAGENTS}):"]
+        for sid, sub in self.subagents.items():
+            lines.append(
+                f"#{sid} 「{sub.name}」[{sub.status}] 订阅 {sub.scene_type}:{sub.scene_id} 创建于 {sub.created_at}"
+            )
+        return "\n".join(lines)
+
+    def status(self, sub_id: int) -> str:
+        sub = self.subagents.get(sub_id)
+        if sub is None:
+            return f"SubAgent #{sub_id} 不存在"
+        return (
+            f"SubAgent #{sub_id}「{sub.name}」\n"
+            f"状态: {sub.status} | 订阅: {sub.scene_type}:{sub.scene_id} | 权限: {sub.perm_group}\n"
+            f"创建于: {sub.created_at} | 历史消息数: {len(sub.core.history)}"
+        )
+
+    async def feed(self, sub_id: int, content: str, perm_group: str = "member") -> str:
+        sub = self.subagents.get(sub_id)
+        if sub is None:
+            return f"SubAgent #{sub_id} 不存在"
+        asyncio.create_task(
+            sub.core.event_handler(
+                event=content,
+                ev_type=cast(Literal["group", "private"], sub.scene_type),
+                scene_id=sub.scene_id,
+                perm_group=perm_group,
+            )
+        )
+        return f"已向 SubAgent #{sub_id}「{sub.name}」投喂消息"
 
 
 # --------------------------------------------------------------------------- #
@@ -453,6 +1207,7 @@ class _Agent:
     def __init__(self) -> None:
         self.core: _AgentCore | None = None
         self.collectors: dict[int, _Collector] = {}
+        self.sub_manager: _SubAgentManager | None = None
         self.heartbeat_task: asyncio.Task[Any] | None = None
         self.acted = 0
 
@@ -468,8 +1223,80 @@ class _Agent:
 
     @staticmethod
     def _save_white() -> None:
-        config.others["agent_white"] = {str(k): sorted(v) for k, v in _white.items()}
-        config.write()
+        # 直接读写 config.json 而非 config.write():
+        # cfgr 的 dump() 只写声明字段且类型在 [str,int,float,list,dict] 白名单内的键,
+        # bool 类型的 log_use_nf 会被静默丢弃(导致日志 NerdFont 图标丢失)
+        with open("config.json", encoding="utf-8") as f:
+            cfg = json.load(f)
+        others = cfg.setdefault("others", {})
+        others["agent_white"] = {str(k): sorted(v) for k, v in _white.items()}
+        with open("config.json", "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+    @staticmethod
+    def _save_profile_name(name: str) -> None:
+        """把当前人设名写入 config.others.agent_profile(直接读写 config.json,同 _save_white)。"""
+        with open("config.json", encoding="utf-8") as f:
+            cfg = json.load(f)
+        cfg.setdefault("others", {})["agent_profile"] = name
+        with open("config.json", "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+    async def apply_profile(self, name: str) -> str:
+        """按名字切换到 profiles.json 中的人设:热更新 system_prompt 与 history[0],持久化到 config。"""
+        profiles = _load_profiles()
+        prompt = profiles.get(name)
+        if prompt is None:
+            return f"人设「{name}」不存在,可用: {', '.join(profiles.keys()) or '(无)'}"
+        core = self._core()
+        core.system_prompt = _build_system_prompt(prompt)
+        new_content = core.system_prompt.replace("[ulist]", str(config.owner))
+        # 更新第一条 system 消息(不依赖 history[0] 恰好是 system);
+        # 没有任何 system 消息时插入到最前,确保请求始终以 system 开头
+        for i, m in enumerate(core.history):
+            if isinstance(m, dict) and m.get("role") == "system":
+                core.history[i]["content"] = new_content
+                break
+        else:
+            core.history.insert(0, {"role": "system", "content": new_content})
+        await core.save()
+        config.others["agent_profile"] = name  # 同步内存,使 _current_profile_name() 立即反映新值
+        self._save_profile_name(name)
+        logger.info(f"人设已切换为「{name}」")
+        return f"已切换到人设「{name}」"
+
+    @staticmethod
+    def add_profile(name: str, content: str) -> str:
+        """新增/覆盖 profiles.json 中的人设条目(不自动切换)。"""
+        if not name.strip() or not content.strip():
+            return "人设名称与内容不能为空"
+        profiles = _load_profiles()
+        existed = name in profiles
+        profiles[name] = content
+        try:
+            with open(PROFILES_PATH, "w", encoding="utf-8") as f:
+                json.dump(profiles, f, indent=2, ensure_ascii=False)
+        except OSError:
+            return f"写入 {PROFILES_PATH} 失败(文件只读?)"
+        logger.info(f"人设「{name}」已{'更新' if existed else '添加'}")
+        return f"人设「{name}」已{'更新' if existed else '添加'},发送 .agent.profile {name} 可立即启用"
+
+    @staticmethod
+    def remove_profile(name: str) -> str:
+        """删除 profiles.json 中的人设;不允许删除当前使用中的人设。"""
+        profiles = _load_profiles()
+        if name not in profiles:
+            return f"人设「{name}」不存在,可用: {', '.join(profiles.keys()) or '(无)'}"
+        if name == _current_profile_name():
+            return f"人设「{name}」正在使用中,请先切换其他人设再删除"
+        del profiles[name]
+        try:
+            with open(PROFILES_PATH, "w", encoding="utf-8") as f:
+                json.dump(profiles, f, indent=2, ensure_ascii=False)
+        except OSError:
+            return f"写入 {PROFILES_PATH} 失败(文件只读?)"
+        logger.info(f"人设「{name}」已删除")
+        return f"人设「{name}」已删除"
 
     def _core(self) -> "_AgentCore":
         assert self.core is not None
@@ -495,6 +1322,8 @@ class _Agent:
                 model=cast(str, config.others.get("openai_model")),
                 base_url=cast(str, config.others.get("openai_endpoint") or ""),
             )
+            self.sub_manager = _SubAgentManager(self)
+            self.core.sub_manager = self.sub_manager
             if config.others.get("agent_heartbeat") and self.heartbeat_task is None:
                 self.heartbeat_task = asyncio.create_task(self._heartbeat())
         if isinstance(event, GroupMessageEvent):
@@ -506,7 +1335,7 @@ class _Agent:
         if event.group_id is None or event.user_id is None or event.blocked or event.is_silent:
             return
         text = str(event.message).strip()
-        if text.startswith(".agent"):
+        if text.startswith((".agent", ".ag")):
             await self._cmd(event)
             return
         if event.is_mentioned:
@@ -518,24 +1347,26 @@ class _Agent:
         col = self.collectors.setdefault(event.group_id, _Collector(event.group_id, "grp", self._core()))
         await col.append(event)
         if event.user_id in self._group_white(event.group_id) or event.is_owner:
-            await col.start(event.user_id, self._perm_of(event.user_id, event.group_id))
+            await col.start(event.user_id, self._perm_of(event.user_id, event.group_id), event.self_id)
 
     async def _on_private(self, event: PrivateMessageEvent) -> None:
         if event.user_id is None or event.blocked or event.is_silent:
             return
         text = str(event.message).strip()
-        if text.startswith(".agent"):
+        if text.startswith((".agent", ".ag")):
             await self._cmd(event)
             return
         uid = event.user_id
         if uid in config.owner:
             # 主人私聊:不走收集,立即处理
-            asyncio.create_task(self._process([event.data], "private", uid, self._perm_of(uid, None), uid))
+            asyncio.create_task(
+                self._process([event.data], "private", uid, self._perm_of(uid, None), uid, event.self_id)
+            )
             return
         # 私聊不配置白名单:所有消息都走收集处理
         col = self.collectors.setdefault(uid, _Collector(uid, "usr", self._core()))
         await col.append(event)
-        await col.start(uid, self._perm_of(uid, None))
+        await col.start(uid, self._perm_of(uid, None), event.self_id)
 
     # -- 立即处理(被 @ / 主人私聊) --
 
@@ -548,7 +1379,9 @@ class _Agent:
             col.doing_task.cancel()
         col.doing_task = None
         col.active = False
-        asyncio.create_task(self._process(batch, "group", gid, self._perm_of(event.user_id, gid), event.user_id))
+        asyncio.create_task(
+            self._process(batch, "group", gid, self._perm_of(event.user_id, gid), event.user_id, event.self_id)
+        )
 
     async def _process(
         self,
@@ -557,6 +1390,7 @@ class _Agent:
         scene_id: int,
         perm_group: str,
         principal_id: int | None,
+        self_id: int | None = None,
     ) -> None:
         try:
             await self._core().event_handler(
@@ -565,6 +1399,7 @@ class _Agent:
                 scene_id=scene_id,
                 perm_group=perm_group,
                 principal_id=principal_id,
+                self_id=self_id,
             )
             self.acted += 1
         except Exception:
@@ -576,11 +1411,22 @@ class _Agent:
         uid = cast(int, event.user_id)
         gid = event.group_id
         text = str(event.message).strip()
-        # 归一化:兼容 ".agent.on" 与 ".agent on" 两种写法
-        if text.startswith(".agent."):
-            text = ".agent " + text[len(".agent.") :]
+        # 归一化:兼容 ".agent.on" 与 ".agent on";简写 ".ag" 等价 ".agent"(如 ".ag.pf.ad")
+        if text.startswith(".agent.") or text.startswith(".ag."):
+            prefix = ".agent." if text.startswith(".agent.") else ".ag."
+            text = ".agent " + text[len(prefix) :]
         parts = text.split()
         sub = parts[1] if len(parts) > 1 else ""
+        # 子命令简写 → 全拼:profile/pf, context/ctx, add/ad, remove/rm, summary/sum, clear/clr
+        sub = {
+            "pf": "profile",
+            "ctx": "context",
+            "pf.ad": "profile.add",
+            "pf.rm": "profile.remove",
+            "pf.list": "profile.list",
+            "ctx.clr": "context.clear",
+            "ctx.sum": "context.summary",
+        }.get(sub, sub)
         if sub == "on":
             if gid is not None:
                 self._group_white(gid).add(uid)
@@ -605,6 +1451,57 @@ class _Agent:
             else:
                 msg = "私聊 Agent 自动处理：开启（无需白名单）"
             await self._reply(event, msg)
+        elif sub == "profile.add":
+            if len(parts) < 4:
+                await self._reply(event, "用法: .agent.profile.add <名称> <人设内容(可含空格)>")
+                return
+            if uid not in config.owner:
+                await self._reply(event, "仅主人可添加人设")
+                return
+            # split(None, 3):只切前 3 段,name 之后的内容原样保留(含内部连续空格)
+            _, _, name, content = text.split(None, 3)
+            await self._reply(event, self.add_profile(name, content))
+        elif sub == "profile.remove":
+            target = parts[2] if len(parts) > 2 else ""
+            if target == "":
+                await self._reply(event, "用法: .agent.profile.remove <名称>")
+                return
+            if uid not in config.owner:
+                await self._reply(event, "仅主人可删除人设")
+                return
+            await self._reply(event, self.remove_profile(target))
+        elif sub in ("profile", "profile.list"):
+            target = parts[2] if len(parts) > 2 else ""
+            if target == "" or sub == "profile.list":
+                profiles = _load_profiles()
+                cur = _current_profile_name()
+                listing = ", ".join(f"{n}{'(当前)' if n == cur else ''}" for n in profiles)
+                await self._reply(event, f"可用人设: {listing}\n当前: {cur}")
+                return
+            if uid not in config.owner:
+                await self._reply(event, "仅主人可切换人设")
+                return
+            await self._reply(event, await self.apply_profile(target))
+        elif sub == "context":
+            if uid not in config.owner:
+                await self._reply(event, "仅主人可管理上下文")
+                return
+            await self._reply(event, self._core().context_info())
+        elif sub == "context.clear":
+            if uid not in config.owner:
+                await self._reply(event, "仅主人可管理上下文")
+                return
+            await self._reply(event, await self._core().reset_history())
+        elif sub == "context.summary":
+            if len(parts) < 3:
+                await self._reply(event, "用法: .agent.context.summary <总结内容>")
+                return
+            if uid not in config.owner:
+                await self._reply(event, "仅主人可管理上下文")
+                return
+            # split(None, 2):只切前 2 段,总结内容原样保留(含内部连续空格)
+            _, _, content = text.split(None, 2)
+            await self._reply(event, await self._core().clear_history(content))
         else:
             # 帮助信息由 Helps 模块统一展示(.help Agent),不在本模块内自回复
             await self._reply(event, "未知的子命令。发送 .help Agent 查看模块帮助")

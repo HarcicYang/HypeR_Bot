@@ -184,7 +184,7 @@ def _execute_code(code: str) -> str:
 
 
 class CodeTools(AgentToolBase):
-    @tool()
+    @tool(group="code")
     async def run_python(self, ctx: ToolContext, code: str) -> str:
         """在受限沙箱中执行 Python 代码并返回文本输出，可用于计算、数据处理、文本生成等"""
         return await asyncio.to_thread(_execute_code, code)
