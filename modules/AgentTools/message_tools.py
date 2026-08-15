@@ -25,7 +25,7 @@ class MessageTools(AgentToolBase):
         """向指定群发送消息，返回 message_id（可用于引用、撤回）。
 
         - group_id: 目标群号，与事件中的 group_id 对应
-        - message: 消息段数组（text/at/reply）
+        - message: 消息段数组（text/at/reply/image）
         - 消息序列化后超过 120 字符会被拒绝，长文本必须改用 collected_send
         """
         new_mess = await ctx.create_msg(message)
@@ -39,7 +39,7 @@ class MessageTools(AgentToolBase):
         """向指定用户私聊发送消息（需有对方好友），返回 message_id。
 
         - user_id: 目标用户 QQ 号
-        - message: 消息段数组（text/at/reply）
+        - message: 消息段数组（text/at/reply/image）
         - 消息序列化后超过 120 字符会被拒绝，长文本必须改用 collected_send
         """
         new_mess = await ctx.create_msg(message)
@@ -88,3 +88,11 @@ class MessageTools(AgentToolBase):
         - message_id: 目标消息 id
         """
         return (await ctx.actions.get_msg(message_id)).raw
+
+    @tool(group="qq", sub_visible=False)
+    async def resolve_forward(self, ctx: ToolContext, forward_id: str) -> str:
+        """解析合并转发消息，返回每条消息的发送者昵称与内容（段 JSON）。
+
+        - forward_id: 合并转发 id，来自事件中 forward 段的 data.id
+        """
+        return await ctx.runtime.resolve_forward(forward_id)

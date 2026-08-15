@@ -9,6 +9,7 @@
 
 import dataclasses
 import inspect
+import os
 import types as _types
 from collections.abc import Callable
 from typing import Any, Union, cast, get_args, get_origin, get_type_hints
@@ -27,7 +28,7 @@ PERM_LEVEL: dict[str, int] = {"member": 0, "whitelist": 1, "bot_owner": 2}
 
 MESSAGE_SCHEMA: dict[str, Any] = {
     "type": "array",
-    "description": "标准消息类型，由消息段组合而成。目前只支持 text / at / reply 三种消息段",
+    "description": "标准消息类型，由消息段组合而成。支持 text / at / reply / image 四种消息段",
     "items": {
         "anyOf": [
             {
@@ -49,6 +50,18 @@ MESSAGE_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "seg": {"type": "string", "enum": ["reply"], "description": "消息段类型，必须为reply"},
                     "id": {"type": "string", "description": "就是message_id，与事件上报对应"},
+                },
+            },
+            {
+                "type": "object",
+                "required": ["seg", "file"],
+                "properties": {
+                    "seg": {"type": "string", "enum": ["image"], "description": "消息段类型，必须为image"},
+                    "file": {
+                        "type": "string",
+                        "description": "图片文件：本地路径、http(s):// 链接或 base64: 前缀",
+                    },
+                    "url": {"type": "string", "description": "图片展示地址（可选）"},
                 },
             },
         ]
@@ -313,6 +326,21 @@ class ToolContext:
                     new_mess.append(segments.At(j.get("qq")))
                 case "reply":
                     new_mess.append(segments.Reply(j.get("id")))
+                case "image":
+                    file = j.get("file")
+                    if not file:
+                        raise RuntimeError("图片段缺少 file")
+                    if not file.startswith(("http", "file:", "base64:")):
+                        # 本地路径:校验存在并转 file:// 绝对路径(不用 MediaSeg.build,
+                        # hyperot 1.0.0 的 build 对绝对路径分支用无参构造会崩)
+                        if not os.path.isfile(file):
+                            raise RuntimeError(f"图片文件不存在或无法识别: {file}")
+                        file = "file://" + os.path.abspath(file)
+                    img = segments.Image(file=file)
+                    url = j.get("url")
+                    if url:
+                        img.url = url
+                    new_mess.append(img)
                 case _:
                     raise NotImplementedError(f"消息类型 {seg_type} 非法：{raw_mess}")
         return common.Message(*new_mess)

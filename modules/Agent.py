@@ -22,7 +22,9 @@
 """
 
 import asyncio
+import contextlib
 import dataclasses
+import inspect
 import json
 import math
 import os
@@ -34,6 +36,7 @@ import openai
 from hyperot import common, configurator, hyperogger, segments
 from hyperot.events import *
 from hyperot.listener import Actions
+from hyperot.protocol.builder import OneBotEventBuilder, OneBotJsonMessageBuilder
 from openai import AsyncOpenAI
 from typing_extensions import override
 
@@ -378,9 +381,7 @@ class _AgentCore:
         # RAG 长期记忆(BGE 向量检索 + BM25 降级)
         from modules.AgentTools.memory_store import MemoryStore
 
-        self.memory = MemoryStore(
-            self.memory_path, limit=int(config.others.get("agent_memory_limit") or 500)
-        )
+        self.memory = MemoryStore(self.memory_path, limit=int(config.others.get("agent_memory_limit") or 500))
         self._injected_memory = ""  # 本次事件自动注入的相关记忆(请求时附加到 system,不落盘)
         self.working = False
         self.pending_notices: list[AgentEvent] = []
@@ -485,6 +486,133 @@ class _AgentCore:
 
     async def task_list(self) -> str:
         return str(self.chat_tasks)
+
+    # -- 模块调用(run_module / list_modules / get_module_source) --
+
+    @staticmethod
+    def _find_module(name: str) -> type[ModuleClass.Module[Any]] | None:
+        """按 module_name 优先、类名次之查找注册模块(忽略大小写)。
+
+        注意:多个模块的类名都是 `Module`,必须优先按 module_name 匹配,
+        否则类名匹配会命中错误模块。
+        """
+        name = name.strip().lower()
+        if not name:
+            return None
+        by_name: list[type[ModuleClass.Module[Any]]] = []
+        by_class: list[type[ModuleClass.Module[Any]]] = []
+        for ih in ModuleClass.register_modules:
+            cls = ih.module
+            info_name = ""
+            with contextlib.suppress(Exception):
+                info_name = cls.info().module_name
+            if info_name.lower() == name:
+                by_name.append(cls)
+            elif cls.__name__.lower() == name:
+                by_class.append(cls)
+        return (by_name or by_class or [None])[0]
+
+    async def list_modules(self) -> str:
+        """模块目录:名称 + 简介 + 触发方式(helps 截断)。"""
+        lines: list[str] = []
+        seen: set[str] = set()
+        for ih in ModuleClass.register_modules:
+            cls = ih.module
+            try:
+                info = cls.info()
+                name, desc, helps = info.module_name, info.desc, info.helps
+            except Exception:
+                name, desc, helps = getattr(cls, "__name__", ""), "", ""
+            key = str(name)
+            if not key or key in seen:
+                continue  # 类名可能都是 Module,必须按 module_name 去重
+            seen.add(key)
+            lines.append(f"- {name}: {desc or '(无简介)'}")
+            if helps:
+                lines.append(f"  触发: {helps[:200]}")
+        return "可调用模块:\n" + "\n".join(lines) if lines else "(无可用模块)"
+
+    async def run_module(self, ctx: ToolContext, module: str, command: str) -> str:
+        """以合成事件驱动模块 handle();发送被捕获为段 JSON 返回;无输出时引导修正。"""
+        deny = config.others.get("agent_module_deny") or []
+        if module.strip().lower() in {str(d).lower() for d in deny}:
+            return f"模块「{module}」已被禁用"
+        cls = self._find_module(module)
+        if cls is None:
+            return f"模块「{module}」不存在。\n{await self.list_modules()}"
+        if cls.__name__ in deny:
+            return f"模块「{cls.__name__}」已被禁用"
+        # 官方构建器构造 OneBot 事件 JSON → em.new 得到类型安全事件
+        now = int(time.time())
+        builder = OneBotEventBuilder().init(
+            time=now,
+            self_id=ctx.self_id or 0,
+            user_id=ctx.principal_id or 0,
+            group_id=cast(int, ctx.scene_id if ctx.ev_type == "group" else None),
+        )
+        msg_json = OneBotJsonMessageBuilder().text(command).build()
+        if ctx.ev_type == "group":
+            builder.as_group_message(message=msg_json, message_id="0")
+            builder.group_sender(
+                nickname="Agent", sex="unknown", age=0, card="", area="", level="", role="member", title=""
+            )
+        else:
+            builder.as_private_message(message=msg_json, message_id="0")
+            builder.private_sender(nickname="Agent", sex="unknown", age=0)
+        event = em.new(builder.build())
+        cap = _CaptureActions(self.bot_api)
+        try:
+            await cast(Any, cls)(cap, event).handle()
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            out = json.dumps(cap.captured, ensure_ascii=False) if cap.captured else ""
+            return f"模块「{module}」执行出错: {repr(e)}\n" + (f"已捕获输出: {out}" if out else "")
+        if cap.captured:
+            body = "\n".join(json.dumps(c, ensure_ascii=False) for c in cap.captured)
+            return f"已调用模块「{module}」执行: {command}\n模块输出:\n{body}"
+        helps = ""
+        with contextlib.suppress(Exception):
+            helps = cls.info().helps[:200]
+        return (
+            f"模块「{module}」执行完毕但无输出,可能触发方式/命令格式不对。\n"
+            f"帮助: {helps or '(无帮助文本)'}\n"
+            f"可调用 get_module_source 查看源码了解触发逻辑。"
+        )
+
+    async def get_module_source(self, module: str) -> str:
+        """返回模块类源码(截断 4000 字),供模型理解触发方式。"""
+        cls = self._find_module(module)
+        if cls is None:
+            return f"模块「{module}」不存在。\n{await self.list_modules()}"
+        try:
+            src = inspect.getsource(cls)
+        except (OSError, TypeError):
+            return f"无法获取模块「{module}」源码"
+        body = src if len(src) <= 4000 else src[:4000] + "\n...(源码过长已截断)"
+        return f"模块「{module}」源码:\n{body}"
+
+    async def resolve_forward(self, forward_id: str) -> str:
+        """解析合并转发消息:每条 node 的昵称 + 内容段 JSON(参考 TestMarkDown 的 forward_solve)。"""
+        try:
+            ret = await self.bot_api.get_forward_msg(forward_id)
+        except Exception as e:
+            return f"解析转发失败: {repr(e)}"
+        nodes: Any = ret.data if hasattr(ret, "data") else ret
+        lines: list[str] = []
+        for node in nodes:
+            if not isinstance(node, segments.Node):
+                continue
+            content: Any = node.content
+            segs: list[Any] = []
+            try:
+                if content is not None:
+                    segs = cast(Any, content).get_sync()
+            except Exception:
+                segs = [{"type": "text", "data": {"text": str(content)}}]
+            lines.append(f"{node.nickname}({node.user_id}): {json.dumps(segs, ensure_ascii=False)}")
+        if not lines:
+            return "转发消息为空或无法解析"
+        return f"转发消息 ({len(lines)} 条):\n" + "\n".join(f"{i + 1}. {line}" for i, line in enumerate(lines))
 
     # -- SubAgent 管理(仅主 Agent core 可用;SubAgent 调用返回错误) --
 
@@ -1155,6 +1283,89 @@ class _Collector:
                     self.active = False
         except asyncio.CancelledError:
             pass
+
+
+# --------------------------------------------------------------------------- #
+# 模块调用:拦截模块发送、捕获为段 JSON 移交 Agent(其余 actions 透传真实执行)
+# --------------------------------------------------------------------------- #
+
+
+class _CaptureActions:
+    """包装真实 Actions:send_* 被拦截收集,其余方法透传。
+
+    模块通过 self.actions 发送的消息不会真正发出去,而是以 OneBot 段数组
+    (message.get_sync())形式收集,供 Agent 决定如何转发/整合。
+    图片段若指向本地 file:// 文件,会先复制到 ./temps/agent_capture/(模块常在
+    send 后自行 os.remove 临时文件,不复制则 Agent 转发时文件已不存在)。
+    """
+
+    CAPTURE_DIR = "./temps/agent_capture"
+
+    def __init__(self, real: Actions) -> None:
+        self._real = real
+        self.captured: list[dict[str, Any]] = []
+
+    @staticmethod
+    def _preserve_image_files(segs: list[Any]) -> list[Any]:
+        """把本地 file:// 图片复制到持久目录,返回段副本(不改原段)。"""
+        out: list[Any] = []
+        for seg in segs:
+            if isinstance(seg, dict) and seg.get("type") == "image":
+                data = seg.get("data") or {}
+                file = data.get("file", "")
+                if file.startswith("file://"):
+                    src = file[len("file://") :]
+                    if os.path.isfile(src):
+                        try:
+                            os.makedirs(_CaptureActions.CAPTURE_DIR, exist_ok=True)
+                            dst = os.path.join(
+                                _CaptureActions.CAPTURE_DIR,
+                                f"{int(time.time() * 1000)}_{os.path.basename(src)}",
+                            )
+                            import shutil
+
+                            shutil.copy2(src, dst)
+                            file = "file://" + os.path.abspath(dst).replace("\\", "/")
+                        except OSError:
+                            pass
+                    seg = dict(seg)
+                    seg["data"] = dict(data)
+                    seg["data"]["file"] = file
+            out.append(seg)
+        return out
+
+    async def send_msg(
+        self,
+        group_id: int | None = None,
+        user_id: int | None = None,
+        message: Any = None,
+        **kw: Any,
+    ) -> dict[str, Any]:
+        segs: list[Any] = []
+        try:
+            segs = message.get_sync() if message is not None else []
+        except Exception:
+            segs = [{"type": "text", "data": {"text": str(message)}}]
+        segs = self._preserve_image_files(segs)
+        self.captured.append({"group_id": group_id, "user_id": user_id, "message": segs})
+        # 伪装成功返回,避免模块因返回结构不符而异常
+        return {"status": "ok", "retcode": 0, "data": {"message_id": 0}}
+
+    async def send_group_msg(self, group_id: int | None, message: Any, **kw: Any) -> dict[str, Any]:
+        return await self.send_msg(group_id=group_id, message=message, **kw)
+
+    async def send_private_msg(self, user_id: int | None, message: Any, **kw: Any) -> dict[str, Any]:
+        return await self.send_msg(user_id=user_id, message=message, **kw)
+
+    async def send_forward_msg(self, message: Any, **kw: Any) -> dict[str, Any]:
+        return await self.send_msg(message=message, **kw)
+
+    async def send_group_forward_msg(self, group_id: int | None, message: Any, **kw: Any) -> dict[str, Any]:
+        return await self.send_msg(group_id=group_id, message=message, **kw)
+
+    def __getattr__(self, name: str) -> Any:
+        # 查询/操作类方法(如 get_version_info / set_group_ban)透传真实执行
+        return getattr(self._real, name)
 
 
 # --------------------------------------------------------------------------- #
