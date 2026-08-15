@@ -151,7 +151,10 @@ SYSTEM_INSTRUCTIONS = """# 你的运行环境与使用方式
 
 ## 任务列表/记忆
 
-你应当使用task list作为自己的记忆和任务列表。
+- 你应当使用task list作为自己的记忆和任务列表。
+- 需要长期记住的信息(用户偏好、重要约定、值得记住的事实)用 `mem_add` 写入长期记忆;
+  相关记忆会在对话开始时自动注入,无需重复记忆已存在的内容。
+- 可以用 `mem_query` 主动检索记忆,用 `mem_del` 删除错误记忆。
 
 # 发言场景（只限一次）
 
@@ -163,7 +166,9 @@ SYSTEM_INSTRUCTIONS = """# 你的运行环境与使用方式
 
 - 长句拆短，省略句号，少量多次。
   例：“衬衫的价格为九磅十五便士” → “所以你选C” → “涂在答题卡上”
-- 回复时，对当前对话的**第一条**消息尽量使用回复引用（reply）和 @（at）指明对象，让回复挂靠清晰；连续对话中后续消息可酌情省略。
+- 鼓励连续的工具调用。
+- 回复时，对当前对话的**第一条**消息尽量使用回复引用（reply）或者 @（at）指明对象，让回复挂靠清晰；连续对话中后续消息可省略。
+- 对于同一个人发送的连续的多条消息，按一条处理。
 - 需要发送大段文本（长文、说明、列表）时，用 `collected_send` 以合并转发形式发送。
 - 一次性连续调用多个工具，不等回复。
 - 代码、链接等连贯内容不拆分。
@@ -171,7 +176,7 @@ SYSTEM_INSTRUCTIONS = """# 你的运行环境与使用方式
 - 偶尔用“何意味”等词或表情。
 - 等对方连续消息发完再开口。
 - 遇到吐槽、玩梗歌词等**不建议立即回复**，最好先看看群友的反应。
-- 你不应当在聊天中表现的过于积极和热情
+- 你不应当在聊天中表现的过于积极和热情，谨慎回复，不要太过打扰正常聊天。
 """
 
 ROLE_PROMPT = """# 角色
@@ -307,6 +312,7 @@ class _AgentCore:
         name: str = "main",
         history_path: str = HISTORY_PATH,
         tasks_path: str = TASKS_PATH,
+        memory_path: str = "./temps/agent_memory",
         notify_main: Any = None,
         sub_manager: Any = None,
     ) -> None:
@@ -332,6 +338,7 @@ class _AgentCore:
             )
         self.history_path = history_path
         self.tasks_path = tasks_path
+        self.memory_path = memory_path
         self.notify_main = notify_main
         self.sub_manager = sub_manager
         if base_url:
@@ -368,6 +375,13 @@ class _AgentCore:
                 self.chat_tasks = json.load(f)
         except FileNotFoundError:
             pass
+        # RAG 长期记忆(BGE 向量检索 + BM25 降级)
+        from modules.AgentTools.memory_store import MemoryStore
+
+        self.memory = MemoryStore(
+            self.memory_path, limit=int(config.others.get("agent_memory_limit") or 500)
+        )
+        self._injected_memory = ""  # 本次事件自动注入的相关记忆(请求时附加到 system,不落盘)
         self.working = False
         self.pending_notices: list[AgentEvent] = []
         self.report_waiters: dict[str, asyncio.Future[Any]] = {}
@@ -407,7 +421,59 @@ class _AgentCore:
             head += "\n任务列表: " + "; ".join(f"[{i}]{t}" for i, t in enumerate(tasks))
         else:
             head += "\n任务列表: (空)"
+        head += f"\n长期记忆: {self.memory.count()} 条{' (向量)' if self.memory.is_ready() else ' (BM25 降级)'}"
         return head
+
+    # -- RAG 长期记忆(向量检索;embedding 为阻塞调用,统一走线程池) --
+
+    async def mem_add(self, content: str) -> str:
+        """添加一条长期记忆,返回条目 id。"""
+        try:
+            mem_id = await asyncio.to_thread(self.memory.add, content)
+        except ValueError as e:
+            return repr(e)
+        return f"已记住 #{mem_id}"
+
+    async def mem_query(self, content: str, top_k: int = 5) -> str:
+        """语义检索相关记忆,返回 #id: text (score) 列表。"""
+        try:
+            rs = await asyncio.to_thread(self.memory.query, content, top_k)
+        except Exception as e:
+            return f"检索失败: {repr(e)}"
+        if not rs:
+            return "没有相关记忆"
+        return "\n".join(f"#{self._mem_id_of(text)}: {text} ({score:.3f})" for text, score in rs)
+
+    async def mem_list(self, limit: int = 20) -> str:
+        """列出最近的记忆条目。"""
+        items = await asyncio.to_thread(self.memory.list_all, limit)
+        if not items:
+            return "(记忆为空)"
+        return "\n".join(f"#{e['id']}: {e['text']}" for e in items)
+
+    async def mem_delete(self, mem_id: int) -> str:
+        """删除指定 id 的记忆。"""
+        ok = await asyncio.to_thread(self.memory.delete, mem_id)
+        return f"已删除记忆 #{mem_id}" if ok else f"记忆 #{mem_id} 不存在"
+
+    def _mem_id_of(self, text: str) -> int:
+        for e in self.memory.entries:
+            if e["text"] == text:
+                return int(e["id"])
+        return 0
+
+    def mem_retrieve(self, query_text: str, top_k: int = 3) -> str:
+        """同步检索相关记忆并格式化为注入段(供自动注入调用,阻塞)。"""
+        if not query_text.strip():
+            return ""
+        try:
+            rs = self.memory.query(query_text[:200], top_k)
+        except Exception:
+            return ""
+        if not rs:
+            return ""
+        lines = [f"- {text[:100]}" for text, _ in rs]
+        return "# 相关记忆\n" + "\n".join(lines)
 
     async def task_add(self, content: str) -> str:
         self.chat_tasks.append(content)
@@ -599,9 +665,13 @@ class _AgentCore:
         bad_retries = 0
         if event is None:
             ev_data: str | None = None
+            query_text = ""
         else:
             if isinstance(event, str):
                 logger.info(event)
+                query_text = event
+            else:
+                query_text = str(event.data)
             ev = AgentEvent(
                 type="message_batch",
                 scene_type=ev_type,
@@ -613,6 +683,13 @@ class _AgentCore:
                 {"event": ev.to_dict(), "system_message": sys_msg},
                 ensure_ascii=False,
             )
+        # RAG 自动注入:用本次事件文本检索相关记忆,附加到本次请求的 system 消息
+        self._injected_memory = ""
+        if query_text.strip():
+            try:
+                self._injected_memory = await asyncio.to_thread(self.mem_retrieve, query_text, 3)
+            except Exception:
+                self._injected_memory = ""
         try:
             while not timer_ev.is_set():
                 try:
@@ -735,18 +812,29 @@ class _AgentCore:
             return {"type": "function", "name": tool_choice}
         return {"type": "function", "function": {"name": tool_choice}}
 
+    def _with_injected_memory(self, messages: list[Any]) -> list[Any]:
+        """把自动检索到的相关记忆附加到第一条 system 消息(深拷贝,不污染 history)。"""
+        if not self._injected_memory:
+            return messages
+        out = [dict(m) for m in messages]
+        for m in out:
+            if m.get("role") == "system" and isinstance(m.get("content"), str):
+                m["content"] = m["content"] + "\n\n" + self._injected_memory
+                break
+        return out
+
     async def _llm_create(self, tool_choice_n: Any) -> Any:
         if self.api_mode == "responses":
             return await self._oai.responses.create(  # pyrefly: ignore[no-matching-overload]
                 model=self.model,
-                input=self._history_to_items(),
+                input=self._with_injected_memory(self._history_to_items()),
                 tools=self._tools_for_responses(),
                 tool_choice=tool_choice_n,
                 text=cast(Any, {"format": {"type": "json_object"}}),
             )
         return await self._oai.chat.completions.create(
             model=self.model,
-            messages=self.history,
+            messages=self._with_injected_memory([dict(m) for m in self.history]),
             tools=self.tools,
             tool_choice=tool_choice_n,
             response_format=cast(Any, {"type": "json_object"}),
@@ -1131,6 +1219,7 @@ class _SubAgentManager:
             name=f"sub:{sub_id}",
             history_path=f"./temps/agent_sub_{sub_id}_history.json",
             tasks_path=f"./temps/agent_sub_{sub_id}_tasks.json",
+            memory_path=f"./temps/agent_sub_{sub_id}_memory",
             notify_main=self._notify,
         )
         sub = _SubAgent(sub_id, name, prompt, scene_type, scene_id, perm_group, core)
@@ -1150,7 +1239,12 @@ class _SubAgentManager:
         sub = self.subagents.pop(sub_id, None)
         if sub is None:
             return f"SubAgent #{sub_id} 不存在"
-        for p in (sub.core.history_path, sub.core.tasks_path):
+        for p in (
+            sub.core.history_path,
+            sub.core.tasks_path,
+            sub.core.memory_path + ".json",
+            sub.core.memory_path + ".npz",
+        ):
             if os.path.exists(p):
                 os.remove(p)
         self._notify(
