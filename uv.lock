@@ -685,7 +685,7 @@ wheels = [
 
 [[package]]
 name = "hyper-bot"
-version = "1.0.0.post1"
+version = "1.0.0.post3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -695,9 +695,9 @@ dependencies = [
     { name = "uvicorn" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5e/7d/257b0c79a1616d02962d7191bed9ecf630851fade6188b171255591bd16a/hyper_bot-1.0.0.post1.tar.gz", hash = "sha256:b31b30ce86c05b9ed9e4a617fcce32ebe4fa4a40b008321eda3f85827969968a", size = 53504, upload-time = "2026-08-02T11:36:30.115Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/54/5e/cd88a17c2424f1486a94e705d543f3025868aed889bccd8fedfa11b69893/hyper_bot-1.0.0.post3.tar.gz", hash = "sha256:fafc9850c34f070f96bfd87804dd5b1ad7294e6dc9e4702bb843945dfd75aaae", size = 53555, upload-time = "2026-08-16T05:18:45.536Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4d/21/80f5618446454676a43ddaf059d5a7f12da5cfabb2a0e3e418dc287573d2/hyper_bot-1.0.0.post1-py3-none-any.whl", hash = "sha256:38da3f88d9dad3078a3d91e9ae234d3f10ae70aa9d70bf84c189187547f24bb7", size = 51054, upload-time = "2026-08-02T11:36:28.696Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/99/b57ab4ca635fc5176fac3b6b4f5e9e730b240129084cf9a2a12dfe3131e0/hyper_bot-1.0.0.post3-py3-none-any.whl", hash = "sha256:bb9882aa3c682ffcdfc3d7e48fd181603ae7e3e8b3e42371ba7ed68bfaa97331", size = 51052, upload-time = "2026-08-16T05:18:44.21Z" },
 ]
 
 [[package]]
@@ -743,7 +743,7 @@ requires-dist = [
     { name = "gitpython" },
     { name = "google-genai" },
     { name = "httpx" },
-    { name = "hyper-bot", specifier = "==1.0.0.post1" },
+    { name = "hyper-bot", specifier = "==1.0.0.post3" },
     { name = "jieba" },
     { name = "meme-generator", specifier = "<0.2.0" },
     { name = "meme-generator-contrib" },

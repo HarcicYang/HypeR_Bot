@@ -113,7 +113,7 @@ AI 聊天模块（`.chat`）需要在 `others` 中配置后端：
     "openai_key": "",
     "openai_endpoint": "https://api.deepseek.com",
     "openai_model": "deepseek-chat",
-    "agent_api": "responses",
+    "agent_api": "chat",
     "agent_web_search": true,
     "agent_white": {},
     "agent_profile": "cat",
@@ -122,9 +122,12 @@ AI 聊天模块（`.chat`）需要在 `others` 中配置后端：
 }
 ```
 
-- `openai_*`：LLM 后端（OpenAI 兼容接口，如 DeepSeek）；`agent_api`：`responses`（默认，支持服务端联网搜索）或 `chat`；`agent_web_search`：是否启用服务端搜索；
+- `openai_*`：LLM 后端（OpenAI 兼容接口，如 DeepSeek）；`agent_api`：`chat`（当前默认，兼容性更好）或 `responses`；`agent_web_search`：是否启用服务端搜索（仅 `responses` 模式生效）；
+- `agent_reasoning_effort`：模型推理强度，默认 `low`；可设为 `none` / `low` / `medium` / `high` 等模型支持的值；
+- `agent_native_multimodal`：Chat Completions 原生多模态，默认 `true`。开启后用户消息中的图片由 bot 本地下载并转为 base64 data URI，再以 OpenAI `image_url` 格式发给模型，无需 `read_image` 工具；下载失败会回退为文本事件；不支持图片输入的提供方请设为 `false`；
 - `agent_white`：各群白名单（群号 → QQ 列表），白名单成员发言触发自动处理，被 @ 时无视白名单立即处理；
 - `agent_profile`：当前人设名（来自 `profiles.json`，不存在则自动生成）；`agent_memory_limit`：RAG 记忆容量上限；
+- `profiles.json` 人设条目支持 `{"prompt": "人设文本", "inject_master": true|false}`：`inject_master=true` 时在系统提示词中注入「`User_id in [ulist]` 是你的主人」，`false` 则不注入；省略时默认 `true`（兼容旧的纯文本条目格式）。
 - `agent_module_deny`：禁止 Agent 调用的功能模块黑名单。
 
 Agent 命令（支持点号/空格两种写法；简写 `ag`=agent、`pf`=profile、`ctx`=context、`ad`=add、`rm`=remove、`sum`=summary、`clr`=clear）：
@@ -133,15 +136,16 @@ Agent 命令（支持点号/空格两种写法；简写 `ag`=agent、`pf`=profil
 .agent.on / .agent.off        # 加入/移出当前群白名单
 .agent.status                 # 白名单状态
 .agent.profile                # 列出人设（来自 profiles.json）
-.agent.profile <名称>         # 切换人设（仅主人）
+.agent.profile <名称>         # 切换人设（仅主人；切换前自动总结当前上下文）
 .agent.profile.add <名称> <内容>   # 添加/更新人设（仅主人）
 .agent.profile.remove <名称>  # 删除人设（仅主人）
+.agent.profile.master <名称> [on/off]  # 查看/设置是否注入主人设定（设置仅主人，简写 .ag.pf.ma）
 .agent.context                # 查看上下文状态（仅主人）
 .agent.context.clear          # 清空上下文历史（仅主人）
 .agent.context.summary <内容> # 用总结替换上下文历史（仅主人）
 ```
 
-Agent 内置能力：人设切换（角色段由 profile 完全控制）、上下文管理、RAG 长期记忆（本地 BGE 向量检索，`mem_add`/`mem_query`/`mem_list`/`mem_del`，相关记忆自动注入）、调用其他功能模块（`run_module`/`list_modules`/`get_module_source`，模块输出以段 JSON 移交 Agent 决定是否转发）。
+Agent 内置能力：人设切换（bot 工具 `switch_profile` 与命令 `.agent.profile` 同一入口）、上下文总结（bot 工具 `summary` 与命令 `.agent.context.summary` 同一入口）、RAG 长期记忆（本地 BGE 向量检索，`mem_add`/`mem_query`/`mem_list`/`mem_del`，相关记忆自动注入）、调用其他功能模块（`run_module`/`list_modules`/`get_module_source`，模块输出以段 JSON 移交 Agent 决定是否转发）。
 
 ## 环境
 

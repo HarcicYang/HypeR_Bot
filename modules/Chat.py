@@ -97,9 +97,9 @@ class ChatActions:
                     msg = Message(
                         Forward(
                             content=[
-                                CustomNode(user_id=str(ev.user_id or 0), nick_name="", content=ev.message).to_json(),
+                                CustomNode(user_id=str(ev.user_id or 0), nickname="", content=ev.message).to_json(),
                                 CustomNode(
-                                    user_id=str(ev.self_id), nick_name="", content=Message(Text(result))
+                                    user_id=str(ev.self_id), nickname="", content=Message(Text(result))
                                 ).to_json(),
                             ]
                         )

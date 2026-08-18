@@ -9,12 +9,17 @@
 
 import dataclasses
 import inspect
+import json
 import os
+import time
 import types as _types
 from collections.abc import Callable
 from typing import Any, Union, cast, get_args, get_origin, get_type_hints
 
-from hyperot import common, segments
+from hyperot import common, configurator, segments
+
+config = configurator.BotConfig.get("hyper-bot")
+CONFIG_PATH = "config.json"
 
 # --------------------------------------------------------------------------- #
 # 权限
@@ -185,6 +190,82 @@ def _coerce(anno: Any, value: Any) -> Any:
 
 class ToolRegistry:
     _tools: dict[str, ToolRegistration] = {}
+    _disabled: dict[str, float] = {}
+    PERMANENT = -1.0
+
+    # -- 动态禁用/启用状态(持久化到 config.json 的 others.agent_func_disabled) --
+
+    @classmethod
+    def _prune_expired(cls) -> None:
+        """清掉已到期的禁用条目(惰性;不写盘)。"""
+        now = time.time()
+        expired = [n for n, until in cls._disabled.items() if until != cls.PERMANENT and until <= now]
+        for n in expired:
+            cls._disabled.pop(n, None)
+
+    @classmethod
+    def _load_disabled(cls) -> None:
+        """启动时从 config.others 读回禁用状态;非法条目忽略。"""
+        cls._disabled = {}
+        raw = config.others.get("agent_func_disabled") or {}
+        if isinstance(raw, dict):
+            for name, value in raw.items():
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    cls._disabled[str(name)] = float(value)
+
+    @classmethod
+    def _save_disabled(cls) -> None:
+        """持久化到 config.json,并同步内存 config.others。"""
+        cls._prune_expired()
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            cfg = json.load(f)
+        others = cfg.setdefault("others", {})
+        others["agent_func_disabled"] = {name: until for name, until in cls._disabled.items()}
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        config.others["agent_func_disabled"] = others["agent_func_disabled"]
+
+    @classmethod
+    def is_disabled(cls, name: str) -> bool:
+        cls._prune_expired()
+        return name in cls._disabled
+
+    @classmethod
+    def disabled_until(cls, name: str) -> float | None:
+        """返回 None=未禁用;PERMANENT(-1)=永久;其他=到期时间戳(epoch 秒)。"""
+        cls._prune_expired()
+        return cls._disabled.get(name)
+
+    @classmethod
+    def registrations(cls) -> list[ToolRegistration]:
+        """按分组/名称排序返回全部工具注册信息(含禁用中的)。"""
+        return sorted(cls._tools.values(), key=lambda t: (t.group, t.name))
+
+    @classmethod
+    def disable_tool(cls, name: str, minutes: float | None, duration_text: str = "") -> str:
+        """禁用工具。minutes=None 表示永久禁用,直到手动启用。返回中文结果。"""
+        if cls._tools.get(name) is None:
+            return f"工具 {name} 不存在,发送 .ag.func 查看全部工具"
+        if minutes is None:
+            cls._disabled[name] = cls.PERMANENT
+            cls._save_disabled()
+            return f"工具 {name} 已禁用,直到手动启用"
+        until = time.time() + minutes * 60.0
+        cls._disabled[name] = until
+        cls._save_disabled()
+        label = duration_text or f"{minutes:g}分钟"
+        return f"工具 {name} 已禁用 {label},到期自动恢复"
+
+    @classmethod
+    def enable_tool(cls, name: str) -> str:
+        """启用被禁用的工具;未禁用时给出友好提示。"""
+        if cls._tools.get(name) is None:
+            return f"工具 {name} 不存在,发送 .ag.func 查看全部工具"
+        if not cls.is_disabled(name):
+            return f"工具 {name} 当前未被禁用"
+        cls._disabled.pop(name, None)
+        cls._save_disabled()
+        return f"工具 {name} 已启用"
 
     @classmethod
     def register(
@@ -230,7 +311,7 @@ class ToolRegistry:
 
     @classmethod
     def schema(cls, role: str = "main") -> list[dict[str, Any]]:
-        """按角色返回可见工具的 OpenAI schema(SubAgent 看不到未对其开放的工具)。"""
+        """按角色返回可见工具的 OpenAI schema(禁用工具仍提供,由提示词标注可用性,dispatch 拦截调用)。"""
         return [t.serialize_openai() for t in cls._tools.values() if t.visible_for(role)]
 
     @classmethod
@@ -238,6 +319,20 @@ class ToolRegistry:
         reg = cls._tools.get(name)
         if reg is None:
             raise NotImplementedError(f"工具类型 {name} 非法")
+        until = cls.disabled_until(name)
+        if until is not None:
+            if until == cls.PERMANENT:
+                return f"工具 {name} 已被禁用,只能由主人手动启用"
+            remain = max(0, int(until - time.time()))
+            if remain < 60:
+                readable = f"约 {remain} 秒后"
+            elif remain < 3600:
+                readable = f"约 {remain // 60} 分 {remain % 60:02d} 秒后"
+            elif remain < 86400:
+                readable = f"约 {remain // 3600} 小时 {(remain % 3600) // 60:02d} 分后"
+            else:
+                readable = f"约 {remain // 86400} 天 {(remain % 86400) // 3600} 小时后"
+            return f"工具 {name} 已被禁用,{readable} 自动恢复"
         if not reg.visible_for(ctx.role):
             return f"调用不合法：工具 {name} 不向当前角色({ctx.role})开放"
         if PERM_LEVEL[reg.perm] > PERM_LEVEL[ctx.perm_group]:
@@ -344,3 +439,6 @@ class ToolContext:
                 case _:
                     raise NotImplementedError(f"消息类型 {seg_type} 非法：{raw_mess}")
         return common.Message(*new_mess)
+
+
+ToolRegistry._load_disabled()

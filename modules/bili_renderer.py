@@ -410,8 +410,13 @@ def _twemoji_svg(codepoint: str) -> bytes:
             data = resp.read()
     except Exception:
         return b""
-    with open(path, "wb") as f:
-        f.write(data)
+    try:
+        os.makedirs(_TWEMOJI_DIR, exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
+    except OSError:
+        # 只读目录或写入失败时仍可用本次下载的数据渲染
+        return data
     return data
 
 

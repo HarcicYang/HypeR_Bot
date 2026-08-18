@@ -29,8 +29,8 @@ class Test(ModuleClass.Module[MessageEvent]):
             for i in self.event.message:
                 if isinstance(i, Forward):
                     nodes = await self.actions.forward_solve(self.event.message)
-                    for i in nodes:
-                        print(f"{i.nickname}({i.user_id}) {i.content}")
+                    for j in nodes:
+                        print(f"{j.nickname}({j.user_id}) {j.content}")
                     break
             # with open(f"debug/{int(time.time())}.json", "w", encoding="utf-8") as f:
             #     f.write(str(text))
@@ -94,7 +94,7 @@ class Test(ModuleClass.Module[MessageEvent]):
                             content=[
                                 CustomNode(
                                     user_id="2530894749",
-                                    nick_name='dext("⁧⁧ ("⁧‭',
+                                    nickname='dext("⁧⁧ ("⁧‭',
                                     content=Message([At("2488529467"), Text("好想🥵，好想被主人宠幸🥵")]),
                                 ).to_json()
                             ]
@@ -132,7 +132,7 @@ class Test(ModuleClass.Module[MessageEvent]):
             keyboard = KeyBoard([row])
             forward_result = await self.actions.send_forward_msg(
                 message=Message(
-                    [CustomNode(user_id=str(self.event.self_id), nick_name="bot", content=Message([keyboard]))]
+                    [CustomNode(user_id=str(self.event.self_id), nickname="bot", content=Message([keyboard]))]
                 )
             )
             res_id: str = forward_result.data.res_id
@@ -145,7 +145,7 @@ class Test(ModuleClass.Module[MessageEvent]):
             keyboard = KeyBoard([row])
             forward_result = await self.actions.send_forward_msg(
                 message=Message(
-                    [CustomNode(user_id=str(self.event.self_id), nick_name="bot", content=Message([keyboard]))]
+                    [CustomNode(user_id=str(self.event.self_id), nickname="bot", content=Message([keyboard]))]
                 )
             )
             res_id: str = forward_result.data.res_id

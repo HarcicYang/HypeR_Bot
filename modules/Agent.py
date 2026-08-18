@@ -22,14 +22,19 @@
 """
 
 import asyncio
+import base64
 import contextlib
+import copy
 import dataclasses
+import html
 import inspect
 import json
 import math
 import os
+import re
 import time
 import traceback
+import uuid
 from typing import Any, Literal, cast
 
 import openai
@@ -120,6 +125,10 @@ SUBAGENT_RULE = """# SubAgent 通讯规则
 
 # 注意:这里没有「# 角色」段 —— 该段由 _build_system_prompt 按当前 profile 动态生成,
 # 否则固定角色会压过切换后的人设,导致 .agent.profile 切换无效
+MASTER_RULE = "- User_id in [ulist] 是你的主人。\n"
+
+# 其余环境说明保留“主人私聊立即处理/权限分三级”等运行事实;只有上面的 MASTER_RULE
+# 是角色对主人的服从要求,是否注入由每个 profile 的 inject_master 控制。
 SYSTEM_INSTRUCTIONS = """# 你的运行环境与使用方式
 
 - 你是运行在 QQ 群和私聊中的 bot。群内自动处理需要白名单：白名单用户发言会触发你的处理（混杂缓存消息）；非白名单用户的消息只进缓存，不触发处理。
@@ -131,8 +140,9 @@ SYSTEM_INSTRUCTIONS = """# 你的运行环境与使用方式
 
 # 强制规则
 
-- User_id in [ulist] 是你的主人。
+{master}
 - **发消息唯一方法：调用工具。**
+- 工具调用只允许使用 API 的 function_call；严禁在 content 中输出 `<function_calls>`、`<｜DSML｜...>`、Markdown/XML 等伪工具调用文本。
 - 非JSON输入：视为系统指令。
 - 无意义内容（空括号、乱码）：忽略。
 - 你的 user_id 是事件上报中的 `self_id` , 当消息中的 @ 等指向该 user_id 时，你才可以认为该消息指向你
@@ -144,13 +154,20 @@ SYSTEM_INSTRUCTIONS = """# 你的运行环境与使用方式
 
 {tools}
 
-## 消息总结（人工触发）
+## 消息总结
 
 - 分条列出关键事件、话题、决定。
 - 指出待回复的消息、@你或点名你的上下文。
 - 保留未完成任务或需跟进事项。
 - 消息总结操作会立即更新全局提示词，所以你需要保留一切你要保留的信息。
-- 完成后立即调用`clear(content)`，content为你的总结文本（不要额外解释）。
+- 完成后立即调用`summary(content)`，content为你的总结文本（不要额外解释）。
+- 主人发送 `.agent.context.summary` 时,系统会调用 LLM 自动总结当前上下文;该命令不需要提供摘要内容。
+
+## 人设切换
+
+- 需要切换人设时调用 `switch_profile(name)`，name 为 profiles.json 中的预设名。
+- 主人也可通过 `.agent.profile <名称>` 命令切换，效果与 `switch_profile` 工具一致。
+- 切换真正生效前，系统会自动总结当前上下文，新上下文只保留总结、任务与长期记忆。
 
 ## 任务列表/记忆
 
@@ -198,21 +215,75 @@ ROLE_PROMPT = """# 角色
 PROFILES_PATH = "./profiles.json"
 
 
-def _load_profiles() -> dict[str, str]:
-    """读 profiles.json(人设库:{名字 -> 人设全文});不存在/损坏则用默认人设生成一份。"""
+@dataclasses.dataclass(frozen=True)
+class _AgentProfile:
+    """profiles.json 中的单个人设:人设文本 + 是否注入「主人」设定。"""
+
+    prompt: str
+    inject_master: bool = True
+
+
+def _profile_from_value(value: object) -> _AgentProfile | None:
+    """把 profiles.json 的条目值转成人设对象。
+
+    兼容旧版 ``{名字: 全文}`` 格式;新版条目为
+    ``{"prompt": "...", "inject_master": true|false}``。
+    旧版字符串默认保持原行为(注入主人设定)。
+    """
+    if isinstance(value, str):
+        prompt = value.strip()
+        return _AgentProfile(prompt) if prompt else None
+    if isinstance(value, dict):
+        prompt = value.get("prompt")
+        if not isinstance(prompt, str) or not prompt.strip():
+            return None
+        inject_master = value.get("inject_master", True)
+        if not isinstance(inject_master, bool):
+            inject_master = True
+        return _AgentProfile(prompt.strip(), inject_master)
+    return None
+
+
+def _profile_to_value(profile: _AgentProfile) -> dict[str, str | bool]:
+    return {"prompt": profile.prompt, "inject_master": profile.inject_master}
+
+
+def _save_profiles(profiles: dict[str, _AgentProfile]) -> None:
+    with open(PROFILES_PATH, "w", encoding="utf-8") as f:
+        json.dump({name: _profile_to_value(p) for name, p in profiles.items()}, f, indent=2, ensure_ascii=False)
+
+
+def _save_profile_name_to_config(name: str) -> None:
+    """把当前人设名写入 config.others.agent_profile(直接读写 config.json,同 _save_white)。"""
+    with open("config.json", encoding="utf-8") as f:
+        cfg = json.load(f)
+    cfg.setdefault("others", {})["agent_profile"] = name
+    with open("config.json", "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+
+def _load_profiles() -> dict[str, _AgentProfile]:
+    """读 profiles.json 人设库;文件缺失/损坏时回退默认人设。
+
+    支持混用新旧格式:字符串条目按 inject_master=True 处理,对象条目按
+    自身选项处理;无效条目会被忽略,至少保留一条有效人设。
+    """
     try:
         with open(PROFILES_PATH, encoding="utf-8") as f:
             data = json.load(f)
-        if isinstance(data, dict) and data and all(isinstance(v, str) for v in data.values()):
-            return data
+        if isinstance(data, dict):
+            profiles: dict[str, _AgentProfile] = {}
+            for name, value in data.items():
+                profile = _profile_from_value(value)
+                if profile is not None:
+                    profiles[str(name)] = profile
+            if profiles:
+                return profiles
     except (FileNotFoundError, json.JSONDecodeError):
         pass
-    fallback = {"cat": ROLE_PROMPT}
-    try:
-        with open(PROFILES_PATH, "w", encoding="utf-8") as f:
-            json.dump(fallback, f, indent=2, ensure_ascii=False)
-    except OSError:
-        pass  # 只读环境:内存里仍可用默认人设
+    fallback = {"cat": _AgentProfile(ROLE_PROMPT, True)}
+    with contextlib.suppress(OSError):  # 只读环境:内存里仍可用默认人设
+        _save_profiles(fallback)
     return fallback
 
 
@@ -221,25 +292,96 @@ def _current_profile_name() -> str:
     return str(config.others.get("agent_profile") or "cat")
 
 
-def _current_role_prompt() -> str:
-    """当前人设文本;人设不存在/文件损坏时回退默认人设 ROLE_PROMPT。"""
-    return _load_profiles().get(_current_profile_name()) or ROLE_PROMPT
+def _current_profile() -> _AgentProfile:
+    """当前人设;人设不存在/文件损坏时回退默认人设 ROLE_PROMPT。"""
+    return _load_profiles().get(_current_profile_name()) or _AgentProfile(ROLE_PROMPT)
 
 
-def _build_tools_section() -> str:
-    """从 ToolRegistry 自动生成「可用工具」节:工具签名 + docstring 描述。"""
+def _build_tools_section(role: str = "main") -> str:
+    """从 ToolRegistry 自动生成工具节:工具签名 + docstring + 可用性标记。"""
     lines: list[str] = []
-    for t in ToolRegistry.schema():
+    for t in ToolRegistry.schema(role=role):
         fn = t["function"]
+        name = fn["name"]
         params = fn.get("parameters", {}).get("properties", {})
         args = ", ".join(params.keys())
-        lines.append(f"- `{fn['name']}({args})` {fn['description']}")
+        until = ToolRegistry.disabled_until(name)
+        if until is None:
+            mark = ""
+        elif until == ToolRegistry.PERMANENT:
+            mark = "[禁用中,待手动启用] "
+        else:
+            mark = f"[禁用中,剩{_format_remain(until - time.time())}] "
+        lines.append(f"- {mark}`{name}({args})` {fn['description']}")
+    return "\n".join(lines)
+
+
+def _parse_duration_minutes(text: str) -> float | None:
+    """解析禁用时长,返回分钟数。
+
+    支持 30s / 5m / 1h / 1d 及 30秒 / 5分钟 / 1小时 / 1天;
+    裸数字按分钟;非法或 <=0 抛 ValueError。
+    """
+    text = text.strip().lower()
+    m = re.fullmatch(r"(\d+(?:\.\d+)?)\s*(s|sec|秒|m|min|分钟|h|hour|小时|d|day|天)?", text)
+    if not m:
+        raise ValueError("时长格式错误")
+    value = float(m.group(1))
+    unit = m.group(2) or "m"
+    if unit in ("s", "sec", "秒"):
+        minutes = value / 60.0
+    elif unit in ("m", "min", "分钟"):
+        minutes = value
+    elif unit in ("h", "hour", "小时"):
+        minutes = value * 60.0
+    elif unit in ("d", "day", "天"):
+        minutes = value * 1440.0
+    else:
+        raise ValueError("时长单位错误")
+    if minutes <= 0:
+        raise ValueError("时长必须大于0")
+    return minutes
+
+
+def _format_remain(secs: float) -> str:
+    """把剩余秒数格式化为可读时长(不足 1 秒按 0 处理)。"""
+    secs = max(0, int(secs))
+    if secs < 60:
+        return f"{secs}秒"
+    if secs < 3600:
+        return f"{secs // 60}分{secs % 60:02d}秒"
+    if secs < 86400:
+        return f"{secs // 3600}小时{(secs % 3600) // 60:02d}分"
+    return f"{secs // 86400}天{(secs % 86400) // 3600}小时"
+
+
+def _func_status_text() -> str:
+    """.ag.func 展示:按分组列出全部工具及启用/禁用状态。"""
+    lines: list[str] = ["Agent 工具:"]
+    by_group: dict[str, list[Any]] = {}
+    for reg in ToolRegistry.registrations():
+        by_group.setdefault(reg.group, []).append(reg)
+    for group in sorted(by_group):
+        lines.append(f"[{group}]")
+        for reg in by_group[group]:
+            until = ToolRegistry.disabled_until(reg.name)
+            if until is None:
+                status = "启用"
+            elif until == ToolRegistry.PERMANENT:
+                status = "禁用(手动启用前有效)"
+            else:
+                status = f"禁用(剩{_format_remain(until - time.time())})"
+            desc = (reg.desc or "").strip().splitlines()
+            first = desc[0] if desc else ""
+            if len(first) > 20:
+                first = first[:20] + "…"
+            lines.append(f"  {reg.name} | {status} | {first}")
     return "\n".join(lines)
 
 
 def _web_search_note() -> str:
     """联网搜索能力说明(responses 模式 + agent_web_search 开启时附加到提示词)。"""
-    if config.others.get("agent_api", "responses") == "chat" or not config.others.get("agent_web_search", True):
+    if config.others.get("agent_api", "chat") == "chat" or not config.others.get("agent_web_search", True):
         return ""
     return (
         "\n\n# 联网搜索\n\n"
@@ -248,20 +390,106 @@ def _web_search_note() -> str:
     )
 
 
-def _build_system_prompt(role_prompt: str | None = None) -> str:
-    """主 Agent 系统提示词:人设全文(自带「# 角色」等标题,由 profile 完全控制)+ 指令模板。
+def _native_multimodal_note() -> str:
+    """原生多模态能力说明(chat 模式 + agent_native_multimodal 开启时附加)。"""
+    if config.others.get("agent_api", "chat") != "chat" or not config.others.get("agent_native_multimodal", True):
+        return ""
+    return (
+        "\n\n# 原生多模态\n\n"
+        "用户消息中的图片会以 image_url 直接提供,你可以直接查看并理解图片内容;"
+        "优先直接回答,不要再调用 read_image 重复识别。"
+    )
 
-    role_prompt 为 None 时使用当前人设(config.others.agent_profile 对应的 profiles.json 条目,
-    回退默认人设 ROLE_PROMPT);显式传入则用指定文本(用于运行时切换人设)。
+
+def _build_system_prompt(profile: _AgentProfile | str | None = None) -> str:
+    """主 Agent 系统提示词:人设全文(自带「# 角色」等标题)+ 指令模板。
+
+    profile 为 None 时使用当前人设(config.others.agent_profile 对应的 profiles.json 条目,
+    回退默认人设 ROLE_PROMPT);显式传入 _AgentProfile 时按该人设构建。
+    兼容旧的字符串调用:按 inject_master=True 处理。
+    inject_master=False 的人设不注入「User_id ... 是你的主人」。
     """
-    text = (role_prompt if role_prompt is not None else _current_role_prompt()).strip()
+    if profile is None:
+        target = _current_profile()
+    elif isinstance(profile, str):
+        target = _AgentProfile(profile)
+    else:
+        target = profile
+    text = target.prompt.strip()
     if not text.startswith("# "):
         # 自定义人设文本可能没有标题:统一补「# 角色」,保证角色段结构清晰
         text = "# 角色\n\n" + text
-    base = SYSTEM_INSTRUCTIONS.replace("{output}", OUTPUT_RULE).replace("{tools}", _build_tools_section())
+    master_rule = MASTER_RULE if target.inject_master else ""
+    base = (
+        SYSTEM_INSTRUCTIONS.replace("{master}", master_rule)
+        .replace("{output}", OUTPUT_RULE)
+        .replace("{tools}", _build_tools_section())
+    )
     # 角色部分(人设全文)放在提示词末尾:框架规则(运行环境/强制规则/输出/工具/发言)
     # 在前,让模型优先遵循框架;人设仍由 profile 完全控制
-    return base + _web_search_note() + "\n\n" + text
+    return base + _web_search_note() + _native_multimodal_note() + "\n\n" + text
+
+
+# --------------------------------------------------------------------------- #
+# 伪工具调用文本修复(DeepSeek Flash 偶发在 content 中输出 DSML/XML)
+# --------------------------------------------------------------------------- #
+
+_DSML_BAR = r"(?:\uff5c{1,2}|\|{1,2})"
+_DSML_PREFIX = rf"(?:{_DSML_BAR}DSML{_DSML_BAR})?"
+_TOOL_BLOCK_RE = re.compile(
+    rf"<{_DSML_PREFIX}\s*(?P<open>function_calls|tool_calls)\s*>(?P<body>.*?)</{_DSML_PREFIX}\s*(?P<close>function_calls|tool_calls)\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_INVOKE_RE = re.compile(
+    rf"<{_DSML_PREFIX}\s*invoke\b(?P<attrs>[^>]*)>(?P<body>.*?)</{_DSML_PREFIX}\s*invoke\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_PARAM_RE = re.compile(
+    rf"<{_DSML_PREFIX}\s*parameter\b(?P<attrs>[^>]*)>(?P<value>.*?)</{_DSML_PREFIX}\s*parameter\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_ATTR_RE = re.compile(r"""(?P<name>[A-Za-z_][A-Za-z0-9_-]*)\s*=\s*["'](?P<value>[^"']*)["']""")
+
+
+def _tag_attrs(attrs: str) -> dict[str, str]:
+    return {m.group("name"): html.unescape(m.group("value")) for m in _ATTR_RE.finditer(attrs)}
+
+
+def _parse_embedded_tool_calls(text: str) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    """把 content 中的 DSML/XML 伪工具调用解析成标准 tool_calls,并从文本中移除。
+
+    DeepSeek Flash 在 Responses API 下偶发不返回 function_call item,而是把
+    ``<｜DSML｜tool_calls><｜DSML｜invoke ...>`` 写进 message content。这些原文一旦
+    进入 history,后续请求可能 400,而且工具不会被执行。这里同时兼容标准
+    ``<function_calls>`` / ``<tool_calls>`` 写法。
+    """
+    tool_calls: list[dict[str, Any]] = []
+    actions: list[dict[str, Any]] = []
+    for block in _TOOL_BLOCK_RE.finditer(text):
+        for inv in _INVOKE_RE.finditer(block.group("body")):
+            name = _tag_attrs(inv.group("attrs") or "").get("name", "").strip()
+            if not name:
+                continue
+            params: dict[str, Any] = {}
+            for param in _PARAM_RE.finditer(inv.group("body")):
+                p_name = _tag_attrs(param.group("attrs") or "").get("name", "").strip()
+                if not p_name:
+                    continue
+                value: Any = html.unescape(param.group("value")).strip()
+                with contextlib.suppress(json.JSONDecodeError):
+                    value = json.loads(value)
+                params[p_name] = value
+            call_id = f"call_{uuid.uuid4().hex}"
+            arguments = json.dumps(params, ensure_ascii=False)
+            tool_calls.append({"id": call_id, "type": "function", "function": {"name": name, "arguments": arguments}})
+            actions.append({"kind": "function", "call_id": call_id, "name": name, "arguments": arguments})
+
+    if tool_calls:
+        logger.warning(f"已将 content 中的 {len(tool_calls)} 个 DSML/XML 伪工具调用解析为 function_call")
+
+    cleaned = _TOOL_BLOCK_RE.sub("", text)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned or "{}", tool_calls, actions
 
 
 AGENT_HELP = (
@@ -273,18 +501,24 @@ AGENT_HELP = (
     "主人始终视为白名单成员。私聊自动处理始终开启,无需白名单。\n"
     "\n"
     "命令(两种写法均可:`.agent.on` 或 `.agent on`;简写 `ag`=agent, `pf`=profile,\n"
-    "`ctx`=context, `ad`=add, `rm`=remove, `sum`=summary, `clr`=clear,\n"
-    "如 `.ag.pf.ad` = `.agent.profile.add`):\n"
+    "`ctx`=context, `ad`=add, `rm`=remove, `ma`=master, `sum`=summary, `clr`=clear,\n"
+    "`func`=function, `en`=enable, `dis`=disable,\n"
+    "如 `.ag.pf.ad` = `.agent.profile.add`, `.ag.pf.ma` = `.agent.profile.master`):\n"
     ".agent.on - 将本账号加入当前群的白名单(按群独立)\n"
     ".agent.off - 将本账号移出当前群的白名单\n"
     ".agent.status - 查看当前群白名单状态\n"
     ".agent.profile - 查看可用人设(来自 profiles.json)\n"
-    ".agent.profile <名称> - 切换人设(仅主人)\n"
+    ".agent.profile <名称> - 切换人设(仅主人;切换前自动总结当前上下文)\n"
     ".agent.profile.add <名称> <内容> - 添加/更新人设(仅主人,内容可含空格)\n"
     ".agent.profile.remove <名称> - 删除人设(仅主人)\n"
+    ".agent.profile.master <名称> [on/off] - 查看/设置该人设是否注入主人设定(设置仅主人,简写 ma)\n"
     ".agent.context - 查看上下文状态(仅主人)\n"
     ".agent.context.clear - 清空上下文历史(仅主人)\n"
-    ".agent.context.summary <内容> - 用总结替换上下文历史(仅主人)\n"
+    ".agent.context.summary - 调用 LLM 自动总结并压缩当前上下文(仅主人)\n"
+    ".ag.func - 查看全部 Agent 工具及启用状态(仅主人;全名 .ag.function)\n"
+    ".ag.func.en <名称> - 启用被禁用的工具(仅主人;全名 .ag.function.enable)\n"
+    ".ag.func.dis <名称> [时长] - 禁用工具(仅主人;全名 .ag.function.disable)\n"
+    "  时长如 30s/5m/1h/1d 或 30秒/5分钟/1小时/1天,裸数字为分钟,缺省=禁用至手动启用\n"
 )
 
 # --------------------------------------------------------------------------- #
@@ -322,23 +556,9 @@ class _AgentCore:
         self.bot_api = bot_api
         self.model = model
         self.name = name
-        if system_prompt is None:
-            self.system_prompt = _build_system_prompt()
-        elif "{tools}" in system_prompt:
-            self.system_prompt = system_prompt.replace("{output}", OUTPUT_RULE).replace(
-                "{tools}", _build_tools_section()
-            )
-        else:
-            self.system_prompt = (
-                system_prompt
-                + "\n\n# 可用工具\n\n"
-                + _build_tools_section()
-                + "\n\n"
-                + OUTPUT_RULE
-                + "\n\n"
-                + SUBAGENT_RULE
-                + _web_search_note()
-            )
+        self._base_prompt = system_prompt
+        self.tools: list[Any] = ToolRegistry.schema(role="sub" if name != "main" else "main")
+        self.system_prompt = self._build_system_prompt_for_role()
         self.history_path = history_path
         self.tasks_path = tasks_path
         self.memory_path = memory_path
@@ -348,13 +568,23 @@ class _AgentCore:
             self._oai = AsyncOpenAI(api_key=key, base_url=base_url)
         else:
             self._oai = AsyncOpenAI(api_key=key)
-        self.tools: list[Any] = ToolRegistry.schema(role="sub" if name != "main" else "main")
         self.history: list[Any] = [
             {"role": "system", "content": self.system_prompt.replace("[ulist]", str(config.owner))}
         ]
         try:
             with open(self.history_path, encoding="utf-8") as f:
                 data = json.load(f)
+            # 历史中的 DSML/XML 伪工具调用文本会污染后续请求(可能触发 400),载入时清掉。
+            if isinstance(data, list):
+                for message in data:
+                    if not isinstance(message, dict) or message.get("role") != "assistant":
+                        continue
+                    raw = message.get("content")
+                    if isinstance(raw, str) and "<" in raw:
+                        cleaned, _, _ = _parse_embedded_tool_calls(raw)
+                        if cleaned != raw:
+                            logger.warning("已从历史 assistant 消息中清除 DSML/XML 伪工具调用文本")
+                            message["content"] = cleaned
             # 旧版本可能把 system 文本存成 role=user 的脏条目(开头是 system 提示词),
             # 会导致 history[0] 不是 system:切换人设被 guard 跳过、且提示词会被当作
             # user 消息发给模型,让模型沿用旧人设。这里识别并清掉,再保证第一条是 system。
@@ -389,12 +619,33 @@ class _AgentCore:
         self._report_seq = 0
         self._wakeup_pending = False
         self._notice_count = 0
-        self.api_mode = cast(str, config.others.get("agent_api") or "responses")
+        self._tool_loop_active = False
+        self._pending_profile_switch: tuple[str, _AgentProfile, str] | None = None
+        self._pending_summary: str | None = None
+        self._state_lock = asyncio.Lock()
+        self._idle_event = asyncio.Event()
+        self._idle_event.set()
+        self.api_mode = cast(str, config.others.get("agent_api") or "chat")
+        self.reasoning_effort = str(config.others.get("agent_reasoning_effort") or "low")
         self.web_search = bool(config.others.get("agent_web_search", True))
+        self.native_multimodal = bool(config.others.get("agent_native_multimodal", True))
+        self._image_data_cache: dict[str, str | None] = {}
 
     # -- runtime 接口(供工具经 ToolContext.runtime 调用) --
 
-    async def clear_history(self, content: str) -> str:
+    async def summarize_history(self, content: str) -> str:
+        """消息总结统一入口:工具回合中延后,外部调用取得处理权后应用。"""
+        if self._tool_loop_active:
+            self._pending_summary = content
+            return "(总结已受理,当前工具回合结束后生效)"
+        await self._acquire_processing_slot()
+        try:
+            return await self._apply_summary(content)
+        finally:
+            await self._release_processing_slot()
+
+    async def _apply_summary(self, content: str) -> str:
+        """实际替换历史;调用方必须确认当前没有未完成的 tool call。"""
         self.history = [
             {"role": "system", "content": self.system_prompt.replace("[ulist]", str(config.owner))},
             {"role": "user", "content": "SYSTEM -- 先前消息的全部总结 --"},
@@ -404,13 +655,147 @@ class _AgentCore:
         await self.save()
         return "(无返回)"
 
+    async def _finish_pending_summary(self) -> None:
+        """在当前工具批次完成后应用待处理摘要。"""
+        content = self._pending_summary
+        self._pending_summary = None
+        if content is not None:
+            await self._apply_summary(content)
+
+    async def clear_history(self, content: str) -> str:
+        """兼容旧名;新调用请使用 summarize_history。"""
+        return await self.summarize_history(content)
+
+    def _apply_profile_prompt(self, profile: _AgentProfile) -> None:
+        """把指定人设写入 system_prompt 与 history 的第一条 system 消息(不落盘)。"""
+        self.system_prompt = _build_system_prompt(profile)
+        new_content = self.system_prompt.replace("[ulist]", str(config.owner))
+        for i, m in enumerate(self.history):
+            if isinstance(m, dict) and m.get("role") == "system":
+                self.history[i]["content"] = new_content
+                break
+        else:
+            self.history.insert(0, {"role": "system", "content": new_content})
+
+    def _history_text_for_summary(self) -> str:
+        """把当前 history 压成可供 LLM 摘要的紧凑文本(跳过 system,截断长消息)。"""
+        lines: list[str] = []
+        for m in self.history:
+            if not isinstance(m, dict) or m.get("role") == "system":
+                continue
+            role = str(m.get("role"))
+            content = str(m.get("content", ""))
+            if role == "tool":
+                content = f"工具结果: {content}"
+            elif role == "assistant" and m.get("tool_calls"):
+                names = [
+                    str(tc.get("function", {}).get("name", "")) for tc in m.get("tool_calls") if isinstance(tc, dict)
+                ]
+                content = content or f"调用工具: {', '.join(names)}"
+            content = re.sub(r"\s+", " ", content).strip()
+            if content:
+                lines.append(f"{role}: {content[:1200]}")
+        return "\n".join(lines)
+
+    def _fallback_summary(self, text: str) -> str:
+        lines = text.splitlines()
+        tail = lines[-120:]
+        return "上下文自动总结不可用,降级为原文摘录:\n" + "\n".join(line[:500] for line in tail)
+
+    async def _generate_history_summary(self) -> str:
+        """让 LLM 自动压缩当前历史;失败时降级为原文摘录。"""
+        text = self._history_text_for_summary()
+        if not text.strip():
+            return "（当前无对话历史）"
+        try:
+            resp = await asyncio.wait_for(
+                self._oai.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "你是对话上下文压缩器。请把下面的QQ机器人聊天历史压缩为一段简洁中文摘要，"
+                                "保留关键话题、事件、人物关系、未完成任务与需要跟进的事项。"
+                                "不要寒暄，直接输出摘要。"
+                            ),
+                        },
+                        {"role": "user", "content": text[-16000:]},
+                    ],
+                    temperature=0.2,
+                    max_tokens=2000,
+                ),
+                timeout=90,
+            )
+            summary = (resp.choices[0].message.content or "").strip()
+            if summary:
+                return summary
+        except Exception:
+            logger.warning("上下文自动总结失败,降级为原文摘录: " + traceback.format_exc())
+        return self._fallback_summary(text)
+
+    async def summarize_current_context(self) -> str:
+        """命令入口:等待全局 Core 空闲,让 LLM 总结当前上下文并替换历史。"""
+        await self._acquire_processing_slot()
+        try:
+            summary = await self._generate_history_summary()
+            await self._apply_summary(summary)
+            return "上下文已由 LLM 自动总结"
+        finally:
+            await self._release_processing_slot()
+
+    async def _finish_profile_switch(self, name: str, profile: _AgentProfile, summary: str) -> str:
+        """先写入自动总结,再应用新人设提示词;调用时已处于安全的历史边界。"""
+        await self._apply_summary(summary)
+        self._apply_profile_prompt(profile)
+        await self.save()
+        config.others["agent_profile"] = name  # 同步内存,使 _current_profile_name() 立即反映新值
+        _save_profile_name_to_config(name)
+        logger.info(f"人设已切换为「{name}」(切换前上下文已自动总结)")
+        return f"已切换到人设「{name}」,切换前的上下文已自动总结"
+
+    async def _finish_pending_profile_switch(self) -> None:
+        """工具循环结束后应用延后的切换,确保 function_call 配对已经完整。"""
+        pending = self._pending_profile_switch
+        self._pending_profile_switch = None
+        if pending is None:
+            return
+        name, profile, summary = pending
+        try:
+            await self._finish_profile_switch(name, profile, summary)
+        except Exception:
+            logger.error(traceback.format_exc())
+
+    async def switch_profile(self, name: str, *, defer: bool | None = None) -> str:
+        """人设切换统一入口:工具回合中延后,外部命令取得 history 处理权后执行。"""
+        profiles = _load_profiles()
+        profile = profiles.get(name)
+        if profile is None:
+            return f"人设「{name}」不存在,可用: {', '.join(profiles.keys()) or '(无)'}"
+        if defer is None:
+            defer = self._tool_loop_active
+        if defer:
+            summary = await self._generate_history_summary()
+            self._pending_profile_switch = (name, profile, summary)
+            return f"人设「{name}」切换已受理,当前工具回合结束后生效(切换前的上下文会自动总结)"
+        await self._acquire_processing_slot()
+        try:
+            summary = await self._generate_history_summary()
+            return await self._finish_profile_switch(name, profile, summary)
+        finally:
+            await self._release_processing_slot()
+
     async def reset_history(self) -> str:
         """清空上下文,仅保留 system 提示词。"""
-        self.history = [
-            {"role": "system", "content": self.system_prompt.replace("[ulist]", str(config.owner))},
-        ]
-        await self.save()
-        return "上下文已清空"
+        await self._acquire_processing_slot()
+        try:
+            self.history = [
+                {"role": "system", "content": self.system_prompt.replace("[ulist]", str(config.owner))},
+            ]
+            await self.save()
+            return "上下文已清空"
+        finally:
+            await self._release_processing_slot()
 
     def context_info(self) -> str:
         """上下文状态概览:历史条数/字符数、任务列表。"""
@@ -696,15 +1081,17 @@ class _AgentCore:
     def inject_notice(self, ev: AgentEvent) -> None:
         """把一条事件(如 SubAgent 状态变化)即时写入 history。
 
-        仅当末尾是 assistant(tool_calls)(工具循环进行中,配对未完成)时暂挂起:
-        直接插入 user 会破坏 assistant(tool_calls) ↔ tool 配对导致 API 400;
-        此时由 _event_handler 在该工具执行完(tool 消息补上)后立即 flush。
+        工具循环进行中(末尾是 assistant(tool_calls),或当前 action 批次的
+        function_call 还没全部补上 tool output)时暂挂起:直接插入 user 会破坏
+        function_call ↔ function_call_output 配对导致 API 400;由 _event_handler
+        在配对完成后 flush。
         """
         msg = {
             "role": "user",
             "content": json.dumps({"event": ev.to_dict(), "system_message": "SubAgent 状态通知"}, ensure_ascii=False),
         }
-        if self.history and self.history[-1].get("tool_calls"):
+        if self.working or self._tool_loop_active or (self.history and self.history[-1].get("tool_calls")):
+            # 请求处理中不能插入 user:下一轮请求可能正在构造 history,统一延后。
             self.pending_notices.append(ev)
         else:
             self.history.append(msg)
@@ -744,30 +1131,115 @@ class _AgentCore:
     # -- 历史与持久化 --
 
     async def _history_fix(self) -> None:
-        """修复悬空的 tool_calls 历史。
-
-        从末尾向前找最后一个 assistant(tool_calls),把从它开始的所有消息删除,
-        使 history 回到干净的 user → assistant 状态。
-        仅弹末尾的写法修不了「中间悬空」(如 [user, assistant(tc), user, tool]),
-        会导致 BadRequestError 重试死循环。
-        """
+        """修复悬空的 tool_calls 历史,包括没有前置 assistant 的孤立 tool。"""
         logger.warning("尝试修复历史记录")
-        for i in range(len(self.history) - 1, -1, -1):
-            if self.history[i].get("tool_calls"):
-                del self.history[i:]
-                return
+        pending_ids: set[str] = set()
+        pending_indexes: dict[str, int] = {}
+        first_invalid = len(self.history)
+        for i, message in enumerate(self.history):
+            if not isinstance(message, dict):
+                first_invalid = min(first_invalid, i)
+                continue
+            if message.get("role") == "assistant":
+                calls = message.get("tool_calls") or []
+                if isinstance(calls, list):
+                    for call in calls:
+                        if isinstance(call, dict) and call.get("id"):
+                            call_id = str(call["id"])
+                            pending_ids.add(call_id)
+                            pending_indexes[call_id] = i
+            elif message.get("role") == "tool":
+                call_id = str(message.get("tool_call_id") or "")
+                if not call_id or call_id not in pending_ids:
+                    call_start = pending_indexes.get(call_id)
+                    if call_start is None:
+                        call_start = next(
+                            (
+                                j
+                                for j in range(i - 1, -1, -1)
+                                if self.history[j].get("role") == "assistant" and self.history[j].get("tool_calls")
+                            ),
+                            i,
+                        )
+                    first_invalid = min(first_invalid, call_start)
+                else:
+                    pending_ids.discard(call_id)
+                    pending_indexes.pop(call_id, None)
+        if first_invalid < len(self.history):
+            del self.history[first_invalid:]
+            return
+        if pending_ids:
+            first_pending = min(pending_indexes.values())
+            del self.history[first_pending:]
 
     async def save(self) -> None:
         os.makedirs("./temps", exist_ok=True)
+        snapshot = copy.deepcopy(self.history)
 
         def _dump(path: str, obj: Any) -> None:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(obj, f, indent=2, ensure_ascii=False)
 
-        await asyncio.to_thread(_dump, self.history_path, self.history)
+        await asyncio.to_thread(_dump, self.history_path, snapshot)
         await asyncio.to_thread(_dump, self.tasks_path, self.chat_tasks)
 
+    # -- 工具状态刷新(禁用/启用后,主/子核心的 schema 与 system prompt 保持一致) --
+
+    def _build_system_prompt_for_role(self) -> str:
+        """按角色重建 system prompt:主 Agent 走 _build_system_prompt,SubAgent 用原始 prompt 拼接。"""
+        if self.name == "main":
+            return _build_system_prompt()
+        base = self._base_prompt or ""
+        tools = _build_tools_section(role="sub")
+        if "{tools}" in base:
+            return base.replace("{output}", OUTPUT_RULE).replace("{tools}", tools)
+        return (
+            base
+            + "\n\n# 可用工具\n\n"
+            + tools
+            + "\n\n"
+            + OUTPUT_RULE
+            + "\n\n"
+            + SUBAGENT_RULE
+            + _web_search_note()
+        )
+
+    def _refresh_tools(self) -> None:
+        """重建 tools schema 与 system prompt,并写回 history 的第一条 system。"""
+        self.tools = ToolRegistry.schema(role="sub" if self.name != "main" else "main")
+        self.system_prompt = self._build_system_prompt_for_role()
+        new_content = self.system_prompt.replace("[ulist]", str(config.owner))
+        for i, m in enumerate(self.history):
+            if isinstance(m, dict) and m.get("role") == "system":
+                self.history[i]["content"] = new_content
+                break
+        else:
+            self.history.insert(0, {"role": "system", "content": new_content})
+
     # -- 事件处理 --
+
+    async def _acquire_processing_slot(self) -> None:
+        """等待并原子取得全局 history 处理权;锁只保护状态切换。"""
+        while True:
+            await self._idle_event.wait()
+            async with self._state_lock:
+                if not self.working:
+                    self.working = True
+                    self._idle_event.clear()
+                    return
+
+    async def _release_processing_slot(self) -> None:
+        async with self._state_lock:
+            self.working = False
+            self._idle_event.set()
+
+    async def _wait_until_idle(self) -> None:
+        """等待当前全局 history 请求结束;不持锁等待。"""
+        while True:
+            await self._idle_event.wait()
+            async with self._state_lock:
+                if not self.working:
+                    return
 
     async def event_handler(
         self,
@@ -779,9 +1251,30 @@ class _AgentCore:
         self_id: int | None = None,
         tool_choice: str = "auto",
     ) -> None:
-        while self.working:
-            await asyncio.sleep(0.01)
-        self.working = True
+        await self._acquire_processing_slot()
+        try:
+            await self._event_handler_with_slot(
+                event=event,
+                ev_type=ev_type,
+                scene_id=scene_id,
+                perm_group=perm_group,
+                principal_id=principal_id,
+                self_id=self_id,
+                tool_choice=tool_choice,
+            )
+        finally:
+            await self._release_processing_slot()
+
+    async def _event_handler_with_slot(
+        self,
+        event: Any,
+        ev_type: Literal["group", "private", "system", "nonmsg"],
+        scene_id: int,
+        perm_group: str = "member",
+        principal_id: int | None = None,
+        self_id: int | None = None,
+        tool_choice: str = "auto",
+    ) -> None:
         sem = _acquire_semaphore()
         if sem is not None:
             await sem.acquire()
@@ -789,8 +1282,9 @@ class _AgentCore:
         sys_msg = "如果要回复消息，唯一正确方法是调用工具"
         start_time = time.time()
         timer_ev = asyncio.Event()
-        asyncio.create_task(_timer(600, timer_ev))
+        timer_task = asyncio.create_task(_timer(600, timer_ev))
         bad_retries = 0
+        task: asyncio.Task[Any] | None = None
         if event is None:
             ev_data: str | None = None
             query_text = ""
@@ -866,13 +1360,20 @@ class _AgentCore:
                     logger.error(str(e))
                     logger.error(traceback.format_exc())
         finally:
+            timer_task.cancel()
+            if task is not None and not task.done():
+                task.cancel("外层处理结束")
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
             duration = time.time() - start_time
             logger.info(f"处理完成，用时 {duration:.3f}s")
-            self.working = False
-            # 事件处理已结束:此时注入待通知的 SubAgent 状态事件,不会打断 tool_calls 配对
-            self._flush_notices()
-            if sem is not None:
-                sem.release()
+            try:
+                # 事件处理已结束:此时注入待通知的 SubAgent 状态事件,不会打断 tool_calls 配对
+                self._flush_notices()
+                await self._finish_pending_summary()
+            finally:
+                if sem is not None:
+                    sem.release()
 
     async def _event_handler(
         self,
@@ -883,6 +1384,7 @@ class _AgentCore:
         tool_choice: str = "auto",
     ) -> None:
         try:
+            self._refresh_tools()
             tool_choice_n: Any = self._make_tool_choice(tool_choice)
             if data is not None:
                 dup = any(m.get("role") == "user" and m.get("content") == data for m in self.history)
@@ -891,42 +1393,63 @@ class _AgentCore:
             while True:
                 resp = await self._llm_create(tool_choice_n)
                 actions, assistant_msg = self._parse_output(resp)
-                logger.info(f"Completion: \n{json.dumps(assistant_msg, indent=2, ensure_ascii=False)}")
+                logger.info(self._format_assistant_msg(assistant_msg))
                 self.history.append(assistant_msg)
                 if not actions:
                     break
                 had_action = False
-                for act in actions:
-                    if act["kind"] == "web_search":
-                        had_action = True
-                        continue
-                    name = cast(str, act["name"])
-                    call_id = cast(str, act["call_id"])
-                    try:
-                        params = json.loads(cast(str, act["arguments"]))
-                    except json.JSONDecodeError as e:
-                        logger.error("错误的JSON，重试: " + repr(e))
-                        await self._history_fix()
-                        await self._event_handler(
-                            data=data, ev_type=ev_type, scene_id=scene_id, ctx=ctx, tool_choice=tool_choice
+                self._tool_loop_active = True
+                try:
+                    for act in actions:
+                        if act["kind"] == "web_search":
+                            items = act.get("data") or []
+                            details = (
+                                " | ".join(
+                                    f"{item.get('type')}#{item.get('id')} "
+                                    f"action={_AgentCore._short_json(item.get('action'))}"
+                                    for item in items
+                                    if isinstance(item, dict)
+                                )
+                                if isinstance(items, list)
+                                else _AgentCore._short_json(items)
+                            )
+                            logger.info(f"WebSearch: {details or '(无详情)'}")
+                            had_action = True
+                            continue
+                        name = cast(str, act["name"])
+                        call_id = cast(str, act["call_id"])
+                        try:
+                            params = json.loads(cast(str, act["arguments"]))
+                        except json.JSONDecodeError as e:
+                            logger.error("错误的JSON，重试: " + repr(e))
+                            await self._history_fix()
+                            await self._event_handler(
+                                data=data, ev_type=ev_type, scene_id=scene_id, ctx=ctx, tool_choice=tool_choice
+                            )
+                            return
+                        try:
+                            rs = await ToolRegistry.dispatch(name, params, ctx)
+                        except Exception as e:
+                            rs = repr(e)
+                        logger.info(
+                            f"已完成工具调用： {name}({', '.join([x + '=' + str(params[x]) for x in params])}) -> {rs}"
                         )
-                        return
-                    try:
-                        rs = await ToolRegistry.dispatch(name, params, ctx)
-                    except Exception as e:
-                        rs = repr(e)
-                    logger.info(
-                        f"已完成工具调用： {name}({', '.join([x + '=' + str(params[x]) for x in params])}) -> {rs}"
-                    )
-                    self.history.append({"role": "tool", "tool_call_id": call_id, "name": name, "content": str(rs)})
+                        self.history.append({"role": "tool", "tool_call_id": call_id, "name": name, "content": str(rs)})
+                        had_action = True
+                finally:
+                    # 当前 assistant 的所有 function_call 都补完 tool 输出后:
+                    # 1) 应用延后的人设切换(切换前自动总结);
+                    # 2) 再 flush 通知;中途插入 user 会破坏 function_call↔output 配对。
+                    await self._finish_pending_profile_switch()
+                    await self._finish_pending_summary()
                     self._flush_notices()
-                    had_action = True
+                    self._tool_loop_active = False
                 if ctx.release_requested:
                     logger.info(f"{self.name} 已释放本轮,长程任务交由后台处理")
                     break
                 if not had_action:
                     break
-            asyncio.create_task(self.save())
+            await self.save()
         except asyncio.CancelledError as e:
             logger.error(f"处理中断：{repr(e)}")
             await self._history_fix()
@@ -940,12 +1463,207 @@ class _AgentCore:
             return {"type": "function", "name": tool_choice}
         return {"type": "function", "function": {"name": tool_choice}}
 
+    async def _download_image_data_uri(self, url: str) -> str | None:
+        """下载远程图片并转成 data URI;失败返回 None。结果按 URL 缓存。"""
+        if url in self._image_data_cache:
+            return self._image_data_cache[url]
+        try:
+            from hyperot.network import httpx_get
+
+            resp = await httpx_get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
+            if resp.status_code != 200:
+                self._image_data_cache[url] = None
+                return None
+            raw = resp.content
+            if not raw or len(raw) > 10 * 1024 * 1024:
+                self._image_data_cache[url] = None
+                return None
+            import filetype
+
+            guessed = filetype.guess(raw)
+            mime = guessed.mime if guessed is not None else "image/png"
+            data_uri = f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
+            self._image_data_cache[url] = data_uri
+            return data_uri
+        except Exception:
+            self._image_data_cache[url] = None
+            return None
+
+    async def _image_url_from_seg(self, seg: dict[str, Any]) -> str | None:
+        """OneBot 图片段 → OpenAI image_url 可接受的 data URI。
+
+        QQ 等渠道的图片 URL 对第三方模型通常不可直接下载,统一由 bot 本地下载后
+        以 data URI 交给模型;base64/本地文件直接转换。
+        """
+        raw_data = seg.get("data")
+        if not isinstance(raw_data, dict):
+            return None
+        data = raw_data
+        url = str(data.get("url") or "")
+        if url.startswith(("http://", "https://")):
+            return await self._download_image_data_uri(url)
+
+        file = str(data.get("file") or "")
+        if file.startswith(("http://", "https://")):
+            return await self._download_image_data_uri(file)
+
+        if file.startswith("base64://"):
+            raw = file[len("base64://") :]
+            try:
+                import filetype
+
+                decoded = base64.b64decode(raw)
+                guessed = filetype.guess(decoded)
+                mime = guessed.mime if guessed is not None else "image/png"
+            except Exception:
+                mime = "image/png"
+            return f"data:{mime};base64,{raw}"
+
+        path = file[7:] if file.startswith("file://") else file
+        if path and os.path.isfile(path):
+            try:
+                import filetype
+
+                with open(path, "rb") as f:
+                    raw_bytes = f.read()
+                raw = base64.b64encode(raw_bytes).decode("ascii")
+                guessed = filetype.guess(raw_bytes)
+                mime = guessed.mime if guessed else "image/png"
+                return f"data:{mime};base64,{raw}"
+            except OSError:
+                return None
+        return None
+
+    async def _chat_user_content(self, content: Any) -> Any:
+        """用户历史消息 → Chat Completions content。
+
+        开启 native_multimodal 且当前用户消息包含图片段时,输出 OpenAI 原生
+        text/image_url 内容数组;否则保持原字符串,兼容旧行为。
+        """
+        if not self.native_multimodal or not isinstance(content, str):
+            return content
+        try:
+            wrapper = json.loads(content)
+        except json.JSONDecodeError:
+            return content
+        if not isinstance(wrapper, dict):
+            return content
+        event = wrapper.get("event")
+        if not isinstance(event, dict):
+            return content
+        payload = event.get("payload")
+        if isinstance(payload, str):
+            try:
+                batch = json.loads(payload)
+            except json.JSONDecodeError:
+                return content
+        else:
+            batch = payload
+        if not isinstance(batch, list):
+            return content
+
+        parts: list[dict[str, Any]] = []
+        image_count = 0
+        has_text = False
+        for ev in batch:
+            if not isinstance(ev, dict):
+                continue
+            uid = str(ev.get("user_id") or "")
+            message = ev.get("message")
+            if not isinstance(message, list):
+                continue
+            texts: list[str] = []
+            image_urls: list[str] = []
+            for seg in message:
+                if not isinstance(seg, dict):
+                    continue
+                seg_type = seg.get("type")
+                if seg_type == "text":
+                    text = str((seg.get("data") or {}).get("text", "") or "")
+                    if text.strip():
+                        texts.append(text)
+                elif seg_type == "image" and image_count < 4:
+                    image_url = await self._image_url_from_seg(seg)
+                    if image_url:
+                        image_urls.append(image_url)
+                        image_count += 1
+                    else:
+                        texts.append("[图片下载失败]")
+                elif seg_type not in ("image",):
+                    texts.append(f"[{seg_type}]")
+
+            text = " ".join(texts).strip()
+            if text:
+                parts.append({"type": "text", "text": f"{uid}: {text}" if uid else text})
+                has_text = True
+            for image_url in image_urls:
+                parts.append({"type": "image_url", "image_url": {"url": image_url}})
+
+        if image_count == 0:
+            return content
+        if not has_text:
+            parts.insert(0, {"type": "text", "text": "用户发送了图片"})
+        return parts
+
+    async def _history_to_chat_messages(self) -> list[dict[str, Any]]:
+        """把内部 history 转成 Chat Completions 可接受的消息列表。
+
+        内部 history 会携带 reasoning / web_search_call / order 等 Responses 专用字段,
+        直接发给 Chat Completions 会被某些供应商拒绝(如 reasoning 必须是 string)。
+        这里只保留 OpenAI Chat 协议字段。
+        """
+        out: list[dict[str, Any]] = []
+        for m in self.history:
+            if not isinstance(m, dict):
+                continue
+            role = m.get("role")
+            if role == "assistant":
+                item: dict[str, Any] = {"role": "assistant", "content": m.get("content")}
+                reasoning_content = m.get("reasoning_content")
+                if isinstance(reasoning_content, str) and reasoning_content.strip():
+                    # Chat Completions 提供方(如 rinko)接受 reasoning_content 字符串回传;
+                    # 保留思考链,只丢弃 Responses 专用结构。
+                    item["reasoning_content"] = reasoning_content
+                tool_calls = m.get("tool_calls")
+                if isinstance(tool_calls, list) and tool_calls:
+                    item["tool_calls"] = [
+                        {
+                            "id": call.get("id", ""),
+                            "type": "function",
+                            "function": {
+                                "name": (call.get("function") or {}).get("name", ""),
+                                "arguments": (call.get("function") or {}).get("arguments", ""),
+                            },
+                        }
+                        for call in tool_calls
+                        if isinstance(call, dict)
+                    ]
+                out.append(item)
+            elif role == "tool":
+                out.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": m.get("tool_call_id", ""),
+                        "content": m.get("content", ""),
+                    }
+                )
+            elif role == "user":
+                out.append({"role": "user", "content": await self._chat_user_content(m.get("content", ""))})
+            elif role == "system":
+                out.append({"role": "system", "content": m.get("content", "")})
+        return out
+
     def _with_injected_memory(self, messages: list[Any]) -> list[Any]:
-        """把自动检索到的相关记忆附加到第一条 system 消息(深拷贝,不污染 history)。"""
-        if not self._injected_memory:
-            return messages
+        """把自动检索到的相关记忆附加到第一条 system 消息(深拷贝,不污染 history)。
+
+        聊天历史里可能带有本地用于日志展示的 reasoning/reasoning_content;
+        这些字段只作日志/排查用,发送给第三方 Chat API 前剥离,避免提供方不识别。
+        """
         out = [dict(m) for m in messages]
         for m in out:
+            # reasoning 列表是 Responses 内部结构,不能发给 Chat API;
+            # reasoning_content 字符串在 _history_to_chat_messages 中已经按需保留。
+            m.pop("reasoning", None)
             if m.get("role") == "system" and isinstance(m.get("content"), str):
                 m["content"] = m["content"] + "\n\n" + self._injected_memory
                 break
@@ -958,13 +1676,17 @@ class _AgentCore:
                 input=self._with_injected_memory(self._history_to_items()),
                 tools=self._tools_for_responses(),
                 tool_choice=tool_choice_n,
+                # 保持服务端默认的并行工具调用能力;本层会等当前 assistant 的
+                # 全部 function_call 都补完 output 后才发起下一次请求。
+                reasoning=cast(Any, {"effort": self.reasoning_effort}),
                 text=cast(Any, {"format": {"type": "json_object"}}),
             )
         return await self._oai.chat.completions.create(
             model=self.model,
-            messages=self._with_injected_memory([dict(m) for m in self.history]),
+            messages=self._with_injected_memory(await self._history_to_chat_messages()),
             tools=self.tools,
             tool_choice=tool_choice_n,
+            reasoning_effort=cast(Any, self.reasoning_effort),
             response_format=cast(Any, {"type": "json_object"}),
         )
 
@@ -1006,14 +1728,41 @@ class _AgentCore:
         out: list[dict[str, Any]] = []
         if order:
             ri = wi = fi = 0
+            last_reasoning: dict[str, Any] | None = None
+            last_was_reasoning = False
+
+            def ensure_reasoning_for_call() -> None:
+                nonlocal ri, last_reasoning, last_was_reasoning
+                if last_reasoning is None and ri < len(reasoning):
+                    # order 与 reasoning 列表不一致时,先把未消费的 reasoning 补到调用前。
+                    last_reasoning = reasoning[ri]
+                    out.append(last_reasoning)
+                    ri += 1
+                    last_was_reasoning = True
+                    return
+                if last_was_reasoning or last_reasoning is None:
+                    return
+                # DeepSeek 要求每个 function_call / web_search_call 都有配对的
+                # reasoning_text;原生响应可能一个 reasoning 后跟多个 tool call,
+                # 这里复制最近一条 reasoning 补齐,否则下一个请求 400。
+                dup = copy.deepcopy(last_reasoning)
+                dup["id"] = f"{last_reasoning.get('id', 'reasoning')}_dup_{uuid.uuid4().hex}"
+                out.append(dup)
+                last_was_reasoning = True
+
             for typ in order:
                 if typ == "reasoning" and ri < len(reasoning):
-                    out.append(reasoning[ri])
+                    last_reasoning = reasoning[ri]
+                    out.append(last_reasoning)
                     ri += 1
+                    last_was_reasoning = True
                 elif typ == "web_search_call" and wi < len(ws):
+                    ensure_reasoning_for_call()
                     out.append(ws[wi])
                     wi += 1
+                    last_was_reasoning = False
                 elif typ == "function_call" and fi < len(fcs):
+                    ensure_reasoning_for_call()
                     fc = fcs[fi]
                     fi += 1
                     cid = fc.get("id", "")
@@ -1026,8 +1775,10 @@ class _AgentCore:
                         }
                     )
                     out.append({"type": "function_call_output", "call_id": cid, "output": tool_out.get(cid, "")})
+                    last_was_reasoning = False
                 elif typ == "message":
                     out.append({"type": "message", "role": "assistant", "content": m.get("content", "")})
+                    last_was_reasoning = False
             return out
 
         # 旧历史兼容(无 order):reasoning 与 ws / fc 依次配对,尽力贴近真实顺序
@@ -1055,6 +1806,76 @@ class _AgentCore:
         if m.get("content"):
             out.append({"type": "message", "role": "assistant", "content": m["content"]})
         return out
+
+    @staticmethod
+    def _short_json(value: Any, limit: int = 240) -> str:
+        text = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
+        return text if len(text) <= limit else text[:limit] + "..."
+
+    @staticmethod
+    def _short_text(value: Any, limit: int = 300) -> str:
+        """把任意值压成单行文本(JSON 或原文),过长截断。"""
+        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text if len(text) <= limit else text[:limit] + "..."
+
+    @staticmethod
+    def _reasoning_text(item: dict[str, Any]) -> str:
+        content = item.get("content")
+        if isinstance(content, list):
+            return " ".join(str(part.get("text", "")) for part in content if isinstance(part, dict))
+        return str(content or "")
+
+    @staticmethod
+    def _format_assistant_msg(assistant_msg: dict[str, Any]) -> str:
+        """把 Completion 格式化为 YAML 风格的多行日志,便于 logger 逐行加时间前缀。"""
+        lines = ["Completion:"]
+
+        content = assistant_msg.get("content")
+        lines.append(f"  - content: {_AgentCore._short_text(content if content is not None else '')}")
+
+        reasoning = assistant_msg.get("reasoning")
+        if isinstance(reasoning, list) and reasoning:
+            lines.append("  - reasoning:")
+            for item in reasoning:
+                if not isinstance(item, dict):
+                    continue
+                enabled = item.get("enabled")
+                if not isinstance(enabled, bool):
+                    enabled = item.get("status") == "completed"
+                lines.append(f"      - enabled: {str(enabled).lower()}")
+                lines.append(f"        content: {_AgentCore._short_text(_AgentCore._reasoning_text(item))}")
+
+        tool_calls = assistant_msg.get("tool_calls")
+        if isinstance(tool_calls, list) and tool_calls:
+            lines.append("  - tool_calls:")
+            for call in tool_calls:
+                if not isinstance(call, dict):
+                    continue
+                function = call.get("function")
+                if not isinstance(function, dict):
+                    continue
+                name = str(function.get("name") or "?")
+                arguments = function.get("arguments")
+                if isinstance(arguments, str):
+                    with contextlib.suppress(json.JSONDecodeError):
+                        arguments = json.loads(arguments)
+                if isinstance(arguments, dict):
+                    params = ", ".join(f"{k}={_AgentCore._short_json(v, 160)}" for k, v in arguments.items())
+                else:
+                    params = _AgentCore._short_json(arguments)
+                lines.append(f"      - {name}({params})")
+
+        web_search = assistant_msg.get("web_search_call")
+        if isinstance(web_search, list) and web_search:
+            lines.append("  - web_search:")
+            for item in web_search:
+                if not isinstance(item, dict):
+                    continue
+                lines.append(f"      - id: {item.get('id')}")
+                lines.append(f"        action: {_AgentCore._short_json(item.get('action'))}")
+
+        return "\n".join(lines)
 
     def _tools_for_responses(self) -> list[dict[str, Any]] | None:
         """Responses API 工具格式(与 chat 的 function 包装不同)+ 服务端 web_search。"""
@@ -1109,7 +1930,19 @@ class _AgentCore:
                     # 服务端搜索调用:必须完整回传(含 action/status),只回 id 会 400
                     web_search.append(item.model_dump() if hasattr(item, "model_dump") else dict(item))
                     order.append("web_search_call")
-            assistant_msg: dict[str, Any] = {"role": "assistant", "content": "".join(contents)}
+            raw_content = "".join(contents)
+            if raw_content:
+                # Flash 偶发把 DSML/XML 伪工具调用写进 content;解析为标准 function_call
+                # 并清掉原文,避免污染 history 与后续请求。
+                content, embedded_calls, embedded_actions = _parse_embedded_tool_calls(raw_content)
+                if embedded_calls:
+                    tool_calls.extend(embedded_calls)
+                    actions.extend(embedded_actions)
+                    # 回传顺序:message 之后补 function_call,工具执行后才有 output。
+                    order.extend(["function_call"] * len(embedded_calls))
+            else:
+                content = raw_content
+            assistant_msg: dict[str, Any] = {"role": "assistant", "content": content}
             if tool_calls:
                 assistant_msg["tool_calls"] = tool_calls
             if reasoning:
@@ -1130,7 +1963,28 @@ class _AgentCore:
             }
             for tc in (mess.tool_calls or [])
         ]
-        return actions, mess.to_dict()
+        assistant_msg: dict[str, Any] = mess.to_dict()
+        raw_content = cast(str, getattr(mess, "content", "") or "")
+        reasoning_content = getattr(mess, "reasoning_content", None)
+        if reasoning_content:
+            assistant_msg["reasoning"] = [
+                {
+                    "type": "reasoning",
+                    "id": f"chat_reasoning_{int(time.time() * 1000)}",
+                    "summary": list[str](),
+                    "status": "completed",
+                    "content": [{"type": "reasoning_text", "text": str(reasoning_content)}],
+                }
+            ]
+        if raw_content:
+            content, embedded_calls, embedded_actions = _parse_embedded_tool_calls(raw_content)
+            assistant_msg["content"] = content
+            if embedded_calls:
+                assistant_msg["tool_calls"] = list(assistant_msg.get("tool_calls") or []) + embedded_calls
+                actions.extend(embedded_actions)
+        else:
+            assistant_msg["content"] = ""
+        return actions, assistant_msg
 
 
 # --------------------------------------------------------------------------- #
@@ -1224,12 +2078,18 @@ class _Collector:
         self.delay = max(min(self.delay, 16), 5)
 
     async def append(self, event: MessageEvent) -> None:
-        """缓存一条消息;若收集周期进行中,则重置等待计时。"""
-        self.buffer.append(event.data)
+        """向当前已启动的收集批次追加一条消息。"""
+        await self.append_batch([event.data])
+
+    async def append_batch(self, events: list[dict[str, Any]]) -> None:
+        """把独立缓存的一批消息交给 Collector,并重置已启动窗口。"""
+        if not events:
+            return
+        self.buffer.extend(events)
         await self._maybe_compress()
         now = time.time()
-        length = len(str(event.message))
-        if len(self.buffer) > 1:
+        length = len(str(events[-1].get("message", "")))
+        if len(self.buffer) > len(events):
             self._update_delay(now - self.last_receive, length)
         else:
             weight = 1 if length * 0.2 <= 1 else length * 0.2
@@ -1512,6 +2372,7 @@ class _Agent:
     def __init__(self) -> None:
         self.core: _AgentCore | None = None
         self.collectors: dict[int, _Collector] = {}
+        self.group_cache: dict[int, list[dict[str, Any]]] = {}
         self.sub_manager: _SubAgentManager | None = None
         self.heartbeat_task: asyncio.Task[Any] | None = None
         self.acted = 0
@@ -1538,49 +2399,26 @@ class _Agent:
         with open("config.json", "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2, ensure_ascii=False)
 
-    @staticmethod
-    def _save_profile_name(name: str) -> None:
-        """把当前人设名写入 config.others.agent_profile(直接读写 config.json,同 _save_white)。"""
-        with open("config.json", encoding="utf-8") as f:
-            cfg = json.load(f)
-        cfg.setdefault("others", {})["agent_profile"] = name
-        with open("config.json", "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2, ensure_ascii=False)
-
     async def apply_profile(self, name: str) -> str:
-        """按名字切换到 profiles.json 中的人设:热更新 system_prompt 与 history[0],持久化到 config。"""
-        profiles = _load_profiles()
-        prompt = profiles.get(name)
-        if prompt is None:
-            return f"人设「{name}」不存在,可用: {', '.join(profiles.keys()) or '(无)'}"
-        core = self._core()
-        core.system_prompt = _build_system_prompt(prompt)
-        new_content = core.system_prompt.replace("[ulist]", str(config.owner))
-        # 更新第一条 system 消息(不依赖 history[0] 恰好是 system);
-        # 没有任何 system 消息时插入到最前,确保请求始终以 system 开头
-        for i, m in enumerate(core.history):
-            if isinstance(m, dict) and m.get("role") == "system":
-                core.history[i]["content"] = new_content
-                break
-        else:
-            core.history.insert(0, {"role": "system", "content": new_content})
-        await core.save()
-        config.others["agent_profile"] = name  # 同步内存,使 _current_profile_name() 立即反映新值
-        self._save_profile_name(name)
-        logger.info(f"人设已切换为「{name}」")
-        return f"已切换到人设「{name}」"
+        """命令侧人设切换:与 bot 工具 switch_profile 共用 _AgentCore.switch_profile(含切换前自动总结)。"""
+        return await self._core().switch_profile(name)
 
     @staticmethod
     def add_profile(name: str, content: str) -> str:
-        """新增/覆盖 profiles.json 中的人设条目(不自动切换)。"""
+        """新增/覆盖 profiles.json 中的人设条目(不自动切换)。
+
+        旧版字符串条目升级为对象时默认 inject_master=True(保持原行为);
+        覆盖已有对象条目时保留其 inject_master 选项。
+        """
         if not name.strip() or not content.strip():
             return "人设名称与内容不能为空"
         profiles = _load_profiles()
         existed = name in profiles
-        profiles[name] = content
+        previous = profiles.get(name)
+        inject_master = previous.inject_master if previous is not None else True
+        profiles[name] = _AgentProfile(content.strip(), inject_master)
         try:
-            with open(PROFILES_PATH, "w", encoding="utf-8") as f:
-                json.dump(profiles, f, indent=2, ensure_ascii=False)
+            _save_profiles(profiles)
         except OSError:
             return f"写入 {PROFILES_PATH} 失败(文件只读?)"
         logger.info(f"人设「{name}」已{'更新' if existed else '添加'}")
@@ -1596,12 +2434,38 @@ class _Agent:
             return f"人设「{name}」正在使用中,请先切换其他人设再删除"
         del profiles[name]
         try:
-            with open(PROFILES_PATH, "w", encoding="utf-8") as f:
-                json.dump(profiles, f, indent=2, ensure_ascii=False)
+            _save_profiles(profiles)
         except OSError:
             return f"写入 {PROFILES_PATH} 失败(文件只读?)"
         logger.info(f"人设「{name}」已删除")
         return f"人设「{name}」已删除"
+
+    async def set_profile_master(self, name: str, enabled: bool | None) -> str:
+        """查看或设置指定人设的 inject_master;当前人设会热更新 system prompt。"""
+        profiles = _load_profiles()
+        profile = profiles.get(name)
+        if profile is None:
+            return f"人设「{name}」不存在,可用: {', '.join(profiles.keys()) or '(无)'}"
+        if enabled is None:
+            return f"人设「{name}」的 inject_master：{'开启' if profile.inject_master else '关闭'}"
+        if profile.inject_master == enabled:
+            return f"人设「{name}」的 inject_master 已经是{'开启' if enabled else '关闭'}状态"
+        updated = _AgentProfile(profile.prompt, enabled)
+        profiles[name] = updated
+        try:
+            _save_profiles(profiles)
+        except OSError:
+            return f"写入 {PROFILES_PATH} 失败(文件只读?)"
+        if name == _current_profile_name():
+            core = self._core()
+            await core._acquire_processing_slot()
+            try:
+                core._apply_profile_prompt(updated)
+                await core.save()
+            finally:
+                await core._release_processing_slot()
+        logger.info(f"人设「{name}」的 inject_master 已设置为 {enabled}")
+        return f"人设「{name}」的 inject_master 已{'开启' if enabled else '关闭'}"
 
     def _core(self) -> "_AgentCore":
         assert self.core is not None
@@ -1646,13 +2510,18 @@ class _Agent:
         if event.is_mentioned:
             await self._immediate(event)
             return
-        if not _white.get(event.group_id):
-            # 没有任何白名单设置的群:不缓存消息
+        if not _white.get(event.group_id) and not event.is_owner:
+            # 没有任何白名单设置的群:普通成员消息不缓存,主人仍可直接触发。
+            return
+        cache = self.group_cache.setdefault(event.group_id, [])
+        cache.append(event.data)
+        if event.user_id not in self._group_white(event.group_id) and not event.is_owner:
+            # 普通成员只进入独立缓存,不启动/重置 Collector 收集窗口。
             return
         col = self.collectors.setdefault(event.group_id, _Collector(event.group_id, "grp", self._core()))
-        await col.append(event)
-        if event.user_id in self._group_white(event.group_id) or event.is_owner:
-            await col.start(event.user_id, self._perm_of(event.user_id, event.group_id), event.self_id)
+        await col.append_batch(cache)
+        cache.clear()
+        await col.start(event.user_id, self._perm_of(event.user_id, event.group_id), event.self_id)
 
     async def _on_private(self, event: PrivateMessageEvent) -> None:
         if event.user_id is None or event.blocked or event.is_silent:
@@ -1678,7 +2547,8 @@ class _Agent:
     async def _immediate(self, event: GroupMessageEvent) -> None:
         gid = cast(int, event.group_id)
         col = self.collectors.setdefault(gid, _Collector(gid, "grp", self._core()))
-        batch = list(col.buffer) + [event.data]
+        cache = self.group_cache.pop(gid, [])
+        batch = cache + list(col.buffer) + [event.data]
         col.buffer.clear()
         if col.doing_task is not None and not col.doing_task.done():
             col.doing_task.cancel()
@@ -1729,8 +2599,18 @@ class _Agent:
             "pf.ad": "profile.add",
             "pf.rm": "profile.remove",
             "pf.list": "profile.list",
+            "pf.master": "profile.master",
+            "pf.ma": "profile.master",
+            "profile.ma": "profile.master",
             "ctx.clr": "context.clear",
             "ctx.sum": "context.summary",
+            "function": "func",
+            "func.enable": "func.en",
+            "function.en": "func.en",
+            "function.enable": "func.en",
+            "func.disable": "func.dis",
+            "function.dis": "func.dis",
+            "function.disable": "func.dis",
         }.get(sub, sub)
         if sub == "on":
             if gid is not None:
@@ -1766,6 +2646,27 @@ class _Agent:
             # split(None, 3):只切前 3 段,name 之后的内容原样保留(含内部连续空格)
             _, _, name, content = text.split(None, 3)
             await self._reply(event, self.add_profile(name, content))
+        elif sub == "profile.master":
+            target = parts[2] if len(parts) > 2 else ""
+            if target == "":
+                await self._reply(event, "用法: .agent.profile.master <名称> [on/off]")
+                return
+            value = parts[3] if len(parts) > 3 else ""
+            if value == "":
+                enabled: bool | None = None
+            else:
+                if uid not in config.owner:
+                    await self._reply(event, "仅主人可设置 inject_master")
+                    return
+                value_l = value.lower()
+                if value_l in ("on", "true", "1", "开", "开启"):
+                    enabled = True
+                elif value_l in ("off", "false", "0", "关", "关闭"):
+                    enabled = False
+                else:
+                    await self._reply(event, "用法: .agent.profile.master <名称> [on/off]")
+                    return
+            await self._reply(event, await self.set_profile_master(target, enabled))
         elif sub == "profile.remove":
             target = parts[2] if len(parts) > 2 else ""
             if target == "":
@@ -1798,15 +2699,51 @@ class _Agent:
                 return
             await self._reply(event, await self._core().reset_history())
         elif sub == "context.summary":
-            if len(parts) < 3:
-                await self._reply(event, "用法: .agent.context.summary <总结内容>")
-                return
             if uid not in config.owner:
                 await self._reply(event, "仅主人可管理上下文")
                 return
-            # split(None, 2):只切前 2 段,总结内容原样保留(含内部连续空格)
-            _, _, content = text.split(None, 2)
-            await self._reply(event, await self._core().clear_history(content))
+            await self._reply(event, await self._core().summarize_current_context())
+        elif sub == "func":
+            if uid not in config.owner:
+                await self._reply(event, "仅主人可管理 Agent 工具")
+                return
+            await self._reply(event, _func_status_text())
+        elif sub == "func.en":
+            name = parts[2] if len(parts) > 2 else ""
+            if name == "":
+                await self._reply(event, "用法: .ag.func.en <name>")
+                return
+            if uid not in config.owner:
+                await self._reply(event, "仅主人可管理 Agent 工具")
+                return
+            await self._reply(event, ToolRegistry.enable_tool(name))
+        elif sub == "func.dis":
+            name = parts[2] if len(parts) > 2 else ""
+            if name == "":
+                await self._reply(
+                    event,
+                    "用法: .ag.func.dis <name> <duration?>\n"
+                    "时长支持 30s/5m/1h/1d 或 30秒/5分钟/1小时/1天,裸数字为分钟;"
+                    "不填=禁用至手动启用",
+                )
+                return
+            if uid not in config.owner:
+                await self._reply(event, "仅主人可管理 Agent 工具")
+                return
+            if len(parts) > 3:
+                try:
+                    minutes = _parse_duration_minutes(parts[3])
+                except ValueError:
+                    await self._reply(
+                        event,
+                        "时长格式错误:支持 30s/5m/1h/1d 或 30秒/5分钟/1小时/1天,裸数字为分钟",
+                    )
+                    return
+                duration_text = parts[3]
+            else:
+                minutes = None
+                duration_text = ""
+            await self._reply(event, ToolRegistry.disable_tool(name, minutes, duration_text))
         else:
             # 帮助信息由 Helps 模块统一展示(.help Agent),不在本模块内自回复
             await self._reply(event, "未知的子命令。发送 .help Agent 查看模块帮助")

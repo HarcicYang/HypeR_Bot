@@ -13,7 +13,7 @@ dependencies = [
     "GitPython",
     "google-genai",
     "httpx",
-    "hyper-bot==1.0.0.post1",
+    "hyper-bot==1.0.0.post3",
     "jieba",
     "meme-generator<0.2.0",
     "meme-generator-contrib",
@@ -31,6 +31,12 @@ dev = [
     "pyrefly",
     "ruff",
 ]
+
+[tool.setuptools]
+# 本仓库是应用而非可安装的 Python 发行版。uv 已通过 [tool.uv].package=false 跳过打包；
+# pip 不读取该 uv 配置，会退回 setuptools 扁平布局自动发现，把 assets/NapCat/node_modules/
+# lagrange/Gensokyo/temps/venvback 等无关目录当成顶层包。显式声明空包列表以禁用自动发现。
+packages = []
 
 [tool.uv]
 package = false

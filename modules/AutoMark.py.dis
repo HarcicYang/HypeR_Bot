@@ -1,46 +1,106 @@
-from Hyper.Events import GroupMessageEvent
-from ModuleClass import ModuleRegister, Module
+"""AutoMark —— 自动表情回应。
 
-from pathlib import Path
+- 指定目标用户发群消息时,自动点赞(code=76)
+- bot 主人发群消息时,随机回应一个小黄脸表情
+- 表情数据来自 assets/qface.json
+
+可在 config.others 中覆盖:
+- automark_target: int(默认 1449924494)
+- automark_target_reaction: str(默认 "76")
+"""
+
 import json
 import random
+import traceback
+from pathlib import Path
+from typing import Any
 
-TARGET_UIN = 1449924494
-# TARGET_UIN = 2488529467
+from hyperot.events import GroupMessageEvent
+from typing_extensions import override
 
+import ModuleClass
 
-with open(Path(".") / "assets" / "qface.json", "r", encoding="utf-8") as f:
-    data = json.load(f)
-
-
-def get_id() -> str:
-    # d = random.choice(data)
-    # if data.index(d) == 1:
-    #     d = random.choice(data)
-    #     if data.index(d) == 1:
-    #         return str(random.choice(d["2"])["4"])
-    #     else:
-    #         return str(random.choice(d["2"])["1"])
-    # else:
-    #     return str(random.choice(d["2"])["1"])
-    return str(random.choice(data[0]["2"])["1"])
+DEFAULT_TARGET = 0
+DEFAULT_TARGET_REACTION = "76"
+_QFACE_PATH = Path(__file__).resolve().parent.parent / "assets" / "qface.json"
 
 
-@ModuleRegister.register(GroupMessageEvent)
-class Mark(Module):
-    async def handle(self):
-        if int(self.event.user_id) == TARGET_UIN:
-            await self.actions.custom.set_group_reaction(
-                group_id=int(self.event.group_id),
+def _load_faces() -> list[dict[str, Any]]:
+    """读取 qface.json 第一组「小黄脸表情」。"""
+    try:
+        with _QFACE_PATH.open(encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, list) or not data:
+            return []
+        group = data[0]
+        if not isinstance(group, dict) or not isinstance(group.get("2"), list):
+            return []
+        return [face for face in group["2"] if isinstance(face, dict)]
+    except (OSError, json.JSONDecodeError, IndexError):
+        return []
+
+
+_FACES: list[dict[str, Any]] = _load_faces()
+
+
+def _config_int(key: str, default: int) -> int:
+    try:
+        return int((ModuleClass.config.others or {}).get(key) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _config_str(key: str, default: str) -> str:
+    value = (ModuleClass.config.others or {}).get(key)
+    if value is None:
+        return default
+    return str(value).strip() or default
+
+
+TARGET_UIN = _config_int("automark_target", DEFAULT_TARGET)
+TARGET_REACTION = _config_str("automark_target_reaction", DEFAULT_TARGET_REACTION)
+
+
+def _random_reaction() -> str:
+    if not _FACES:
+        return DEFAULT_TARGET_REACTION
+    return str(random.choice(_FACES).get("1") or DEFAULT_TARGET_REACTION)
+
+
+@ModuleClass.ModuleRegister.register(GroupMessageEvent)
+class AutoMark(ModuleClass.Module[GroupMessageEvent]):
+    @override
+    @staticmethod
+    def info() -> ModuleClass.ModuleInfo:
+        return ModuleClass.ModuleInfo(
+            is_hidden=False,
+            module_name="AutoMark",
+            desc="自动表情回应:目标用户点赞,主人随机小黄脸",
+            helps="目标用户发消息时自动点赞;主人发消息时随机回应小黄脸。无需命令。",
+        )
+
+    @override
+    @staticmethod
+    def filter(event: Any, allowed: list[Any]) -> bool:
+        if not ModuleClass.Module.filter(event, allowed):
+            return False
+        if event.blocked or event.is_silent or event.user_id is None or event.group_id is None:
+            return False
+        uid = int(event.user_id)
+        return uid == TARGET_UIN or uid in ModuleClass.config.owner
+
+    @override
+    async def handle(self) -> None:
+        if self.event.user_id is None or self.event.group_id is None:
+            return
+        uid = self.event.user_id
+        code = TARGET_REACTION if uid == TARGET_UIN else _random_reaction()
+        try:
+            await self.actions.custom.group_reaction(
+                group_id=self.event.group_id,
                 message_id=int(self.event.message_id),
-                code="76",
-                is_add=True
+                code=code,
+                is_add=True,
             )
-        elif int(self.event.user_id) in self.config.owner:
-            id_ = get_id()
-            await self.actions.custom.set_group_reaction(
-                group_id=int(self.event.group_id),
-                message_id=int(self.event.message_id),
-                code=id_,
-                is_add=True
-            )
+        except Exception:
+            ModuleClass.logger.warning(traceback.format_exc())

@@ -64,13 +64,47 @@ class MessageTools(AgentToolBase):
             return "调用不合法：消息内容为空"
         nodes = [
             segments.CustomNode(
-                user_id=str(ctx.self_id or ctx.principal_id or 0), nick_name="", content=new_mess
+                user_id=str(ctx.self_id or ctx.principal_id or 0), nickname="", content=new_mess
             ).to_json()
         ]
         fwd = common.Message(segments.Forward(content=nodes))
         if group_id is not None:
             return (await ctx.actions.send_msg(message=fwd, group_id=group_id)).raw
         return (await ctx.actions.send_msg(message=fwd, user_id=user_id)).raw
+
+    @tool(group="qq", sub_visible=False)
+    async def set_group_reaction(
+        self,
+        ctx: ToolContext,
+        group_id: int,
+        message_id: int,
+        code: int | None = None,
+        emoji: str | None = None,
+        is_add: bool = True,
+    ) -> str:
+        """对指定群消息设置表情回应。
+
+        - group_id: 目标群号
+        - message_id: 目标消息 id
+        - code: QQ 小黄脸表情 ID(qface)，例如 76 表示赞；与 emoji 二选一
+        - emoji: emoji 字符本身；与 code 二选一
+        - is_add: true 表示添加回应，false 表示移除回应
+
+        怎么做？
+
+        你应当对于看到的消息，根据你的感受使用该工具。该工具并不烦人，可以较多的使用。
+        """
+        if (code is None) == (emoji is None):
+            return "调用不合法：code(qface ID) 与 emoji 必须且只能提供一个"
+        params: dict[str, Any] = {"group_id": group_id, "message_id": message_id, "is_add": is_add}
+        if code is not None:
+            params["code"] = code
+        else:
+            params["emoji"] = emoji
+        echo = await ctx.actions.custom.group_reaction(**params)
+        action = "设置" if is_add else "移除"
+        target = f"code={code}" if code is not None else f"emoji={emoji}"
+        return f"已{action}群 {group_id} 消息 {message_id} 的表情回应({target}, echo={echo})"
 
     @tool(group="qq", sub_visible=False)
     async def del_msg(self, ctx: ToolContext, message_id: int) -> str:

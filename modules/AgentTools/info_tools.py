@@ -1,5 +1,6 @@
 """信息类工具:查群/查人、时间、读图片(Gemini 视觉)。网页阅读见 webpage_tools.py。"""
 
+import asyncio
 from typing import Any, cast
 
 from hyperot import configurator
@@ -88,17 +89,19 @@ class InfoTools(AgentToolBase):
             guessed = filetype.guess(content)
             mime = "application/octet-stream" if guessed is None else guessed.mime
             cli = genai.Client(api_key=key)
-            res = cli.models.generate_content(
+            request = cast(
+                Any,
+                [
+                    genai_types.Part.from_bytes(data=content, mime_type=mime),
+                    genai_types.Part.from_text(
+                        text=f"请经可能详细的描述这张图片的全部细节，精确到每一处方位。用简体中文回答，不要寒暄。在全部信息描述完成后，根据我们“{goal}”的目标做详细总结"
+                    ),
+                ],
+            )
+            res = await asyncio.to_thread(
+                cli.models.generate_content,
                 model=GEMINI_MODEL,
-                contents=cast(
-                    Any,
-                    [
-                        genai_types.Part.from_bytes(data=content, mime_type=mime),
-                        genai_types.Part.from_text(
-                            text=f"请经可能详细的描述这张图片的全部细节，精确到每一处方位。用简体中文回答，不要寒暄。在全部信息描述完成后，根据我们“{goal}”的目标做详细总结"
-                        ),
-                    ],
-                ),
+                contents=request,
             )
             return res.text or "（模型未返回内容）"
         except Exception as e:
