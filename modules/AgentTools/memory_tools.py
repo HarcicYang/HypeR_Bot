@@ -4,12 +4,26 @@ from modules.AgentTools.registry import AgentToolBase, ToolContext, tool
 
 
 class MemoryTools(AgentToolBase):
-    @tool(perm="bot_owner", scenes=("group", "private", "system"), group="memory", sub_visible=False)
+    @tool(
+        perm="bot_owner",
+        scenes=("system",),
+        group="memory",
+        main_visible=False,
+        sub_visible=False,
+        system_visible=False,
+    )
     async def summary(self, ctx: ToolContext, content: str) -> str:
         """用总结性信息替换完整聊天历史；与命令 `.agent.context.summary <内容>` 同效，仅 bot_owner 可用"""
         return await ctx.runtime.summarize_history(content)
 
-    @tool(perm="bot_owner", scenes=("group", "private", "system"), group="memory", sub_visible=False)
+    @tool(
+        perm="bot_owner",
+        scenes=("system",),
+        group="memory",
+        main_visible=False,
+        sub_visible=False,
+        system_visible=True,
+    )
     async def switch_profile(self, ctx: ToolContext, name: str) -> str:
         """切换到 profiles.json 中的指定人设；切换前自动总结当前上下文；与命令 `.agent.profile <名称>` 同效，仅 bot_owner 可用"""
         return await ctx.runtime.switch_profile(name)

@@ -25,7 +25,7 @@ CONFIG_PATH = "config.json"
 # 权限
 # --------------------------------------------------------------------------- #
 
-PERM_LEVEL: dict[str, int] = {"member": 0, "whitelist": 1, "bot_owner": 2}
+PERM_LEVEL: dict[str, int] = {"member": 0, "whitelist": 1, "any_admin": 2, "bot_owner": 3}
 
 # --------------------------------------------------------------------------- #
 # 消息段 schema(移植自 HyperAG MESSAGE_OBJECT)
@@ -141,10 +141,13 @@ class ToolRegistration:
     group: str = "general"  # 工具分组(声明用途分类,如 qq/info/code/github/memory/subagent)
     main_visible: bool = True  # 主 Agent 可见
     sub_visible: bool = True  # SubAgent 可见
+    system_visible: bool = False  # System Context 可见(默认最小权限工具集)
 
     def visible_for(self, role: str) -> bool:
         if role == "sub":
             return self.sub_visible
+        if role == "system":
+            return self.system_visible
         return self.main_visible
 
     def serialize_openai(self) -> dict[str, Any]:
@@ -236,10 +239,14 @@ class ToolRegistry:
         cls._prune_expired()
         return cls._disabled.get(name)
 
+    @staticmethod
+    def _registration_sort_key(registration: ToolRegistration) -> tuple[str, str]:
+        return registration.group, registration.name
+
     @classmethod
     def registrations(cls) -> list[ToolRegistration]:
         """按分组/名称排序返回全部工具注册信息(含禁用中的)。"""
-        return sorted(cls._tools.values(), key=lambda t: (t.group, t.name))
+        return sorted(cls._tools.values(), key=cls._registration_sort_key)
 
     @classmethod
     def disable_tool(cls, name: str, minutes: float | None, duration_text: str = "") -> str:
@@ -280,6 +287,7 @@ class ToolRegistry:
         group: str = "general",
         main_visible: bool = True,
         sub_visible: bool = True,
+        system_visible: bool = False,
     ) -> None:
         hints = get_type_hints(method)
         sig = inspect.signature(method)
@@ -307,6 +315,7 @@ class ToolRegistry:
             group=group,
             main_visible=main_visible,
             sub_visible=sub_visible,
+            system_visible=system_visible,
         )
 
     @classmethod
@@ -358,6 +367,7 @@ def tool(
     group: str = "general",
     main_visible: bool = True,
     sub_visible: bool = True,
+    system_visible: bool = False,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         cast(Any, func).__agent_tool__ = (
@@ -369,6 +379,7 @@ def tool(
             group,
             main_visible,
             sub_visible,
+            system_visible,
         )
         return func
 
@@ -385,9 +396,19 @@ class AgentToolBase:
             spec = getattr(attr, "__agent_tool__", None)
             if spec is None:
                 continue
-            name, desc, perm, scenes, release, group, main_visible, sub_visible = spec
+            name, desc, perm, scenes, release, group, main_visible, sub_visible, system_visible = spec
             ToolRegistry.register(
-                name, desc, perm, scenes, instance, getattr(instance, name), release, group, main_visible, sub_visible
+                name,
+                desc,
+                perm,
+                scenes,
+                instance,
+                getattr(instance, name),
+                release,
+                group,
+                main_visible,
+                sub_visible,
+                system_visible,
             )
 
 
@@ -401,12 +422,12 @@ class ToolContext:
     actions: Any  # listener.Actions
     ev_type: str  # group / private / system
     scene_id: int
-    perm_group: str = "member"  # member / whitelist / bot_owner
+    perm_group: str = "member"  # member / whitelist / any_admin / bot_owner
     principal_id: int | None = None  # 触发者 QQ
     self_id: int | None = None  # bot 自身 QQ
     runtime: Any = None  # Agent 核心暴露的受限接口
     release_requested: bool = False  # 由 release=True 的工具置位:本轮处理应结束(长程任务交给后台)
-    role: str = "main"  # main / sub —— 决定工具可见性(QQ 操作、sub_reply 不向 SubAgent 开放;sub_report 仅 SubAgent)
+    role: str = "main"  # main / sub / system —— 决定工具可见性
 
     async def create_msg(self, raw_mess: Any) -> common.Message:
         new_mess: list[Any] = []
