@@ -716,7 +716,6 @@ dependencies = [
     { name = "hyper-bot" },
     { name = "jieba" },
     { name = "meme-generator" },
-    { name = "meme-generator-contrib" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "openai" },
@@ -746,7 +745,6 @@ requires-dist = [
     { name = "hyper-bot", specifier = "==1.0.0.post3" },
     { name = "jieba" },
     { name = "meme-generator", specifier = "<0.2.0" },
-    { name = "meme-generator-contrib" },
     { name = "numpy" },
     { name = "openai" },
     { name = "pillow" },
@@ -931,19 +929,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b8/61/7913ed1054baea1e5e578e1ef0719ff64e64205e5837273f7a26074b1c9e/meme_generator-0.1.14.tar.gz", hash = "sha256:573d9ea932e83cfccfe8845f6f8dc78b7bd4119d4ce985c11fafe326828173c1", size = 628130, upload-time = "2025-07-06T04:21:05.038Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/49/c7/b589a24ec0758434c8095996cb68d73cd5d61debededd9bb544dfbf9af1f/meme_generator-0.1.14-py3-none-any.whl", hash = "sha256:0caa723071a928735618468345da507f78910f62e6447948e4bf81601a17b1b5", size = 793210, upload-time = "2025-07-06T04:21:03.029Z" },
-]
-
-[[package]]
-name = "meme-generator-contrib"
-version = "0.2.0a6"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ed/ae/570caf9a0bd71e81162dc9056c0e56cdf192f8cb12c91a26d9161ae3d97d/meme_generator_contrib-0.2.0a6.tar.gz", hash = "sha256:812e36321443e89fc92f4b957eb73315f97d79b1872824f8c2fe87dac4311c84", size = 125486, upload-time = "2024-12-17T17:37:05.274Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8a/1e/f85c040b66988cded6254303fcff75655a0c6c2d6ec63a8eeb8a666e7940/meme_generator_contrib-0.2.0a6-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:82b374d7e662ade825cdd6a57449a4d918a5b383307ac9203ca49438dd1e5e97", size = 9107214, upload-time = "2024-12-17T17:37:02.795Z" },
-    { url = "https://files.pythonhosted.org/packages/7c/26/ec3929ce98520a87530bf6cf0ed3fbaa772873b6fffadf222fe3a56d4005/meme_generator_contrib-0.2.0a6-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:368d28851b5d54c26d75ca95e0b6d1ca5f6321dd7b1b7ca2275348049d4e563a", size = 8973751, upload-time = "2024-12-17T17:36:59.691Z" },
-    { url = "https://files.pythonhosted.org/packages/77/f6/38f6af6e1e2d0c8db7a03f54bb0b34357ea96e18a4f5b3b5fad715a53a07/meme_generator_contrib-0.2.0a6-cp39-abi3-manylinux_2_31_x86_64.whl", hash = "sha256:b8fcd2504f117f836876f4cd68082705b9629b03502530c84d662e62b6bcc5ab", size = 11973583, upload-time = "2024-12-17T17:36:55.513Z" },
-    { url = "https://files.pythonhosted.org/packages/5f/dd/17ab7c4fb689451ff1e2cf8a41fa5c7c99699eb579453d9c55cec765e8e9/meme_generator_contrib-0.2.0a6-cp39-abi3-manylinux_2_35_aarch64.whl", hash = "sha256:e24999ce46da1004cb731285e444a311e53a5a6e524ac1935f965b697b0dc84e", size = 12519621, upload-time = "2024-12-17T17:36:52.323Z" },
-    { url = "https://files.pythonhosted.org/packages/64/52/518e1e9b13384332473f961129a112301b44e0cc6f3bfe1dc23a8f02d8f3/meme_generator_contrib-0.2.0a6-cp39-abi3-win_amd64.whl", hash = "sha256:ae4ef5f5879166df131b00e50e8b48847979c344fa35b96ec6ee83522d8bfdec", size = 8829284, upload-time = "2024-12-17T17:37:08.328Z" },
 ]
 
 [[package]]

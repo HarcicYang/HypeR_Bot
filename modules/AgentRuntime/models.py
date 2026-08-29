@@ -57,3 +57,20 @@ class AgentEvent:
             "source": self.source,
             "time": self.time or int(time.time()),
         }
+
+
+@dataclasses.dataclass
+class SysRequest:
+    """一条已受理、待 System Context 处理并回调的系统请求。"""
+
+    op: str
+    source: SessionKey  # 发起方会话(分组/私聊),回调消息发往此处
+    principal_id: int | None  # 发起用户 QQ
+    self_id: int | None
+    reply_message_id: str | None  # 原命令 message_id,回调时挂回复引用
+    payload: dict[str, Any]
+    created_at: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not self.created_at:
+            self.created_at = time.time()

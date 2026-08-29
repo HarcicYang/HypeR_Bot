@@ -49,6 +49,7 @@ SYSTEM_CONTEXT_PROMPT = """# System Context
 - 使用 `context_send`、`context_request`、`context_reply` 与 Main 上下文通信。
 - 只能调用已暴露的上下文管理工具；不得尝试发送 QQ 消息、执行模块、运行代码或调用未暴露工具。
 - 每个请求都带来源上下文；处理结果应定向返回来源，不得无目标广播。
+- 每个 `system_request` 都携带 `request_id`；处理完成后必须调用 `sys_ack(request_id, 结果内容)` 把结果(成功或失败)回传给发起用户，不要用 `context_send` 代替。
 
 {output}
 

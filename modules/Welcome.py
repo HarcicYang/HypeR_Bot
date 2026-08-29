@@ -1,7 +1,9 @@
 import json
+import os
 import random
+import traceback
 
-from hyperot import common, segments
+from hyperot import common, hyperogger, segments
 from hyperot.events import *
 from typing_extensions import override
 
@@ -10,7 +12,38 @@ import ModuleClass
 with open("./assets/quick.json", encoding="utf-8") as f:
     quicks = json.load(f)
 
-cache: dict[str, list[str | None]] = {}
+_logger = hyperogger.Logger()
+
+
+def _cache_path() -> str:
+    return "./temps/welcome_requests.json"
+
+
+def _load_cache() -> dict[str, list[str | None]]:
+    """磁盘懒加载;损坏时备份原文件后重置为空。"""
+    try:
+        with open(_cache_path(), encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except FileNotFoundError:
+        pass
+    except (OSError, json.JSONDecodeError):
+        _logger.warning("加群请求缓存损坏: " + traceback.format_exc())
+        try:
+            if os.path.exists(_cache_path()):
+                os.replace(_cache_path(), _cache_path() + ".bak")
+        except OSError:
+            pass
+    return {}
+
+
+def _save_cache(cache: dict[str, list[str | None]]) -> None:
+    os.makedirs(os.path.dirname(_cache_path()) or ".", exist_ok=True)
+    tmp = _cache_path() + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(cache, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, _cache_path())
 
 
 @ModuleClass.ModuleRegister.register(
@@ -81,7 +114,9 @@ class Module(
                         ]
                     ),
                 )
+                cache = _load_cache()
                 cache[str(msg.data.message_id)] = [self.event.comment, self.event.flag]
+                _save_cache(cache)
             # elif self.event.sub_type == "invite":
             #     message = common.Message(
             #         [
@@ -95,17 +130,25 @@ class Module(
                 if isinstance(i, segments.Reply):
                     _id = i.id
                     break
-            if _id and _id in cache:
-                comment, flag = cache[_id]
-                if ".comment" in str(self.event.message):
-                    if comment is None:
-                        return
-                    await self.actions.send_msg(
-                        group_id=self.event.group_id,
-                        user_id=self.event.user_id,
-                        message=common.Message(segments.Reply(self.event.message_id), segments.Text(comment)),
-                    )
-                elif ".approve" in str(self.event.message):
-                    if flag is None:
-                        return
-                    await self.actions.set_group_add_request(flag=flag, sub_type="add", approve=True)
+            if _id is not None:
+                cache = _load_cache()
+                if _id not in cache:
+                    return
+            else:
+                return
+            comment, flag = cache[_id]
+            if ".comment" in str(self.event.message):
+                if comment is None:
+                    return
+                await self.actions.send_msg(
+                    group_id=self.event.group_id,
+                    user_id=self.event.user_id,
+                    message=common.Message(segments.Reply(self.event.message_id), segments.Text(comment)),
+                )
+            elif ".approve" in str(self.event.message):
+                if flag is None:
+                    return
+                await self.actions.set_group_add_request(flag=flag, sub_type="add", approve=True)
+                cache = _load_cache()
+                del cache[_id]
+                _save_cache(cache)

@@ -5,6 +5,7 @@ import json
 import math
 import time
 import traceback
+from collections.abc import Callable
 from typing import Any, Literal, Protocol
 
 from hyperot import configurator, hyperogger
@@ -33,10 +34,20 @@ class EventHandlerCore(Protocol):
 class Collector:
     MAX_BUFFER = 80
 
-    def __init__(self, sid: int, stype: Literal["grp", "usr"], core: EventHandlerCore) -> None:
+    def __init__(
+        self,
+        sid: int,
+        stype: Literal["grp", "usr"],
+        resolve_core: Callable[[], EventHandlerCore | None],
+    ) -> None:
+        """resolve_core: 使用当前会话的 AgentCore(惰性解析)。
+
+        不直接持有 core:空闲回收可能删除并重建核心,collector 只保留
+        缓冲区与收集窗口,发起处理时经回调现取(为空会保留 buffer 重试)。
+        """
         self.sid = sid
         self.stype = stype
-        self.core = core
+        self._resolve_core = resolve_core
         self.buffer: list[dict[str, Any]] = []
         self.delay = 8.0
         self.doing_task: asyncio.Task[Any] | None = None
@@ -106,6 +117,11 @@ class Collector:
     async def append(self, event: MessageEvent) -> None:
         await self.append_batch([event.data])
 
+    async def append_passive(self, event_data: dict[str, Any]) -> None:
+        """只把消息放进 buffer,不更新节奏、不重置收集窗口(供非白名单环境消息使用)。"""
+        self.buffer.append(event_data)
+        await self._maybe_compress()
+
     async def append_batch(self, events: list[dict[str, Any]]) -> None:
         if not events:
             return
@@ -138,10 +154,20 @@ class Collector:
     async def _sleep_loop(self) -> None:
         try:
             await asyncio.sleep(self.delay)
+            core = self._resolve_core()
+            if core is None:
+                # 核心暂不可用(管理器未就绪/被回收后尚不可建):保留 buffer,结束本窗口,
+                # 由后续消息重新拉起,不丢弃已缓存内容。
+                if self.buffer:
+                    self.active = True
+                    self.doing_task = asyncio.create_task(self._sleep_loop())
+                else:
+                    self.active = False
+                return
             self.replying = True
             batch = list(self.buffer)
             try:
-                await self.core.event_handler(
+                await core.event_handler(
                     event=json.dumps(batch, ensure_ascii=False),
                     ev_type="group" if self.stype == "grp" else "private",
                     scene_id=self.sid,

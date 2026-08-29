@@ -330,7 +330,6 @@ class _Agent:
         self.actions: Actions | None = None
         self.session_manager: _SessionManager | None = None
         self.collectors: dict[SessionKey, _Collector] = {}
-        self.group_cache: dict[int, list[dict[str, Any]]] = {}
         self.sub_manager: _SubAgentManager | None = None
         self.heartbeat_task: asyncio.Task[Any] | None = None
         self.acted = 0
@@ -441,6 +440,12 @@ class _Agent:
         assert event.user_id is not None
         return self.session_manager.get_core("private", int(event.user_id))
 
+    def _core_for_key(self, stype: Literal["grp", "usr"], sid: int) -> _AgentCore | None:
+        """按收集器场景取当前核心(惰性解析,可能被空闲回收后重建)。"""
+        if self.session_manager is None:
+            return None
+        return self.session_manager.get_core("group" if stype == "grp" else "private", sid)
+
     def _perm_of(self, uid: int | None, gid: int | None, group_role: str | None = None) -> str:
         """权限档位:主人 → bot_owner;群主/管理员 → any_admin;白名单 → whitelist。"""
         if uid is None:
@@ -500,22 +505,20 @@ class _Agent:
         if text.startswith((".agent", ".ag")):
             await self._cmd(event)
             return
+        gid = event.group_id
         if not _white.get(event.group_id) and not event.is_mentioned:
             # 没有任何白名单设置的群不缓存消息，bot_owner 也必须显式加入白名单。
             return
-        cache = self.group_cache.setdefault(event.group_id, [])
-        cache.append(event.data)
-        if event.user_id not in self._group_white(event.group_id) and not event.is_mentioned:
-            # 非白名单成员只进入独立缓存,不启动/重置 Collector 收集窗口。
-            return
+        key = SessionKey("group", gid)
+        col = self.collectors.setdefault(key, _Collector(gid, "grp", lambda: self._core_for_key("grp", gid)))
         if event.is_mentioned:
             await self._immediate(event)
             return
-        key = SessionKey("group", int(event.group_id))
-        core = self._core_for_event(event)
-        col = self.collectors.setdefault(key, _Collector(event.group_id, "grp", core))
-        await col.append_batch(cache)
-        cache.clear()
+        await col.append_passive(event.data)
+        if event.user_id not in self._group_white(gid):
+            # 非白名单成员只进入 Collector buffer(不重置收集窗口),由白名单成员的
+            # 下一条消息或被 @ 时的 _immediate 一并消费。
+            return
         await col.start(
             event.user_id,
             self._perm_of(event.user_id, event.group_id, event.sender.role),
@@ -538,7 +541,7 @@ class _Agent:
             return
         # 私聊不配置白名单:所有消息都走收集处理
         key = SessionKey("private", int(uid))
-        col = self.collectors.setdefault(key, _Collector(uid, "usr", self._core_for_event(event)))
+        col = self.collectors.setdefault(key, _Collector(uid, "usr", lambda: self._core_for_key("usr", uid)))
         await col.append(event)
         await col.start(uid, self._perm_of(uid, None), event.self_id)
 
@@ -547,9 +550,8 @@ class _Agent:
     async def _immediate(self, event: GroupMessageEvent) -> None:
         gid = cast(int, event.group_id)
         key = SessionKey("group", gid)
-        col = self.collectors.setdefault(key, _Collector(gid, "grp", self._core_for_event(event)))
-        cache = self.group_cache.pop(gid, [])
-        batch = cache + list(col.buffer) + [event.data]
+        col = self.collectors.setdefault(key, _Collector(gid, "grp", lambda: self._core_for_key("grp", gid)))
+        batch = list(col.buffer) + [event.data]
         col.buffer.clear()
         if col.doing_task is not None and not col.doing_task.done():
             col.doing_task.cancel()
@@ -704,7 +706,16 @@ class _Agent:
             core = self._core_for_event(event)
             manager = self.session_manager
             assert manager is not None and core.session_key is not None
-            await self._reply(event, await manager.request_profile_switch(core.session_key, target))
+            await self._reply(
+                event,
+                await manager.request_profile_switch(
+                    core.session_key,
+                    target,
+                    principal_id=uid,
+                    self_id=event.self_id,
+                    reply_message_id=str(event.message_id),
+                ),
+            )
         elif sub == "context":
             if not self._has_perm(event, "any_admin"):
                 await self._reply(event, "仅主人或当前群管理员/群主可管理上下文")
@@ -723,7 +734,16 @@ class _Agent:
             assert self.session_manager is not None
             key = core.session_key
             assert key is not None
-            await self._reply(event, await self.session_manager.request_summary(key, key))
+            await self._reply(
+                event,
+                await self.session_manager.request_summary(
+                    key,
+                    key,
+                    principal_id=uid,
+                    self_id=event.self_id,
+                    reply_message_id=str(event.message_id),
+                ),
+            )
         elif sub == "func":
             if uid not in config.owner:
                 await self._reply(event, "仅主人可管理 Agent 工具")

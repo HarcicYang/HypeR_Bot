@@ -65,8 +65,8 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         try:
             keyword = message.split()[1].replace("[图片]", "")
             meme = get_meme(keyword)
-        except Exception:
-            if len(message.split()) > 1:
+        except Exception as e:
+            if isinstance(e, exception.NoSuchMeme):
                 await self.actions.send_msg(
                     user_id=self.event.user_id,
                     group_id=self.event.group_id,

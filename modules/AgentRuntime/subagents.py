@@ -3,6 +3,7 @@
 import asyncio
 import os
 import time
+import traceback
 from collections.abc import Callable
 from typing import Any, Literal, cast
 
@@ -110,6 +111,15 @@ class SubAgentManager:
         sub = self.subagents.pop(sub_id, None)
         if sub is None:
             return f"SubAgent #{sub_id} 不存在"
+        # 优雅等待进行中的处理结束(上限 10s),再关闭 HTTP 连接池。
+        for _ in range(100):
+            if not sub.core.working and not sub.core._wakeup_pending:
+                break
+            await asyncio.sleep(0.1)
+        try:
+            await sub.core.aclose()
+        except Exception:
+            logger.warning("关闭 SubAgent 连接池失败: " + traceback.format_exc())
         for path in (
             sub.core.history_path,
             sub.core.tasks_path,

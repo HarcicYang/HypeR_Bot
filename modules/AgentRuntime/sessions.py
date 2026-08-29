@@ -1,5 +1,6 @@
 """Main and System context session management."""
 
+import asyncio
 import json
 import os
 import re
@@ -8,11 +9,18 @@ import traceback
 import uuid
 from typing import Any, Literal, cast
 
-from hyperot import configurator, hyperogger
+from hyperot import common, configurator, hyperogger, segments
 from hyperot.listener import Actions
 
 from modules.AgentRuntime.core import AgentCore
-from modules.AgentRuntime.models import HISTORY_PATH, SESSIONS_PATH, SYSTEM_PATH, AgentEvent, SessionKey
+from modules.AgentRuntime.models import (
+    HISTORY_PATH,
+    SESSIONS_PATH,
+    SYSTEM_PATH,
+    AgentEvent,
+    SessionKey,
+    SysRequest,
+)
 from modules.AgentRuntime.profiles import AgentProfile, load_profiles
 from modules.AgentRuntime.prompts import ROLE_PROMPT
 
@@ -44,14 +52,60 @@ class SessionManager:
         self.owner = owner
         self.actions = actions
         self.cores: dict[SessionKey, AgentCore] = {}
+        self._cleanup_task: asyncio.Task[None] | None = None
+        self.sys_requests: dict[str, SysRequest] = {}  # 待回调的系统请求(request_id -> 记录)
         self.shared_memory = MemoryStore(
             "./temps/agent_memory", limit=int(config.others.get("agent_memory_limit") or 500)
         )
         self.system_core = self._create_core(SessionKey("system", 0), role="system")
         self._migrate_legacy_history()
 
+    def _ensure_cleanup_task(self) -> None:
+        if self._cleanup_task is None or self._cleanup_task.done():
+            self._cleanup_task = asyncio.create_task(self._idle_cleanup_loop())
+
+    async def _idle_cleanup_loop(self) -> None:
+        """周期扫描,关闭并移除长期空闲的 Main Core;history 已落盘,重建无损。"""
+        while True:
+            await asyncio.sleep(1800)
+            try:
+                await self._evict_idle_cores()
+            except Exception:
+                logger.error("空闲上下文清理失败: " + traceback.format_exc())
+
+    async def _evict_idle_cores(self) -> None:
+        idle_hours = float(config.others.get("agent_core_idle_hours") or 12)
+        deadline = time.monotonic() - idle_hours * 3600
+        collectors = getattr(self.owner, "collectors", {}) or {}
+        for key in list(self.cores.keys()):
+            core = self.cores[key]
+            if key.scene_type == "system":
+                continue
+            # 收集窗口活跃(已排程/正在回复/doing_task 存活)时保留核心,不回收。
+            col = collectors.get(key)
+            if col is not None and (
+                col.active or col.replying or (col.doing_task is not None and not col.doing_task.done())
+            ):
+                continue
+            if core.working or core._wakeup_pending:
+                continue
+            if core.last_used is not None and core.last_used > deadline:
+                continue
+            # 标记后 get_core 不再分发该核心:任何新请求都会被路由到重建的新核心,
+            # 与 eviction 在「正在关闭 vs 可取用」上天然互斥(见 get_core)。
+            core._evicting = True
+            try:
+                await core.aclose()
+            except Exception:
+                logger.warning("关闭空闲上下文 " + key.value + " 失败: " + traceback.format_exc())
+            # aclose 期间可能有 get_core 已用新核心替换了该 key,故按身份校验后再删除。
+            if self.cores.get(key) is core:
+                del self.cores[key]
+            logger.info(f"已释放空闲上下文 {key.value}(空闲超过 {idle_hours:g} 小时)")
+
     def _create_core(self, key: SessionKey, role: Literal["main", "system"] = "main") -> AgentCore:
         os.makedirs(key.directory, exist_ok=True)
+        self._ensure_cleanup_task()
         core = AgentCore(
             bot_api=self.actions,
             key=cast(str, config.others.get("openai_key")),
@@ -66,6 +120,7 @@ class SessionManager:
             session_manager=self,
             shared_memory=self.shared_memory,
         )
+        core.last_used = time.monotonic()
         self.cores[key] = core
         return core
 
@@ -118,9 +173,12 @@ class SessionManager:
     def get_core(self, scene_type: Literal["group", "private"], scene_id: int) -> AgentCore:
         key = SessionKey(scene_type, scene_id)
         core = self.cores.get(key)
-        if core is None:
-            core = self._create_core(key)
-            core.sub_manager = self.owner.sub_manager
+        if core is not None and not core._evicting:
+            # 空闲回收先置 _evicting 再 aclose:避免拿到正在关闭的核心。
+            core.last_used = time.monotonic()
+            return core
+        core = self._create_core(key)
+        core.sub_manager = self.owner.sub_manager
         return core
 
     def core_for_key(self, key: SessionKey) -> AgentCore:
@@ -219,10 +277,86 @@ class SessionManager:
         label = f"，request_id={request_id}" if request_id else ""
         return f"已从 {source.value} 投递到 {target_key.value}{label}"
 
-    async def request_profile_switch(self, source: SessionKey, name: str) -> str:
+    def _register_sys_request(
+        self,
+        op: str,
+        source: SessionKey,
+        principal_id: int | None,
+        self_id: int | None,
+        reply_message_id: str | None,
+        payload: dict[str, Any],
+    ) -> str:
+        """登记一条待 System Context 处理的请求,并挂超时看门狗。"""
+        request_id = f"sys_{uuid.uuid4().hex}"
+        self.sys_requests[request_id] = SysRequest(
+            op=op,
+            source=source,
+            principal_id=principal_id,
+            self_id=self_id,
+            reply_message_id=reply_message_id,
+            payload=payload,
+        )
+        timeout = float(config.others.get("agent_sys_request_timeout") or 300)
+        asyncio.create_task(self._watchdog_sys_request(request_id, timeout))
+        return request_id
+
+    async def _watchdog_sys_request(self, request_id: str, timeout: float) -> None:
+        """超时兜底:System 一直未回调时给发起人一个结论。"""
+        await asyncio.sleep(timeout)
+        if request_id in self.sys_requests:
+            await self.ack_sys_request(request_id, f"请求处理超时(>{timeout:g}s)，未能确认完成")
+
+    async def ack_sys_request(self, request_id: str, content: str) -> str:
+        """按 request_id 回调结果给发起人(去重,仅首次生效)。"""
+        req = self.sys_requests.pop(request_id, None)
+        if req is None:
+            return f"未找到待回调的请求 #{request_id}(可能已完成或已超时)"
+        text = str(content)[:2000]
+        segs: list[Any] = []
+        if req.reply_message_id:
+            segs.append(segments.Reply(req.reply_message_id))
+        segs.append(segments.Text(text))
+        try:
+            await self.actions.send_msg(
+                group_id=req.source.scene_id if req.source.scene_type == "group" else None,
+                user_id=req.principal_id,
+                message=common.Message(*segs),
+            )
+        except Exception:
+            logger.warning("系统请求回调发送失败: " + traceback.format_exc())
+            return f"请求 #{request_id} 已完成但回调发送失败"
+        logger.info(f"系统请求 #{request_id}({req.op}) 已回调: {text}")
+        return f"已回调请求 #{request_id}"
+
+    async def _auto_ack(self, op: str, result: str, **match: Any) -> None:
+        """确定性回调:找到最早一条 op 且 payload 匹配的待处理请求并回调(去重后仅一次)。"""
+        for request_id, req in self.sys_requests.items():
+            if req.op != op:
+                continue
+            payload = req.payload or {}
+            if any(payload.get(k) != v for k, v in match.items()):
+                continue
+            await self.ack_sys_request(request_id, result)
+            return
+
+    async def request_profile_switch(
+        self,
+        source: SessionKey,
+        name: str,
+        principal_id: int | None = None,
+        self_id: int | None = None,
+        reply_message_id: str | None = None,
+    ) -> str:
         if name not in _load_profiles():
             return f"人设「{name}」不存在"
-        request_id = f"sys_{uuid.uuid4().hex}"
+        request_id = self._register_sys_request(
+            "switch_profile",
+            source,
+            principal_id,
+            self_id,
+            reply_message_id,
+            {"name": name},
+        )
         event = AgentEvent(
             type="system_request",
             scene_type="system",
@@ -233,14 +367,23 @@ class SessionManager:
                 "operation": "switch_profile",
                 "source": source.value,
                 "name": name,
-                "instruction": ("调用 switch_profile 执行全局人设切换，再用 context_send 向 source 返回执行结果。"),
+                "instruction": (
+                    "调用 switch_profile 执行全局人设切换，完成后调用 sys_ack(request_id, 结果说明) "
+                    "回调给来源用户(成功或失败都要回调，由代码兜底，勿重复调用)。"
+                ),
             },
         )
         self.system_core.inject_notice(event)
         await self.system_core.save()
-        return f"系统上下文已受理人设切换请求 #{request_id}"
+        return f"系统上下文已受理人设切换请求 #{request_id}，完成后会通知你"
 
     async def apply_global_profile(self, name: str) -> str:
+        """System Context 全局切人设;结果(成功/失败)确定性回调给待处理请求。"""
+        result = await self._apply_global_profile(name)
+        await self._auto_ack("switch_profile", result, name=name)
+        return result
+
+    async def _apply_global_profile(self, name: str) -> str:
         profiles = _load_profiles()
         profile = profiles.get(name)
         if profile is None:
@@ -259,11 +402,25 @@ class SessionManager:
                 await core._release_processing_slot()
         return f"已切换到人设「{name}」并刷新全部 Main 上下文"
 
-    async def request_summary(self, source: SessionKey, target: SessionKey) -> str:
+    async def request_summary(
+        self,
+        source: SessionKey,
+        target: SessionKey,
+        principal_id: int | None = None,
+        self_id: int | None = None,
+        reply_message_id: str | None = None,
+    ) -> str:
         turns = self.core_for_key(target).history_turns()
         if not turns:
             return f"上下文 {target.value} 暂无可总结内容"
-        request_id = f"sys_{uuid.uuid4().hex}"
+        request_id = self._register_sys_request(
+            "summarize_context",
+            source,
+            principal_id,
+            self_id,
+            reply_message_id,
+            {"target": target.value},
+        )
         event = AgentEvent(
             type="system_request",
             scene_type="system",
@@ -277,19 +434,25 @@ class SessionManager:
                 "through_turn": len(turns),
                 "instruction": (
                     "分页调用 context_read 读取目标上下文截至 through_turn 的原始轮次，生成完整摘要，"
-                    "调用 context_replace_summary 写回，再用 context_send 向 source 返回结果。"
+                    "调用 context_replace_summary 写回，然后调用 sys_ack(request_id, 结果说明) "
+                    "回调给来源用户(成功或失败都要回调，由代码兜底，勿重复调用)。"
                 ),
             },
         )
         self.system_core.inject_notice(event)
         await self.system_core.save()
-        return f"系统上下文已受理总结请求 #{request_id}"
+        return f"系统上下文已受理总结请求 #{request_id}，完成后会通知你"
 
     async def replace_summary(self, target: str, content: str, through_turn: int) -> str:
         try:
             key = SessionKey.parse(target)
         except ValueError as e:
             return repr(e)
+        result = await self._replace_summary_impl(key, content, through_turn)
+        await self._auto_ack("summarize_context", result, target=key.value)
+        return result
+
+    async def _replace_summary_impl(self, key: SessionKey, content: str, through_turn: int) -> str:
         if key.scene_type == "system":
             return "不能替换 System Context 自身摘要"
         core = self.core_for_key(key)

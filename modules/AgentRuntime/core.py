@@ -168,6 +168,9 @@ class AgentCore:
         self._tool_loop_active = False
         self._pending_profile_switch: tuple[str, _AgentProfile, str] | None = None
         self._pending_summary: str | None = None
+        self._auto_summary_task: asyncio.Task[None] | None = None
+        self.last_used: float = 0.0
+        self._evicting = False
         self._state_lock = asyncio.Lock()
         self._idle_event = asyncio.Event()
         self._idle_event.set()
@@ -175,7 +178,6 @@ class AgentCore:
         self.reasoning_effort = str(config.others.get("agent_reasoning_effort") or "low")
         self.web_search = self.role != "system" and bool(config.others.get("agent_web_search", True))
         self.native_multimodal = self.role != "system" and bool(config.others.get("agent_native_multimodal", True))
-        self._image_data_cache: dict[str, str | None] = {}
 
     # -- runtime 接口(供工具经 ToolContext.runtime 调用) --
 
@@ -289,6 +291,30 @@ class AgentCore:
             return "上下文已由 LLM 自动总结"
         finally:
             await self._release_processing_slot()
+
+    def _history_chars(self) -> int:
+        return sum(len(str(m.get("content", ""))) for m in self.history if isinstance(m, dict))
+
+    def _maybe_schedule_auto_summary(self) -> None:
+        """历史超过阈值时调度一次自动总结。
+
+        只在锁外做检查与调度;总结任务内部通过 _acquire_processing_slot 抢锁,
+        与事件处理天然串行。重复调用由 _auto_summary_task 去重。
+        """
+        max_chars = int(config.others.get("agent_max_history_chars") or 60000)
+        if max_chars <= 0 or self._history_chars() < max_chars:
+            return
+        task = self._auto_summary_task
+        if task is not None and not task.done():
+            return
+        self._auto_summary_task = asyncio.create_task(self._run_auto_summary())
+
+    async def _run_auto_summary(self) -> None:
+        logger.info("历史超过阈值，自动总结上下文")
+        try:
+            await self.summarize_current_context()
+        except Exception:
+            logger.error("自动总结失败: " + traceback.format_exc())
 
     async def _finish_profile_switch(self, name: str, profile: _AgentProfile, summary: str) -> str:
         """先写入自动总结,再应用新人设提示词;调用时已处于安全的历史边界。"""
@@ -470,6 +496,12 @@ class AgentCore:
         if self.session_manager is None or self.role != "system":
             return "只有 System Context 可以替换上下文摘要"
         return await self.session_manager.replace_summary(target, content, through_turn)
+
+    async def sys_ack(self, request_id: str, content: str) -> str:
+        """System Context 专用:按 request_id 把系统请求处理结果回调给发起人(去重,仅一次)。"""
+        if self.session_manager is None:
+            return "上下文管理器不可用"
+        return await self.session_manager.ack_sys_request(request_id, content)
 
     # -- 模块调用(run_module / list_modules / get_module_source) --
 
@@ -842,6 +874,10 @@ class AgentCore:
             self.working = False
             self._idle_event.set()
 
+    async def aclose(self) -> None:
+        """释放底层 HTTP 连接池;调用方需保证没有正在进行的处理。"""
+        await self._oai.close()
+
     async def _wait_until_idle(self) -> None:
         """等待当前全局 history 请求结束;不持锁等待。"""
         while True:
@@ -983,6 +1019,8 @@ class AgentCore:
             finally:
                 if sem is not None:
                     sem.release()
+            # 锁已释放,再调度自动总结;任务内部自行抢锁,与后续事件处理串行。
+            self._maybe_schedule_auto_summary()
 
     async def _event_handler(
         self,
@@ -1073,30 +1111,10 @@ class AgentCore:
         return {"type": "function", "function": {"name": tool_choice}}
 
     async def _download_image_data_uri(self, url: str) -> str | None:
-        """下载远程图片并转成 data URI;失败返回 None。结果按 URL 缓存。"""
-        if url in self._image_data_cache:
-            return self._image_data_cache[url]
-        try:
-            from hyperot.network import httpx_get
+        """下载远程图片并转成 data URI;基于 sha256(url) 的磁盘文件缓存,不驻留内存。"""
+        from modules.AgentRuntime.image_cache import load_or_download
 
-            resp = await httpx_get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
-            if resp.status_code != 200:
-                self._image_data_cache[url] = None
-                return None
-            raw = resp.content
-            if not raw or len(raw) > 10 * 1024 * 1024:
-                self._image_data_cache[url] = None
-                return None
-            import filetype
-
-            guessed = filetype.guess(raw)
-            mime = guessed.mime if guessed is not None else "image/png"
-            data_uri = f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
-            self._image_data_cache[url] = data_uri
-            return data_uri
-        except Exception:
-            self._image_data_cache[url] = None
-            return None
+        return await load_or_download(url)
 
     async def _image_url_from_seg(self, seg: dict[str, Any]) -> str | None:
         """OneBot 图片段 → OpenAI image_url 可接受的 data URI。

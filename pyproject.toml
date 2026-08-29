@@ -16,7 +16,6 @@ dependencies = [
     "hyper-bot==1.0.0.post3",
     "jieba",
     "meme-generator<0.2.0",
-    "meme-generator-contrib",
     "numpy",
     "openai",
     "pillow",

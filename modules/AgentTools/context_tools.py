@@ -64,3 +64,15 @@ class ContextTools(AgentToolBase):
     ) -> str:
         """用摘要替换目标 Main 上下文截至 through_turn 的历史前缀，并保留之后的新轮次。"""
         return await ctx.runtime.context_replace_summary(target, content, through_turn)
+
+    @tool(
+        perm="bot_owner",
+        scenes=("system",),
+        group="context",
+        main_visible=False,
+        sub_visible=False,
+        system_visible=True,
+    )
+    async def sys_ack(self, ctx: ToolContext, request_id: str, content: str) -> str:
+        """系统请求完成后，按 request_id 把处理结果回调给发起用户；request_id 取自 system_request 事件。"""
+        return await ctx.runtime.sys_ack(request_id, content)

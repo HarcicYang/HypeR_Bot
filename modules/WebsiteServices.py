@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import threading
 import time
 
 import httpx
@@ -43,6 +44,32 @@ def get_bv(text: str):
 _RATE_LIMIT_SECONDS = 300
 _MAX_RECORDS = 2048
 _LAST_PARSED: dict[tuple[int, str], float] = {}
+
+# 磁盘临时文件（bili_*.jpg / web_*.png 等）只保留 12 小时。
+_TEMP_MAX_AGE_SECONDS = 12 * 3600
+_temp_cleanup_lock = threading.Lock()
+
+
+def _cleanup_stale_temps() -> None:
+    """删除 ./temps 下超过 12 小时的 bili_* 和 web_* 临时文件。"""
+    if not _temp_cleanup_lock.acquire(blocking=False):
+        return
+    try:
+        cutoff = time.time() - _TEMP_MAX_AGE_SECONDS
+        temps_dir = "./temps"
+        if not os.path.isdir(temps_dir):
+            return
+        for name in os.listdir(temps_dir):
+            path = os.path.join(temps_dir, name)
+            if not (name.startswith(("bili_", "web_")) and (name.endswith(".jpg") or name.endswith(".png"))):
+                continue
+            try:
+                if os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+            except OSError:
+                continue
+    finally:
+        _temp_cleanup_lock.release()
 
 
 def _rate_limited(session: int | None, project: str) -> bool:
@@ -108,6 +135,14 @@ class GitHubView:
             idx = url_parts.index(code)
             if idx + 1 < len(url_parts):
                 return await self.commit(url_parts[idx + 1])
+        elif (code := "release") in url_parts:
+            idx = url_parts.index(code)
+            # 标准 release tag 链接格式: .../releases/tag/<tag>
+            if idx + 2 < len(url_parts) and url_parts[idx + 1] == "tag":
+                tag = url_parts[idx + 2]
+                return await self.release(tag)
+            # 如果格式不匹配（如 /releases 列表），则回退到仓库主页
+            # return await self.repo_page(url)  # 可选，按需取消注释
 
         return await self.repo_page(url)
 
@@ -139,6 +174,8 @@ class GitHubView:
                     return f"{base}/pull/{parts[i + 4]}"
                 if sub == "commit" and i + 4 < len(parts):
                     return f"{base}/commit/{parts[i + 4]}"
+                if sub == "release" and i + 5 < len(parts) and parts[i + 4] == "tag":
+                    return f"{base}/releases/tag/{parts[i + 5]}"
             return base
         return url
 
@@ -170,6 +207,14 @@ class GitHubView:
         img = img.crop((0, 75, img.size[0], img.size[1] - 150))
         return img
 
+    async def release(self, tag: str) -> Image.Image:
+        """获取 release 页面截图并裁剪。"""
+        url = f"https://github.com/{self.author}/{self.repo}/releases/tag/{tag}"
+        pth = await self._get(url)
+        img = Image.open(pth)
+        img = img.crop((0, 75, img.size[0], img.size[1] - 220))
+        return img
+
     async def repo_page(self, url: str) -> Image.Image:
         url = f"https://github.com/{self.author}" + (f"/{self.repo}" if self.repo is not None else "")
         pth = await self._get(url)
@@ -194,6 +239,8 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
     async def handle(self):
         if self.event.blocked or self.event.is_silent:
             return
+        # 每次触发时顺带清理过期磁盘临时文件（有锁防重入,非阻塞）。
+        _cleanup_stale_temps()
         # 限频的会话标识：群消息按群计（全群共享），私聊按用户计。
         session = self.event.group_id if self.event.group_id is not None else self.event.user_id
         try:
