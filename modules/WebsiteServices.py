@@ -135,7 +135,7 @@ class GitHubView:
             idx = url_parts.index(code)
             if idx + 1 < len(url_parts):
                 return await self.commit(url_parts[idx + 1])
-        elif (code := "release") in url_parts:
+        elif (code := "releases") in url_parts:
             idx = url_parts.index(code)
             # 标准 release tag 链接格式: .../releases/tag/<tag>
             if idx + 2 < len(url_parts) and url_parts[idx + 1] == "tag":
@@ -174,7 +174,7 @@ class GitHubView:
                     return f"{base}/pull/{parts[i + 4]}"
                 if sub == "commit" and i + 4 < len(parts):
                     return f"{base}/commit/{parts[i + 4]}"
-                if sub == "release" and i + 5 < len(parts) and parts[i + 4] == "tag":
+                if sub == "releases" and i + 5 < len(parts) and parts[i + 4] == "tag":
                     return f"{base}/releases/tag/{parts[i + 5]}"
             return base
         return url
