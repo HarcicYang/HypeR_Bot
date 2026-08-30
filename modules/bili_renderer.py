@@ -2,6 +2,7 @@ import asyncio
 import os
 import platform
 import re
+from collections.abc import Callable
 from io import BytesIO
 from typing import Any
 
@@ -462,22 +463,51 @@ def _load_font(path: str, size: int) -> _Font:
         return ImageFont.load_default()
 
 
-def _wrap_text(text: str, font: _Font, max_width: float) -> list[str]:
-    if not text:
-        return []
+def _wrap_units(text: str) -> list[str]:
+    """换行单元:连续 ASCII 字母/数字(含 ._'- 等)组成单词避免词中断行,其余(CJK、emoji、空格)逐字符。"""
+    units: list[str] = []
+    word = ""
+    for ch in text:
+        if ch.isascii() and (ch.isalnum() or ch in "._'’-"):
+            word += ch
+        else:
+            if word:
+                units.append(word)
+                word = ""
+            units.append(ch)
+    if word:
+        units.append(word)
+    return units
+
+
+def _wrap_by_units(text: str, measure: Callable[[str], float], max_width: float) -> list[str]:
     lines: list[str] = []
     current = ""
-    for ch in text:
-        test = current + ch
-        if font.getlength(test) <= max_width:
-            current = test
-        else:
-            if current:
+    for unit in _wrap_units(text):
+        if measure(current + unit) <= max_width:
+            current += unit
+            continue
+        if current:
+            lines.append(current)
+            current = ""
+        if measure(unit) <= max_width:
+            current = unit.lstrip(" ")
+            continue
+        for ch in unit:  # 单元自身超宽(如无空格长串)时退回逐字符断行
+            if measure(current + ch) <= max_width:
+                current += ch
+            else:
                 lines.append(current)
-            current = ch
+                current = ch
     if current:
         lines.append(current)
     return lines
+
+
+def _wrap_text(text: str, font: _Font, max_width: float) -> list[str]:
+    if not text:
+        return []
+    return _wrap_by_units(text, font.getlength, max_width)
 
 
 def _fmt_num(n: int) -> str:
@@ -490,21 +520,16 @@ def _fmt_num(n: int) -> str:
 
 
 def _gradient(w: int, h: int) -> Image.Image:
+    """底部黑色渐变遮罩:先纵向生成逐行连续的 alpha 梯度再横向拉伸,分段绘制会产生明显断层。"""
+    start = int(h * 0.5)
+    grad_h = h - start
+    if grad_h <= 1:
+        return Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ramp = Image.new("L", (1, grad_h))
+    ramp.putdata([round(255 * min((y / (grad_h - 1)) ** 1.5, 1.0) * 0.9) for y in range(grad_h)])
+    alpha = ramp.resize((w, grad_h), Image.Resampling.BILINEAR)
     overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    bar_start = h * 0.35
-    steps = 20
-    for i in range(steps):
-        t = i / steps
-        y0 = int(bar_start + (h - bar_start) * t)
-        y1 = int(bar_start + (h - bar_start) * (t + 0.05)) + 1
-        if y0 >= h:
-            break
-        alpha = int(255 * min(t**1.8, 1.0) * 0.88)
-        if y1 > h:
-            y1 = h
-        if y1 > y0:
-            draw.rectangle([(0, y0), (w, y1)], fill=(0, 0, 0, alpha))
+    overlay.paste(Image.new("RGBA", (w, grad_h), (0, 0, 0, 255)), (0, start), alpha)
     return overlay
 
 
@@ -517,27 +542,91 @@ def _circle_avatar(avatar: Image.Image, target_size: int) -> Image.Image:
     return result
 
 
-def _draw_mixed(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str, fill: Any, font: _Font, emoji_size: int):
+_SHADOW_ALPHA = 170
+_SHADOW_BLUR_RATIO = 0.06
+
+
+def _text_shadow(
+    canvas: Image.Image,
+    ink_box: tuple[float, float, float, float],
+    paint: Callable[[ImageDraw.ImageDraw, int, int], None],
+) -> None:
+    """柔和文字投影:黑色字形画在覆盖墨迹的局部小图层上,高斯模糊后合成,避免整幅画布反复模糊。"""
+    left, top, right, bottom = ink_box
+    blur = max(1, round(max(bottom - top, 1.0) * _SHADOW_BLUR_RATIO))
+    pad = blur * 2
+    x0 = max(0, round(left) - pad)
+    y0 = max(0, round(top) - pad)
+    x1 = min(canvas.width, round(right) + pad)
+    y1 = min(canvas.height, round(bottom) + pad)
+    if x1 <= x0 or y1 <= y0:
+        return
+    layer = Image.new("RGBA", (x1 - x0, y1 - y0), (0, 0, 0, 0))
+    paint(ImageDraw.Draw(layer), x0, y0)
+    canvas.alpha_composite(layer.filter(ImageFilter.GaussianBlur(blur)), (x0, y0))
+
+
+def _draw_mixed(
+    draw: ImageDraw.ImageDraw,
+    xy: tuple[float, float],
+    text: str,
+    fill: Any,
+    font: _Font,
+    emoji_size: int,
+    shadow: bool = True,
+):
     if not _has_emoji(text):
+        if shadow and text:
+            x, y = xy
+            bb = font.getbbox(text)
+            shadow_ink = (x + bb[0], y + bb[1], x + bb[2], y + bb[3])
+
+            def paint_plain(d: ImageDraw.ImageDraw, ox: int, oy: int) -> None:
+                d.text((x - ox, y - oy), text, font=font, fill=(0, 0, 0, _SHADOW_ALPHA))
+
+            _text_shadow(draw._image, shadow_ink, paint_plain)
         draw.text(xy, text, fill=fill, font=font)
         return
 
+    canvas = draw._image
     x, y = xy
     bb = font.getbbox(text) if text else font.getbbox("Ag")
     text_top = bb[1]
     text_h = bb[3] - bb[1]
     emoji_y = y + text_top + (text_h - emoji_size) // 2
 
+    glyphs: list[tuple[float, str]] = []
+    emojis: list[tuple[int, Image.Image]] = []
+    cursor = x
     for ch in text:
         if _is_emoji(ch):
             emoji, content_w = _emoji_image(f"{ord(ch):x}", emoji_size)
-            canvas = draw._image
-            canvas.paste(emoji, (round(x), round(emoji_y)), emoji)
-            x += content_w + 1
+            emojis.append((round(cursor), emoji))
+            cursor += content_w + 1
         else:
-            draw.text((round(x), y), ch, fill=fill, font=font)
-            bb = _cached_bbox(font, ch)
-            x += (bb[2] - bb[0]) if bb else 0
+            glyphs.append((cursor, ch))
+            gbb = _cached_bbox(font, ch)
+            cursor += (gbb[2] - gbb[0]) if gbb else 0
+
+    if shadow and glyphs:
+        boxes = [(_cached_bbox(font, ch), gx) for gx, ch in glyphs]
+        shadow_ink = (
+            min(gx + gbb[0] for gbb, gx in boxes),
+            min(y + gbb[1] for gbb, gx in boxes),
+            max(gx + gbb[2] for gbb, gx in boxes),
+            max(y + gbb[3] for gbb, gx in boxes),
+        )
+
+        def paint_glyphs(d: ImageDraw.ImageDraw, ox: int, oy: int) -> None:
+            for gx, ch in glyphs:
+                d.text((gx - ox, y - oy), ch, font=font, fill=(0, 0, 0, _SHADOW_ALPHA))
+
+        _text_shadow(canvas, shadow_ink, paint_glyphs)
+
+    for ex, emoji in emojis:
+        canvas.paste(emoji, (ex, round(emoji_y)), emoji)
+    for gx, ch in glyphs:
+        draw.text((round(gx), y), ch, fill=fill, font=font)
 
 
 _bbox_cache: dict[tuple[int, int], tuple[Any, ...]] = {}
@@ -583,20 +672,7 @@ def _wrap_text_mixed(text: str, font: _Font, max_width: float, emoji_size: int) 
         return []
     if not _has_emoji(text):
         return _wrap_text(text, font, max_width)
-    lines: list[str] = []
-    current = ""
-    for ch in text:
-        test = current + ch
-        w = _mixed_width(test, font, emoji_size)
-        if w <= max_width:
-            current = test
-        else:
-            if current:
-                lines.append(current)
-            current = ch
-    if current:
-        lines.append(current)
-    return lines
+    return _wrap_by_units(text, lambda s: _mixed_width(s, font, emoji_size), max_width)
 
 
 # -- public API --
@@ -655,9 +731,11 @@ async def video_info(bv: str) -> tuple[dict[str, Any], bool]:
 
 
 async def fetch_resources(data: dict[str, Any]) -> tuple[Image.Image, Image.Image]:
-    cover_url = data["pic"] + "@672w_378h_1c"
-    avatar_url = data["owner"]["face"] + "@170w_170h_1c"
-    cover, avatar = await asyncio.gather(open_from_url(cover_url), open_from_url(avatar_url))
+    # 封面取原图,不加 CDN 缩放后缀:渲染字号按封面高度等比缩放,低分辨率素材会导致整卡模糊
+    cover, avatar = await asyncio.gather(
+        open_from_url(data["pic"]),
+        open_from_url(data["owner"]["face"] + "@240w_240h_1c"),
+    )
     return cover, avatar
 
 
@@ -779,7 +857,7 @@ def render(info: dict[str, Any], cover: Image.Image, avatar: Image.Image) -> byt
         bbox = draw.textbbox((0, 0), val, font=font_stat)
         val_h = bbox[3] - bbox[1]
         val_y = bar_y + (bar_h - val_h) // 2 - bbox[1]
-        draw.text((round(cursor_x), val_y), val, fill=(255, 255, 255), font=font_stat)
+        _draw_mixed(draw, (cursor_x, val_y), val, (255, 255, 255), font_stat, emoji_size=0)
         cursor_x += bbox[2] + stat_gap
 
     row1_y = bar_y - gap - avatar_size
@@ -793,6 +871,6 @@ def render(info: dict[str, Any], cover: Image.Image, avatar: Image.Image) -> byt
 
     canvas = canvas.convert("RGB")
     buf = BytesIO()
-    canvas.save(buf, format="JPEG", quality=85)
+    canvas.save(buf, format="JPEG", quality=92, subsampling=0)
     buf.seek(0)
     return buf.read()

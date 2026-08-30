@@ -4,9 +4,9 @@ import re
 import threading
 import time
 
-import httpx
-from hyperot import common, segments, hyperogger
+from hyperot import common, segments
 from hyperot.events import *
+from hyperot.network import httpx_get
 from PIL import Image
 from typing_extensions import override
 
@@ -15,9 +15,7 @@ from modules.bili_renderer import fetch_resources, render, video_info
 from modules.site_catch import Catcher, file_url
 
 
-logger = hyperogger.Logger.fetch("hyperot")
-
-def get_bv(text: str):
+async def get_bv(text: str):
     bv_pattern = r"BV[a-zA-Z0-9]{10,12}"
     bv_list = []
     if "b23.tv" in text:
@@ -30,7 +28,7 @@ def get_bv(text: str):
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36"
             }
             for i in urls:
-                response = httpx.get(i, headers=headers)
+                response = await httpx_get(i, headers=headers)
                 m = re.search(bv_pattern, response.text)
                 if m is None:
                     continue
@@ -246,9 +244,9 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         try:
             if len(self.event.message) != 0 and isinstance(self.event.message[0], segments.Json):
                 json_data = json.loads(str(self.event.message[0].data))
-                bv_id = get_bv(text=str(json_data))
+                bv_id = await get_bv(text=str(json_data))
             else:
-                bv_id = get_bv(text=str(self.event.message))
+                bv_id = await get_bv(text=str(self.event.message))
         except AttributeError:
             return
 
@@ -258,6 +256,9 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
                     continue
                 try:
                     data, ok = await video_info(bv=i)
+                    if not ok:
+                        ModuleClass.logger.warning(f"解析B站视频 {i} 失败,跳过: {data.get('title', '')}")
+                        continue
                     cover, avatar = await fetch_resources(data)
                     jpeg_bytes = render(data, cover, avatar)
                     path = f"./temps/bili_{i}.jpg"
@@ -265,13 +266,14 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
                         f.write(jpeg_bytes)
                     await self.actions.send_msg(
                         group_id=self.event.group_id,
+                        user_id=self.event.user_id,
                         message=common.Message(segments.Image(file_url(path), summary=data.get("title", ""))),
                     )
                     _mark_parsed(session, f"bili:{i}")
                 except Exception as e:
                     import traceback as _tb
 
-                    logger.error(f"渲染B站视频 {i} 失败: {e}\n{_tb.format_exc()}")
+                    ModuleClass.logger.error(f"渲染B站视频 {i} 失败: {e}\n{_tb.format_exc()}")
 
         pa = r"(http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+\b)"
         try:
@@ -311,5 +313,5 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         except Exception as e:
             import traceback as _tb
 
-            logger.error(f"GitHub 预览失败: {e}\n{_tb.format_exc()}")
+            ModuleClass.logger.error(f"GitHub 预览失败: {e}\n{_tb.format_exc()}")
             return
