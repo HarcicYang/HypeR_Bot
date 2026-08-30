@@ -5,7 +5,7 @@ import threading
 import time
 
 import httpx
-from hyperot import common, segments
+from hyperot import common, segments, hyperogger
 from hyperot.events import *
 from PIL import Image
 from typing_extensions import override
@@ -14,6 +14,8 @@ import ModuleClass
 from modules.bili_renderer import fetch_resources, render, video_info
 from modules.site_catch import Catcher, file_url
 
+
+logger = hyperogger.Logger.fetch("hyperot")
 
 def get_bv(text: str):
     bv_pattern = r"BV[a-zA-Z0-9]{10,12}"
@@ -239,9 +241,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
     async def handle(self):
         if self.event.blocked or self.event.is_silent:
             return
-        # 每次触发时顺带清理过期磁盘临时文件（有锁防重入,非阻塞）。
         _cleanup_stale_temps()
-        # 限频的会话标识：群消息按群计（全群共享），私聊按用户计。
         session = self.event.group_id if self.event.group_id is not None else self.event.user_id
         try:
             if len(self.event.message) != 0 and isinstance(self.event.message[0], segments.Json):
@@ -271,7 +271,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
                 except Exception as e:
                     import traceback as _tb
 
-                    print(f"渲染B站视频 {i} 失败: {e}\n{_tb.format_exc()}")
+                    logger.error(f"渲染B站视频 {i} 失败: {e}\n{_tb.format_exc()}")
 
         pa = r"(http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+\b)"
         try:
@@ -311,5 +311,5 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         except Exception as e:
             import traceback as _tb
 
-            print(f"GitHub 预览失败: {e}\n{_tb.format_exc()}")
+            logger.error(f"GitHub 预览失败: {e}\n{_tb.format_exc()}")
             return
