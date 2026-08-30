@@ -66,7 +66,7 @@ class Module(ModuleClass.Module[GroupMessageEvent]):
 
     @override
     async def handle(self):
-        if "梁文" in str(self.event.message).replace("梁文锋", "") or str(self.event.message) == ".ds":
+        if "梁文" == str(self.event.message) or str(self.event.message) == ".ds":
             await self.actions.send_msg(
                 user_id=self.event.user_id,
                 group_id=self.event.group_id,
