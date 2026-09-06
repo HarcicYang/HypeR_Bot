@@ -88,7 +88,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
                 "https://github.com/HarcicYang/HypeR_Bot\n"
                 "\n"
                 f"时间：{str(datetime.datetime.now())}\n"
-                f"协议库实现：{name} {code}"
+                f"协议库实现：{name} {code} ({adapters.registry.current.name})"
             )
 
         await self.actions.send_msg(
@@ -122,7 +122,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
             "https://github.com/HarcicYang/HypeR_Bot\n"
             "\n"
             f"时间：{str(datetime.datetime.now())}\n"
-            f"协议库实现：{name} {code} ({adapters.registry.current})\n"
+            f"协议库实现：{name} {code} ({adapters.registry.current.name})\n"
             f"操作系统：{os_desc}\n"
             f"CPU ：{cpu_percent}%\n"
             "内存 (RAM)：\n"
