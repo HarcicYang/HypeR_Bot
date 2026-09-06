@@ -108,7 +108,7 @@ class MessageTools(AgentToolBase):
 
     @tool(group="qq", sub_visible=False)
     async def del_msg(self, ctx: ToolContext, message_id: int) -> str:
-        """撤回消息（只可撤回自己发送的）。
+        """撤回消息（如果你没有管理员，就只可撤回自己发送的）。
 
         - message_id: 目标消息 id，与发送回报或事件中的 message_id 对应
         """
