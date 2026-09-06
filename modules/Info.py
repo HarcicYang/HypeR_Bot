@@ -20,6 +20,35 @@ def bytes_to_human(num: float) -> str:
     return f"{num:.1f} EB"
 
 
+def get_os_description() -> str:
+    """获取详细的操作系统名称，在 Linux 下具体到发行版名称与版本"""
+    system = platform.system()
+    machine = platform.machine()
+
+    if system == "Linux":
+        # 优先使用 Python 3.10+ 内置的 freedesktop_os_release()
+        try:
+            os_info = platform.freedesktop_os_release()
+            pretty_name = os_info.get("PRETTY_NAME") or os_info.get("NAME")
+            if pretty_name:
+                return f"{pretty_name} ({machine})"
+        except Exception:
+            pass
+
+        # 兜底：直接读取 /etc/os-release 文件
+        try:
+            with open("/etc/os-release", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("PRETTY_NAME="):
+                        val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        if val:
+                            return f"{val} ({machine})"
+        except Exception:
+            pass
+
+    return f"{system} {platform.release()} ({machine})"
+
+
 @ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
 class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
     @override
@@ -77,10 +106,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         available = bytes_to_human(vm.available)
         percent = vm.percent
 
-        # 系统名称
-        system_name = platform.system()
-        release = platform.freedesktop_os_release()
-        machine = platform.machine()
+        os_desc = get_os_description()
 
         # 系统运行时间
         boot_time = datetime.datetime.fromtimestamp(psutil.boot_time())
@@ -96,8 +122,8 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
             "https://github.com/HarcicYang/HypeR_Bot\n"
             "\n"
             f"时间：{str(datetime.datetime.now())}\n"
-            f"协议库实现：{name} {code}"
-            f"系统名称：{system_name} {release} ({machine})\n"
+            f"协议库实现：{name} {code}\n"
+            f"操作系统：{os_desc}\n"
             f"CPU ：{cpu_percent}%\n"
             "内存 (RAM)：\n"
             f"  已用：{used} / {total} ({percent}%)\n"
