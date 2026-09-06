@@ -1297,7 +1297,6 @@ class AgentCore:
         return out
 
     async def _llm_create(self, tool_choice_n: Any) -> Any:
-        print(self.history[-5:])
         if self.api_mode == "responses":
             return await self._oai.responses.create(  # pyrefly: ignore[no-matching-overload]
                 model=self.model,
