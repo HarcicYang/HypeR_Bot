@@ -12,6 +12,7 @@ import time
 import traceback
 import uuid
 from typing import Any, Literal, cast
+from urllib.parse import urlparse
 
 import openai
 from hyperot import configurator, hyperogger, segments
@@ -47,6 +48,18 @@ logger.set_level(config.log_level)
 
 _concurrency_limit: int = int(config.others.get("agent_max_concurrency") or 0)
 _semaphore: asyncio.Semaphore | None = None
+
+# Google 官方文档给出的占位签名,用于历史消息兜底
+# https://ai.google.dev/gemini-api/docs/thought-signatures
+GEMINI_DUMMY_SIGNATURE = "context_engineering_is_the_way_to_go"
+
+# 命中即视为 Google 的 OpenAI 兼容端点
+_GOOGLE_HOST_MARKERS = (
+    "generativelanguage.googleapis.com",
+    "aiplatform.googleapis.com",
+    "googleapis.com",
+    "gemini.googleapis.com",
+)
 
 
 def _acquire_semaphore() -> asyncio.Semaphore | None:
@@ -784,9 +797,61 @@ class AgentCore:
 
     # -- 历史与持久化 --
 
+    def _is_google_endpoint(self) -> bool:
+        """判断当前 OpenAI client 是否指向 Google 的兼容端点(带缓存)。"""
+        cached = getattr(self, "_google_endpoint_cache", None)
+        if cached is not None:
+            return cached
+
+        result = False
+        try:
+            raw = getattr(self._oai, "base_url", None)
+            if raw:
+                # openai>=1.x 的 base_url 是 httpx.URL 对象
+                url = str(raw)
+                host = (urlparse(url).hostname or url).lower()
+                result = any(m in host for m in _GOOGLE_HOST_MARKERS)
+
+                # 兜底:某些反代/网关不含 google 域名,但模型名是 gemini
+                if not result:
+                    model = str(getattr(self, "model", None)
+                                or getattr(self, "_model", "")).lower()
+                    result = model.startswith("gemini") or "gemini-3" in model
+        except Exception:
+            logger.trace("检测 base_url 失败，按非 Google 端点处理")
+            result = False
+
+        self._google_endpoint_cache = result
+        if result:
+            logger.info("检测到 Google 兼容端点,已启用 thought_signature 自动注入")
+        return result
+
+    @staticmethod
+    def _ensure_thought_signature(call: dict) -> bool:
+        """为单个 tool_call 补齐 thought_signature。
+
+        已存在真实签名时不覆盖。返回 True 表示本次写入了占位签名。
+        """
+        extra = call.get("extra_content")
+        if not isinstance(extra, dict):
+            extra = {}
+            call["extra_content"] = extra
+
+        google = extra.get("google")
+        if not isinstance(google, dict):
+            google = {}
+            extra["google"] = google
+
+        if google.get("thought_signature"):
+            return False  # 已有真签名,保持原样
+
+        google["thought_signature"] = GEMINI_DUMMY_SIGNATURE
+        return True
+
     async def _history_fix(self) -> None:
         """修复悬空的 tool_calls 历史,包括没有前置 assistant 的孤立 tool。"""
         logger.warning("尝试修复历史记录")
+        inject_sig = self._is_google_endpoint()
         pending_ids: set[str] = set()
         pending_indexes: dict[str, int] = {}
         first_invalid = len(self.history)
@@ -798,10 +863,13 @@ class AgentCore:
                 calls = message.get("tool_calls") or []
                 if isinstance(calls, list):
                     for call in calls:
-                        if isinstance(call, dict) and call.get("id"):
-                            call_id = str(call["id"])
-                            pending_ids.add(call_id)
-                            pending_indexes[call_id] = i
+                        if isinstance(call, dict):
+                            if inject_sig:
+                                self._ensure_thought_signature(call)
+                            if call.get("id"):
+                                call_id = str(call["id"])
+                                pending_ids.add(call_id)
+                                pending_indexes[call_id] = i
             elif message.get("role") == "tool":
                 call_id = str(message.get("tool_call_id") or "")
                 if not call_id or call_id not in pending_ids:
