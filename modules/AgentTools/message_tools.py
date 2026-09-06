@@ -130,3 +130,17 @@ class MessageTools(AgentToolBase):
         - forward_id: 合并转发 id，来自事件中 forward 段的 data.id
         """
         return await ctx.runtime.resolve_forward(forward_id)
+
+    @tool(group="qq", sub_visible=False)
+    async def profile_like(self, ctx: ToolContext, user_id: int, times: int) -> str:
+        """向指定用户的 QQ 名片进行点赞
+
+        - user_id: 目标用户 QQ 号
+        - times: 点赞次数，必须为正整数，不建议超过10
+        """
+
+        await ctx.actions.custom.send_like(
+            user_id=user_id,
+            times=times
+        )
+        return "(无返回)"

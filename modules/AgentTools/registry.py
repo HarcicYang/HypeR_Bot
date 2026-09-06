@@ -14,9 +14,14 @@ import os
 import time
 import types as _types
 from collections.abc import Callable
-from typing import Any, Union, cast, get_args, get_origin, get_type_hints
+from typing import Any, Union, cast, get_args, get_origin, get_type_hints, TYPE_CHECKING, Literal
 
 from hyperot import common, configurator, segments
+
+if TYPE_CHECKING:
+    from hyperot.listener import Actions
+else:
+    Actions = Any
 
 config = configurator.BotConfig.get("hyper-bot")
 CONFIG_PATH = "config.json"
@@ -419,15 +424,15 @@ class AgentToolBase:
 
 @dataclasses.dataclass
 class ToolContext:
-    actions: Any  # listener.Actions
-    ev_type: str  # group / private / system
+    actions: Actions
+    ev_type: Literal["group", "private", "system"]
     scene_id: int
-    perm_group: str = "member"  # member / whitelist / any_admin / bot_owner
+    perm_group: Literal["member", "whitelist", "any_admin", "bot_owner"] = "member"
     principal_id: int | None = None  # 触发者 QQ
     self_id: int | None = None  # bot 自身 QQ
     runtime: Any = None  # Agent 核心暴露的受限接口
     release_requested: bool = False  # 由 release=True 的工具置位:本轮处理应结束(长程任务交给后台)
-    role: str = "main"  # main / sub / system —— 决定工具可见性
+    role: Literal["main", "sub", "system"] = "main"
 
     async def create_msg(self, raw_mess: Any) -> common.Message:
         new_mess: list[Any] = []

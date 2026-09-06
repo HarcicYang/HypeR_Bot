@@ -66,7 +66,6 @@ project-includes = [
     "modules/**",
 ]
 project-excludes = [
-    # vendored 第三方目录(与 bot 代码无关,均为 gitignore 项目;单文件模式下 ignore 文件不生效,须在此显式排除)
     "assets/**",
     "build/**",
     "docs/**",
