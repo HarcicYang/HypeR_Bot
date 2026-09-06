@@ -4,7 +4,7 @@ from typing import Any
 
 import hyperot
 import psutil
-from hyperot import common, events, segments
+from hyperot import common, events, segments, adapters
 from hyperot.events import *
 from typing_extensions import override
 
@@ -122,7 +122,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
             "https://github.com/HarcicYang/HypeR_Bot\n"
             "\n"
             f"时间：{str(datetime.datetime.now())}\n"
-            f"协议库实现：{name} {code}\n"
+            f"协议库实现：{name} {code} ({adapters.registry.current})\n"
             f"操作系统：{os_desc}\n"
             f"CPU ：{cpu_percent}%\n"
             "内存 (RAM)：\n"
