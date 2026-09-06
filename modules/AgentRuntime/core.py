@@ -798,7 +798,7 @@ class AgentCore:
     # -- 历史与持久化 --
 
     def _is_google_endpoint(self) -> bool:
-        """判断当前 OpenAI client 是否指向 Google 的兼容端点(带缓存)。"""
+        """检测 self._oai.base_url 是否指向 Google OpenAI 兼容端点。"""
         cached = getattr(self, "_google_endpoint_cache", None)
         if cached is not None:
             return cached
@@ -807,18 +807,15 @@ class AgentCore:
         try:
             raw = getattr(self._oai, "base_url", None)
             if raw:
-                # openai>=1.x 的 base_url 是 httpx.URL 对象
                 url = str(raw)
                 host = (urlparse(url).hostname or url).lower()
                 result = any(m in host for m in _GOOGLE_HOST_MARKERS)
 
-                # 兜底:某些反代/网关不含 google 域名,但模型名是 gemini
                 if not result:
                     model = str(getattr(self, "model", None)
                                 or getattr(self, "_model", "")).lower()
-                    result = model.startswith("gemini") or "gemini-3" in model
+                    result = model.startswith("gemini") or "gemini-" in model
         except Exception:
-            logger.trace("检测 base_url 失败，按非 Google 端点处理")
             result = False
 
         self._google_endpoint_cache = result
@@ -827,34 +824,101 @@ class AgentCore:
         return result
 
     @staticmethod
-    def _ensure_thought_signature(call: dict) -> bool:
-        """为单个 tool_call 补齐 thought_signature。
+    def _to_plain_dict(obj) -> dict:
+        """将 Pydantic 模型（ChatCompletionMessage / ToolCall）安全转换为 dict，
+        并完整保留 model_extra 中的 extra_content（真签名所在地）。"""
+        if isinstance(obj, dict):
+            return obj
+        if hasattr(obj, "model_dump"):
+            data = obj.model_dump(exclude_none=True)
+            # 抢救 Pydantic v2 存放在 model_extra 中的 extra_content
+            extra = getattr(obj, "model_extra", None) or {}
+            if "extra_content" in extra and "extra_content" not in data:
+                data["extra_content"] = extra["extra_content"]
+            return data
+        return dict(obj)
 
-        已存在真实签名时不覆盖。返回 True 表示本次写入了占位签名。
-        """
-        extra = call.get("extra_content")
-        if not isinstance(extra, dict):
-            extra = {}
-            call["extra_content"] = extra
+    def _patch_google_signatures(self) -> int:
+        """遍历 self.history，把所有 assistant tool_calls 转为 dict 并注入 thought_signature。
+        返回本次补齐签名的 tool_call 数量。"""
+        if not self._is_google_endpoint():
+            return 0
 
-        google = extra.get("google")
-        if not isinstance(google, dict):
-            google = {}
-            extra["google"] = google
+        patched_count = 0
+        for idx, msg in enumerate(self.history):
+            # 1. 若 message 本身是 Pydantic 对象，原地转为 dict
+            if not isinstance(msg, dict):
+                try:
+                    msg = self._to_plain_dict(msg)
+                    self.history[idx] = msg
+                except Exception:
+                    continue
 
-        if google.get("thought_signature"):
-            return False  # 已有真签名,保持原样
+            if msg.get("role") != "assistant":
+                continue
 
-        google["thought_signature"] = GEMINI_DUMMY_SIGNATURE
-        return True
+            raw_calls = msg.get("tool_calls") or []
+            if not isinstance(raw_calls, list) or not raw_calls:
+                continue
+
+            new_calls = []
+            first_sig = None
+
+            for call in raw_calls:
+                # 2. 关键：将 ChatCompletionMessageToolCall 对象转为普通 dict
+                call_dict = self._to_plain_dict(call)
+
+                extra = call_dict.get("extra_content")
+                if not isinstance(extra, dict):
+                    extra = {}
+                    call_dict["extra_content"] = extra
+
+                google = extra.get("google")
+                if not isinstance(google, dict):
+                    google = {}
+                    extra["google"] = google
+
+                # 3. 已有真签名则保留；否则写入官方跳过校验签名
+                if not google.get("thought_signature"):
+                    google["thought_signature"] = GEMINI_DUMMY_SIGNATURE
+                    patched_count += 1
+
+                if not first_sig:
+                    first_sig = google["thought_signature"]
+
+                new_calls.append(call_dict)
+
+            # 原地写回转换后的 dict 列表
+            msg["tool_calls"] = new_calls
+
+            # 4. 双保险：同时在 assistant message 顶层挂载 extra_content
+            if first_sig:
+                msg_extra = msg.get("extra_content")
+                if not isinstance(msg_extra, dict):
+                    msg_extra = {}
+                    msg["extra_content"] = msg_extra
+                msg_google = msg_extra.get("google")
+                if not isinstance(msg_google, dict):
+                    msg_google = {}
+                    msg_extra["google"] = msg_google
+                if not msg_google.get("thought_signature"):
+                    msg_google["thought_signature"] = first_sig
+
+        if patched_count > 0:
+            logger.info(f"已为 {patched_count} 个历史 tool_call 补齐 thought_signature")
+        return patched_count
 
     async def _history_fix(self) -> None:
-        """修复悬空的 tool_calls 历史,包括没有前置 assistant 的孤立 tool。"""
+        """修复悬空的 tool_calls 历史，并自动为 Google 端点补齐 thought_signature。"""
         logger.warning("尝试修复历史记录")
-        inject_sig = self._is_google_endpoint()
+
+        # 第一步：先把所有 Pydantic 对象规范化为 dict 并补齐 Google 签名
+        self._patch_google_signatures()
+
         pending_ids: set[str] = set()
         pending_indexes: dict[str, int] = {}
         first_invalid = len(self.history)
+
         for i, message in enumerate(self.history):
             if not isinstance(message, dict):
                 first_invalid = min(first_invalid, i)
@@ -863,13 +927,10 @@ class AgentCore:
                 calls = message.get("tool_calls") or []
                 if isinstance(calls, list):
                     for call in calls:
-                        if isinstance(call, dict):
-                            if inject_sig:
-                                self._ensure_thought_signature(call)
-                            if call.get("id"):
-                                call_id = str(call["id"])
-                                pending_ids.add(call_id)
-                                pending_indexes[call_id] = i
+                        if isinstance(call, dict) and call.get("id"):
+                            call_id = str(call["id"])
+                            pending_ids.add(call_id)
+                            pending_indexes[call_id] = i
             elif message.get("role") == "tool":
                 call_id = str(message.get("tool_call_id") or "")
                 if not call_id or call_id not in pending_ids:
@@ -879,7 +940,9 @@ class AgentCore:
                             (
                                 j
                                 for j in range(i - 1, -1, -1)
-                                if self.history[j].get("role") == "assistant" and self.history[j].get("tool_calls")
+                                if isinstance(self.history[j], dict)
+                                and self.history[j].get("role") == "assistant"
+                                and self.history[j].get("tool_calls")
                             ),
                             i,
                         )
@@ -887,6 +950,7 @@ class AgentCore:
                 else:
                     pending_ids.discard(call_id)
                     pending_indexes.pop(call_id, None)
+
         if first_invalid < len(self.history):
             del self.history[first_invalid:]
             return
