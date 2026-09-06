@@ -1,6 +1,7 @@
 import datetime
 import platform
 from typing import Any
+import asyncio
 
 import hyperot
 import psutil
@@ -97,7 +98,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
 
     async def _system_message(self) -> str:
         # CPU 使用率（interval 提供短暂的采样以获得准确瞬时值）
-        cpu_percent = psutil.cpu_percent(interval=0.1)
+        cpu_percent = cpu_percent = await asyncio.to_thread(psutil.cpu_percent, 0.2)
 
         # 内存信息
         vm = psutil.virtual_memory()
