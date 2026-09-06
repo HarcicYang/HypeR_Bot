@@ -124,11 +124,11 @@ class AgentCore:
 
         self.extra = {
             'extra_body': {
-                "google": {
-                    "thinking_config": {
-                        "include_thoughts": True
-                    }
-                }
+                # "google": {
+                #     "thinking_config": {
+                #         "include_thoughts": True
+                #     }
+                # }
             }
         }
         if base_url:
