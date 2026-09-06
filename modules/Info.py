@@ -49,7 +49,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         cmd = str(self.event.message).strip().lower()
 
         if cmd == ".info ext":
-            message = self._system_message()
+            message = await self._system_message()
         else:
             version = await self.actions.get_version_info()
             name = version.data.app_name
@@ -66,8 +66,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
             group_id=self.event.group_id, user_id=self.event.user_id, message=common.Message(segments.Text(message))
         )
 
-    @staticmethod
-    def _system_message() -> str:
+    async def _system_message(self) -> str:
         # CPU 使用率（interval 提供短暂的采样以获得准确瞬时值）
         cpu_percent = psutil.cpu_percent(interval=0.1)
 
@@ -80,7 +79,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
 
         # 系统名称
         system_name = platform.system()
-        release = platform.release()
+        release = platform.freedesktop_os_release()
         machine = platform.machine()
 
         # 系统运行时间
@@ -88,16 +87,20 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         uptime = datetime.datetime.now() - boot_time
         uptime_str = str(uptime).split(".")[0]
 
+        version = await self.actions.get_version_info()
+        name = version.data.app_name
+        code = version.data.app_version
+
         return (
-            "HypeR Bot 系统信息\n"
-            "================\n"
+            f"HypeR Bot v{hyperot.HYPER_BOT_VERSION}\n"
+            "https://github.com/HarcicYang/HypeR_Bot\n"
+            "\n"
+            f"时间：{str(datetime.datetime.now())}\n"
+            f"协议库实现：{name} {code}"
             f"系统名称：{system_name} {release} ({machine})\n"
-            "\n"
             f"CPU ：{cpu_percent}%\n"
-            "\n"
             "内存 (RAM)：\n"
             f"  已用：{used} / {total} ({percent}%)\n"
             f"  可用：{available}\n"
-            "\n"
             f"系统运行时间：{uptime_str}"
         )
