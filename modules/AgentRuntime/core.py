@@ -1097,7 +1097,7 @@ class AgentCore:
         self._injected_memory = ""
         if query_text.strip():
             try:
-                self._injected_memory = await asyncio.to_thread(self.mem_retrieve, query_text, 3)
+                self._injected_memory = await asyncio.to_thread(self.mem_retrieve, query_text, 5)
                 logger.debug(self._injected_memory)
             except Exception:
                 self._injected_memory = ""
