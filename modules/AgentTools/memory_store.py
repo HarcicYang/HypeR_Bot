@@ -12,6 +12,7 @@
 """
 
 import json
+import logging
 import math
 import os
 import threading
@@ -30,6 +31,7 @@ MODEL_NAME = "BAAI/bge-small-zh-v1.5"
 DIM = 512
 
 _LOCK = threading.Lock()
+_LOGGER = logging.getLogger(__name__)
 
 
 class MemoryStore:
@@ -108,9 +110,10 @@ class MemoryStore:
             self._model = TextEmbedding(MODEL_NAME)
             list(self._model.embed(["预热"]))  # 触发模型下载/加载
             return True
-        except Exception:
+        except Exception as e:
             self._model = None
             self._bm25_only = True
+            _LOGGER.warning("fastembed model unavailable; falling back to BM25: %r", e)
             return False
 
     def _embed(self, texts: list[str]) -> np.ndarray | None:
@@ -122,8 +125,9 @@ class MemoryStore:
             norms = np.linalg.norm(vecs, axis=1, keepdims=True)
             norms[norms == 0] = 1
             return (vecs / norms).astype(np.float32)
-        except Exception:
+        except Exception as e:
             self._bm25_only = True
+            _LOGGER.warning("fastembed embedding failed; falling back to BM25: %r", e)
             return None
 
     # ------------------------------------------------------------------ #

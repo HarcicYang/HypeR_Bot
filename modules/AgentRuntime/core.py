@@ -61,6 +61,81 @@ _GOOGLE_HOST_MARKERS = (
     "gemini.googleapis.com",
 )
 
+_RAG_QUERY_LIMIT = 4000
+
+
+def _clip_rag_query(text: str, limit: int = _RAG_QUERY_LIMIT) -> str:
+    """Limit a RAG query while keeping both the beginning and latest content."""
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    head = limit // 2
+    return text[:head] + "\n...\n" + text[-(limit - head - 5) :]
+
+
+def _segment_rag_text(segment: Any) -> str:
+    if not isinstance(segment, dict):
+        return ""
+    segment_type = segment.get("type")
+    data = segment.get("data")
+    if segment_type == "text":
+        if isinstance(data, dict):
+            return str(data.get("text") or "").strip()
+        return str(data or "").strip()
+    if segment_type in {"image", "video", "file", "record", "forward"}:
+        return f"[{segment_type}]"
+    return ""
+
+
+def _rag_text_from_value(value: Any) -> str:
+    """Extract human-facing message text from OneBot batches or compressed buffers."""
+    if isinstance(value, list):
+        parts = [_rag_text_from_value(item) for item in value]
+        return "\n".join(part for part in parts if part)
+    if not isinstance(value, dict):
+        return str(value).strip() if value is not None else ""
+
+    if value.get("compressed") and isinstance(value.get("summary"), str):
+        return value["summary"].strip()
+
+    message = value.get("message")
+    if isinstance(message, list):
+        parts = [_segment_rag_text(segment) for segment in message]
+        text = "".join(part for part in parts if part)
+        if text.strip():
+            return text.strip()
+
+    summary = value.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        return summary.strip()
+
+    raw_message = value.get("raw_message")
+    if isinstance(raw_message, str) and raw_message.strip():
+        return re.sub(r"\[CQ:[^\]]+\]", " ", raw_message).strip()
+
+    payload = value.get("payload")
+    if payload is not value:
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                return payload.strip()
+        return _rag_text_from_value(payload)
+    return ""
+
+
+def _build_rag_query(event: Any) -> str:
+    """Build a semantic query from event content, excluding protocol metadata."""
+    if event is None:
+        return ""
+    if isinstance(event, str):
+        try:
+            parsed = json.loads(event)
+        except json.JSONDecodeError:
+            return _clip_rag_query(event)
+        return _clip_rag_query(_rag_text_from_value(parsed))
+    return _clip_rag_query(_rag_text_from_value(getattr(event, "data", event)))
+
 
 def _acquire_semaphore() -> asyncio.Semaphore | None:
     global _semaphore
@@ -450,10 +525,11 @@ class AgentCore:
 
     def mem_retrieve(self, query_text: str, top_k: int = 3) -> str:
         """同步检索相关记忆并格式化为注入段(供自动注入调用,阻塞)。"""
-        if not query_text.strip():
+        query = _clip_rag_query(query_text)
+        if not query:
             return ""
         try:
-            rs = self.memory.query(query_text[:200], top_k)
+            rs = self.memory.query(query, top_k)
         except Exception:
             return ""
         if not rs:
@@ -1079,9 +1155,9 @@ class AgentCore:
         else:
             if isinstance(event, str):
                 logger.info(event)
-                query_text = event
+                query_text = _build_rag_query(event)
             else:
-                query_text = str(event.data)
+                query_text = _build_rag_query(event)
             ev = AgentEvent(
                 type="message_batch",
                 scene_type=ev_type,
