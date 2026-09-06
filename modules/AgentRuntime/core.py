@@ -1391,6 +1391,31 @@ class AgentCore:
             parts.insert(0, {"type": "text", "text": "用户发送了图片"})
         return parts
 
+    def _build_tool_call_dict(self, call: dict[str, Any]) -> dict[str, Any]:
+        """把一条内部 tool_calls 字典转换为 Chat Completions 需求的格式。
+
+        保留 id / type / function 的同时,原样传承 extra_content
+        (因此包含 extra_content.google.thought_signature from history)。
+        适配 ChatGPT / Google OpenAI-compat / 通用供应商。
+        """
+        out: dict[str, Any] = {
+            "id": call.get("id", ""),
+            "type": call.get("type", "function") or "function",
+        }
+
+        func = call.get("function") or {}
+        out["function"] = {
+            "name": func.get("name", ""),
+            "arguments": func.get("arguments", ""),
+        }
+
+        # 关键:保留 extra_content (含 Gemini thought_signature)
+        extra = call.get("extra_content")
+        if isinstance(extra, dict) and extra:
+            out["extra_content"] = extra
+
+        return out
+
     async def _history_to_chat_messages(self) -> list[dict[str, Any]]:
         """把内部 history 转成 Chat Completions 可接受的消息列表。
 
@@ -1413,14 +1438,7 @@ class AgentCore:
                 tool_calls = m.get("tool_calls")
                 if isinstance(tool_calls, list) and tool_calls:
                     item["tool_calls"] = [
-                        {
-                            "id": call.get("id", ""),
-                            "type": "function",
-                            "function": {
-                                "name": (call.get("function") or {}).get("name", ""),
-                                "arguments": (call.get("function") or {}).get("arguments", ""),
-                            },
-                        }
+                        self._build_tool_call_dict(call)
                         for call in tool_calls
                         if isinstance(call, dict)
                     ]
