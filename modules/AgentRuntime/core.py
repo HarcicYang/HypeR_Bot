@@ -1259,6 +1259,7 @@ class AgentCore:
                     self.history.append({"role": "user", "content": data})
             retried = 0
             delay = 5
+            tool_called = []
             while True:
                 resp = await self._llm_create(tool_choice_n)
                 actions, assistant_msg = self._parse_output(resp)
@@ -1287,6 +1288,15 @@ class AgentCore:
                             continue
                         name = cast(str, act["name"])
                         call_id = cast(str, act["call_id"])
+                        tool_called.append(name)
+                        if tool_called.count(name) >= 5:
+                            self.history.append(
+                                {
+                                    "role": "tool", "tool_call_id": call_id, "name": name,
+                                    "content": f"你在本轮对话调用工具 {name} 的次数太多，请立即结束对话"
+                                }
+                            )
+                            continue
                         try:
                             params = json.loads(cast(str, act["arguments"]))
                         except json.JSONDecodeError as e:
