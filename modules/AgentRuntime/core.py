@@ -77,22 +77,22 @@ async def timer(interval: int, ev: asyncio.Event) -> None:
 
 class AgentCore:
     def __init__(
-        self,
-        bot_api: Actions,
-        key: str,
-        model: str,
-        base_url: str = "",
-        system_prompt: str | None = None,
-        name: str = "main",
-        history_path: str = HISTORY_PATH,
-        tasks_path: str = TASKS_PATH,
-        memory_path: str = "./temps/agent_memory",
-        notify_main: Any = None,
-        sub_manager: Any = None,
-        role: Literal["main", "sub", "system"] | None = None,
-        session_key: SessionKey | None = None,
-        session_manager: Any = None,
-        shared_memory: Any = None,
+            self,
+            bot_api: Actions,
+            key: str,
+            model: str,
+            base_url: str = "",
+            system_prompt: str | None = None,
+            name: str = "main",
+            history_path: str = HISTORY_PATH,
+            tasks_path: str = TASKS_PATH,
+            memory_path: str = "./temps/agent_memory",
+            notify_main: Any = None,
+            sub_manager: Any = None,
+            role: Literal["main", "sub", "system"] | None = None,
+            session_key: SessionKey | None = None,
+            session_manager: Any = None,
+            shared_memory: Any = None,
     ) -> None:
         self.bot_api = bot_api
         self.model = model
@@ -133,10 +133,10 @@ class AgentCore:
             # 会导致 history[0] 不是 system:切换人设被 guard 跳过、且提示词会被当作
             # user 消息发给模型,让模型沿用旧人设。这里识别并清掉,再保证第一条是 system。
             while (
-                data
-                and isinstance(data[0], dict)
-                and data[0].get("role") != "system"
-                and str(data[0].get("content", "")).startswith("# 角色")
+                    data
+                    and isinstance(data[0], dict)
+                    and data[0].get("role") != "system"
+                    and str(data[0].get("content", "")).startswith("# 角色")
             ):
                 data.pop(0)
             if not data or not isinstance(data[0], dict) or data[0].get("role") != "system":
@@ -479,14 +479,14 @@ class AgentCore:
         return await self.session_manager.context_status(target)
 
     async def context_read(
-        self, target: str, count: int = 5, anchor: int | None = None, direction: str = "backward"
+            self, target: str, count: int = 5, anchor: int | None = None, direction: str = "backward"
     ) -> str:
         if self.session_manager is None:
             return "上下文管理器不可用"
         return await self.session_manager.read_context(target, count, anchor, direction)
 
     async def context_send(
-        self, target: str, content: str, kind: str = "message", request_id: str | None = None
+            self, target: str, content: str, kind: str = "message", request_id: str | None = None
     ) -> str:
         if self.session_manager is None or self.session_key is None:
             return "当前 Core 不支持上下文通信"
@@ -633,7 +633,7 @@ class AgentCore:
     # -- SubAgent 管理(仅主 Agent core 可用;SubAgent 调用返回错误) --
 
     async def sub_create(
-        self, name: str, prompt: str, scene_id: int, scene_type: str, perm_group: str = "member"
+            self, name: str, prompt: str, scene_id: int, scene_type: str, perm_group: str = "member"
     ) -> str:
         if self.sub_manager is None:
             return "调用不合法：SubAgent 不能创建 SubAgent"
@@ -776,6 +776,27 @@ class AgentCore:
     async def _history_fix(self) -> None:
         """修复悬空的 tool_calls 历史,包括没有前置 assistant 的孤立 tool。"""
         logger.warning("尝试修复历史记录")
+        if "generativelanguage.googleapis.com" in str(self._oai.base_url):
+            DUMMY_SIG = "context_engineering_is_the_way_to_go"
+            for msg in self.history:
+                if isinstance(msg, dict) and msg.get("role") == "assistant":
+                    calls = msg.get("tool_calls")
+                    if isinstance(calls, list):
+                        for call in calls:
+                            if (
+                                    isinstance(call, dict) and
+                                    (
+                                            "extra_content" not in call or
+                                            "google" not in call["extra_content"] or
+                                            "thought_signature" not in call["extra_content"]["google"]
+                                    )
+                            ):
+                                call["extra_content"] = {
+                                    "google": {
+                                        "thought_signature": DUMMY_SIG
+                                    }
+                                }
+            logger.info("检测到 Google OpenAI-compatible endpoint，已在历史中植入 thought_signature")
         pending_ids: set[str] = set()
         pending_indexes: dict[str, int] = {}
         first_invalid = len(self.history)
@@ -887,14 +908,14 @@ class AgentCore:
                     return
 
     async def event_handler(
-        self,
-        event: Any,
-        ev_type: Literal["group", "private", "system", "nonmsg"],
-        scene_id: int,
-        perm_group: str = "member",
-        principal_id: int | None = None,
-        self_id: int | None = None,
-        tool_choice: str = "auto",
+            self,
+            event: Any,
+            ev_type: Literal["group", "private", "system", "nonmsg"],
+            scene_id: int,
+            perm_group: str = "member",
+            principal_id: int | None = None,
+            self_id: int | None = None,
+            tool_choice: str = "auto",
     ) -> None:
         await self._acquire_processing_slot()
         try:
@@ -911,14 +932,14 @@ class AgentCore:
             await self._release_processing_slot()
 
     async def _event_handler_with_slot(
-        self,
-        event: Any,
-        ev_type: Literal["group", "private", "system", "nonmsg"],
-        scene_id: int,
-        perm_group: str = "member",
-        principal_id: int | None = None,
-        self_id: int | None = None,
-        tool_choice: str = "auto",
+            self,
+            event: Any,
+            ev_type: Literal["group", "private", "system", "nonmsg"],
+            scene_id: int,
+            perm_group: str = "member",
+            principal_id: int | None = None,
+            self_id: int | None = None,
+            tool_choice: str = "auto",
     ) -> None:
         sem = _acquire_semaphore()
         if sem is not None:
@@ -1023,12 +1044,12 @@ class AgentCore:
             self._maybe_schedule_auto_summary()
 
     async def _event_handler(
-        self,
-        data: str | None,
-        ev_type: Literal["group", "private", "system", "nonmsg"],
-        scene_id: int,
-        ctx: ToolContext,
-        tool_choice: str = "auto",
+            self,
+            data: str | None,
+            ev_type: Literal["group", "private", "system", "nonmsg"],
+            scene_id: int,
+            ctx: ToolContext,
+            tool_choice: str = "auto",
     ) -> None:
         try:
             self._refresh_tools()
@@ -1151,7 +1172,7 @@ class AgentCore:
             return await self._download_image_data_uri(file)
 
         if file.startswith("base64://"):
-            raw = file[len("base64://") :]
+            raw = file[len("base64://"):]
             try:
                 import filetype
 
