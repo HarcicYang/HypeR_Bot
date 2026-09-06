@@ -108,6 +108,16 @@ class AgentCore:
         self.memory_path = memory_path
         self.notify_main = notify_main
         self.sub_manager = sub_manager
+
+        self.extra = {
+            'extra_body': {
+                "google": {
+                    "thinking_config": {
+                        "include_thoughts": True
+                    }
+                }
+            }
+        }
         if base_url:
             self._oai = AsyncOpenAI(api_key=key, base_url=base_url)
         else:
@@ -272,6 +282,7 @@ class AgentCore:
                     ],
                     temperature=0.2,
                     max_tokens=2000,
+                    extra_body=self.extra
                 ),
                 timeout=90,
             )
@@ -776,27 +787,6 @@ class AgentCore:
     async def _history_fix(self) -> None:
         """修复悬空的 tool_calls 历史,包括没有前置 assistant 的孤立 tool。"""
         logger.warning("尝试修复历史记录")
-        if "generativelanguage.googleapis.com" in str(self._oai.base_url):
-            DUMMY_SIG = "context_engineering_is_the_way_to_go"
-            for msg in self.history:
-                if isinstance(msg, dict) and msg.get("role") == "assistant":
-                    calls = msg.get("tool_calls")
-                    if isinstance(calls, list):
-                        for call in calls:
-                            if (
-                                    isinstance(call, dict) and
-                                    (
-                                            "extra_content" not in call or
-                                            "google" not in call["extra_content"] or
-                                            "thought_signature" not in call["extra_content"]["google"]
-                                    )
-                            ):
-                                call["extra_content"] = {
-                                    "google": {
-                                        "thought_signature": DUMMY_SIG
-                                    }
-                                }
-            logger.info("检测到 Google OpenAI-compatible endpoint，已在历史中植入 thought_signature")
         pending_ids: set[str] = set()
         pending_indexes: dict[str, int] = {}
         first_invalid = len(self.history)
@@ -1352,6 +1342,7 @@ class AgentCore:
             tool_choice=tool_choice_n,
             reasoning_effort=cast(Any, self.reasoning_effort),
             response_format=cast(Any, {"type": "json_object"}),
+            extra_body=self.extra
         )
 
     def _history_to_items(self) -> list[dict[str, Any]]:
