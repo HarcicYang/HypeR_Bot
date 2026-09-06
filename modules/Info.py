@@ -86,7 +86,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
             message = (
                 f"HypeR Bot v{hyperot.HYPER_BOT_VERSION}\n"
                 "https://github.com/HarcicYang/HypeR_Bot\n"
-                "\n"
+                "------\n"
                 f"时间：{str(datetime.datetime.now())}\n"
                 f"协议库实现：{name} {code} ({adapters.registry.current.name})"
             )
@@ -120,7 +120,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         return (
             f"HypeR Bot v{hyperot.HYPER_BOT_VERSION}\n"
             "https://github.com/HarcicYang/HypeR_Bot\n"
-            "\n"
+            "------\n"
             f"时间：{str(datetime.datetime.now())}\n"
             f"协议库实现：{name} {code} ({adapters.registry.current.name})\n"
             f"操作系统：{os_desc}\n"
