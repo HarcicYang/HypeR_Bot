@@ -104,6 +104,7 @@ class MessageTools(AgentToolBase):
         echo = await ctx.actions.custom.group_reaction(**params)
         action = "设置" if is_add else "移除"
         target = f"code={code}" if code is not None else f"emoji={emoji}"
+        await common.Ret.fetch(echo)
         return f"已{action}群 {group_id} 消息 {message_id} 的表情回应({target}, echo={echo})"
 
     @tool(group="qq", sub_visible=False)
