@@ -23,6 +23,7 @@ dependencies = [
     "requests",
     "typing-extensions",
     "ucfgr",
+    "psutil",
 ]
 
 [dependency-groups]
