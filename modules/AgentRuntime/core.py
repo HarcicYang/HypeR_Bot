@@ -1037,6 +1037,8 @@ class AgentCore:
                 dup = any(m.get("role") == "user" and m.get("content") == data for m in self.history)
                 if not dup:
                     self.history.append({"role": "user", "content": data})
+            retried = 0
+            delay = 5
             while True:
                 resp = await self._llm_create(tool_choice_n)
                 actions, assistant_msg = self._parse_output(resp)
@@ -1083,6 +1085,20 @@ class AgentCore:
                         )
                         self.history.append({"role": "tool", "tool_call_id": call_id, "name": name, "content": str(rs)})
                         had_action = True
+                except Exception as e:
+                    if isinstance(e, asyncio.CancelledError):
+                        raise
+                    if retried >= 5:
+                        logger.error(f"{e}, 重试次数过多，放弃")
+                        match ev_type:
+                            case "group":
+                                await ctx.actions.send_group_msg(f"Agent Mod 不能解决的异常：{e}", scene_id)
+                            case "private":
+                                await ctx.actions.send_private_msg(f"Agent Mod 不能解决的异常：{e}", scene_id)
+                    logger.error(f"{e}, {delay}s 后重试")
+                    await asyncio.sleep(delay)
+                    retried += 1
+                    delay += 2
                 finally:
                     # 当前 assistant 的所有 function_call 都补完 tool 输出后:
                     # 1) 应用延后的人设切换(切换前自动总结);

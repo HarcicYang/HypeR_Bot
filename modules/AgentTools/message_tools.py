@@ -139,8 +139,10 @@ class MessageTools(AgentToolBase):
         - times: 点赞次数，必须为正整数，不建议超过10
         """
 
-        await ctx.actions.custom.send_like(
+        echo = await ctx.actions.custom.send_like(
             user_id=user_id,
             times=times
         )
+        await common.Ret.fetch(echo)
+
         return "(无返回)"
