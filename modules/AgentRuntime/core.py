@@ -1097,6 +1097,24 @@ class AgentCore:
         """释放底层 HTTP 连接池;调用方需保证没有正在进行的处理。"""
         await self._oai.close()
 
+    async def _notify_execution_error(
+        self,
+        ev_type: Literal["group", "private", "system", "nonmsg"],
+        scene_id: int,
+        error: Exception,
+    ) -> None:
+        """把最终无法恢复的异常发送到当前会话。"""
+        if ev_type not in ("group", "private"):
+            return
+        message = f"Agent Mod 不能解决的异常：{error}"
+        try:
+            if ev_type == "group":
+                await self.bot_api.send_msg(message=message, group_id=scene_id)
+            else:
+                await self.bot_api.send_msg(message=message, user_id=scene_id)
+        except Exception:
+            logger.error("发送 Agent 异常通知失败：\n" + traceback.format_exc())
+
     async def _wait_until_idle(self) -> None:
         """等待当前全局 history 请求结束;不持锁等待。"""
         while True:
@@ -1148,6 +1166,8 @@ class AgentCore:
         timer_ev = asyncio.Event()
         timer_task = asyncio.create_task(timer(600, timer_ev))
         bad_retries = 0
+        error_retries = 0
+        retry_delay = 5
         task: asyncio.Task[Any] | None = None
         if event is None:
             ev_data: str | None = None
@@ -1210,20 +1230,37 @@ class AgentCore:
                         if exc is not None:
                             raise exc
                     break
-                except openai.BadRequestError:
+                except openai.BadRequestError as e:
                     bad_retries += 1
                     if bad_retries >= 3:
                         # 连续 3 次请求被拒(如提示词缺 json 字样等固定问题),放弃本次处理,避免死循环
                         logger.error("连续 3 次 BadRequestError，放弃本次处理")
+                        await self._notify_execution_error(ev_type, scene_id, e)
                         break
                     logger.warning(traceback.format_exc())
                     await self._history_fix()
                 except (NotImplementedError, RuntimeError) as e:
+                    error_retries += 1
+                    await self._history_fix()
+                    if error_retries >= 5:
+                        logger.error(f"{e}, 重试次数过多，放弃")
+                        await self._notify_execution_error(ev_type, scene_id, e)
+                        break
                     sys_msg = repr(e)
-                    logger.warning(repr(e) + ", 正在重试")
+                    logger.warning(f"{e}, {retry_delay}s 后重试")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay += 2
                 except Exception as e:
+                    error_retries += 1
+                    await self._history_fix()
+                    if error_retries >= 5:
+                        logger.error(f"{e}, 重试次数过多，放弃")
+                        await self._notify_execution_error(ev_type, scene_id, e)
+                        break
                     logger.error(str(e))
                     logger.error(traceback.format_exc())
+                    await asyncio.sleep(retry_delay)
+                    retry_delay += 2
         finally:
             timer_task.cancel()
             if task is not None and not task.done():
@@ -1257,9 +1294,6 @@ class AgentCore:
                 dup = any(m.get("role") == "user" and m.get("content") == data for m in self.history)
                 if not dup:
                     self.history.append({"role": "user", "content": data})
-            retried = 0
-            delay = 5
-            tool_called = []
             while True:
                 resp = await self._llm_create(tool_choice_n)
                 actions, assistant_msg = self._parse_output(resp)
@@ -1288,15 +1322,6 @@ class AgentCore:
                             continue
                         name = cast(str, act["name"])
                         call_id = cast(str, act["call_id"])
-                        tool_called.append(name)
-                        if tool_called.count(name) >= 5:
-                            self.history.append(
-                                {
-                                    "role": "tool", "tool_call_id": call_id, "name": name,
-                                    "content": f"你在本轮对话调用工具 {name} 的次数太多，请立即结束对话"
-                                }
-                            )
-                            continue
                         try:
                             params = json.loads(cast(str, act["arguments"]))
                         except json.JSONDecodeError as e:
@@ -1315,20 +1340,6 @@ class AgentCore:
                         )
                         self.history.append({"role": "tool", "tool_call_id": call_id, "name": name, "content": str(rs)})
                         had_action = True
-                except Exception as e:
-                    if isinstance(e, asyncio.CancelledError):
-                        raise
-                    if retried >= 5:
-                        logger.error(f"{e}, 重试次数过多，放弃")
-                        match ev_type:
-                            case "group":
-                                await ctx.actions.send_group_msg(f"Agent Mod 不能解决的异常：{e}", scene_id)
-                            case "private":
-                                await ctx.actions.send_private_msg(f"Agent Mod 不能解决的异常：{e}", scene_id)
-                    logger.error(f"{e}, {delay}s 后重试")
-                    await asyncio.sleep(delay)
-                    retried += 1
-                    delay += 2
                 finally:
                     # 当前 assistant 的所有 function_call 都补完 tool 输出后:
                     # 1) 应用延后的人设切换(切换前自动总结);
