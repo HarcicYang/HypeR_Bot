@@ -24,6 +24,7 @@ from openai import AsyncOpenAI
 import ModuleClass
 from modules.AgentRuntime.capture import CaptureActions as _CaptureActions
 from modules.AgentRuntime.dsml import parse_embedded_tool_calls as _parse_embedded_tool_calls
+from modules.AgentRuntime.event_text import event_text as _event_text
 from modules.AgentRuntime.models import HISTORY_PATH, REPORT_TIMEOUT, TASKS_PATH, AgentEvent, SessionKey
 from modules.AgentRuntime.profiles import AgentProfile as _AgentProfile
 from modules.AgentRuntime.profiles import load_profiles as _runtime_load_profiles
@@ -97,6 +98,9 @@ def _rag_text_from_value(value: Any) -> str:
 
     if value.get("compressed") and isinstance(value.get("summary"), str):
         return value["summary"].strip()
+
+    if value.get("post_type") == "notice":
+        return _event_text(value).strip()
 
     message = value.get("message")
     if isinstance(message, list):
@@ -1455,6 +1459,10 @@ class AgentCore:
             uid = str(ev.get("user_id") or "")
             message = ev.get("message")
             if not isinstance(message, list):
+                text = _event_text(ev).strip()
+                if text:
+                    parts.append({"type": "text", "text": text})
+                    has_text = True
                 continue
             texts: list[str] = []
             image_urls: list[str] = []

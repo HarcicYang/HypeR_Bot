@@ -131,6 +131,7 @@ SYSTEM_INSTRUCTIONS = """# 你的运行环境与使用方式
 
 - 你是运行在 QQ 群和私聊中的 bot。群内自动处理需要白名单：白名单用户发言会触发你的处理（混杂缓存消息）；非白名单用户的消息只进缓存，不触发处理。
 - 群聊仅处理白名单成员；白名单成员被 @ 时跳过收集机制，立即处理（含当前缓存）。
+- 群成员变化、禁言、撤回、文件、精华、表情回应、戳一戳等通知会进入白名单群的缓存；默认不单独触发处理，仅戳 Bot 或 Bot 消息被撤回时立即处理。好友撤回和文件通知进入私聊缓存。
 - 私聊自动处理始终开启，无需白名单；主人私聊立即处理。
 - 权限分四级：bot_owner（主人）/ any_admin（当前群主或管理员）/ whitelist（群白名单）/ member（普通成员）。工具调用会校验权限，权限不足会返回错误。
 - 每个群和每个私聊都是独立 Main 上下文；Main 上下文可以通过 context_read/context_send/context_request/context_reply 自由互通。
@@ -290,6 +291,7 @@ AGENT_HELP = (
     "群内自动处理需要白名单:白名单用户的消息触发收集,处理时混杂\n"
     "缓存消息(按时间顺序交给 Agent);没有任何白名单设置的群不缓存消息。\n"
     "白名单成员被 @ 时跳过消息收集机制,立即处理。\n"
+    "群通知也会进入缓存,默认被动收集;仅戳 Bot 或 Bot 消息被撤回时立即处理。\n"
     "群内自动处理严格依据白名单，主人未加入白名单时也不会自动处理。私聊自动处理始终开启,无需白名单。\n"
     "\n"
     "命令(两种写法均可:`.agent.on` 或 `.agent on`;简写 `ag`=agent, `pf`=profile,\n"
@@ -318,6 +320,30 @@ AGENT_HELP = (
 _SubAgent = SubAgent
 
 _white: dict[int, set[int]] = {int(k): set(v) for k, v in (config.others.get("agent_white") or {}).items()}
+
+_GROUP_NOTICE_EVENTS: tuple[type[Event], ...] = (
+    GroupFileUploadEvent,
+    GroupAdminEvent,
+    GroupMemberDecreaseEvent,
+    GroupMemberIncreaseEvent,
+    GroupMuteEvent,
+    GroupWholeMuteEvent,
+    GroupNameChangeEvent,
+    GroupRecallEvent,
+    GroupEssenceEvent,
+    MessageReactionEvent,
+)
+_PRIVATE_NOTICE_EVENTS: tuple[type[Event], ...] = (
+    FriendRecallEvent,
+    FriendFileUploadEvent,
+)
+_COLLECTED_EVENTS: tuple[type[Event], ...] = (
+    GroupMessageEvent,
+    PrivateMessageEvent,
+    NotifyEvent,
+    *_GROUP_NOTICE_EVENTS,
+    *_PRIVATE_NOTICE_EVENTS,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -485,7 +511,7 @@ class _Agent:
 
     # -- 入口 --
 
-    async def on_event(self, actions: Actions, event: MessageEvent) -> None:
+    async def on_event(self, actions: Actions, event: Event) -> None:
         if self.session_manager is None:
             self.actions = actions
             self.sub_manager = _SubAgentManager(self, _AgentCore)
@@ -497,6 +523,15 @@ class _Agent:
             await self._on_group(event)
         elif isinstance(event, PrivateMessageEvent):
             await self._on_private(event)
+        elif isinstance(event, _GROUP_NOTICE_EVENTS):
+            await self._on_group_notice(event)
+        elif isinstance(event, _PRIVATE_NOTICE_EVENTS):
+            await self._on_private_notice(event)
+        elif isinstance(event, NotifyEvent):
+            if event.group_id is not None:
+                await self._on_group_notice(event)
+            else:
+                await self._on_private_notice(event)
 
     async def _on_group(self, event: GroupMessageEvent) -> None:
         if event.group_id is None or event.user_id is None or event.blocked or event.is_silent:
@@ -545,23 +580,94 @@ class _Agent:
         await col.append(event)
         await col.start(uid, self._perm_of(uid, None), event.self_id)
 
-    # -- 立即处理(被 @ / 主人私聊) --
+    @staticmethod
+    def _notice_triggers(event: Event) -> bool:
+        """仅返回需要立即唤醒 Agent 的高信号通知。"""
+        if isinstance(event, NotifyEvent):
+            return event.sub_type == "poke" and event.target_id == event.self_id
+        if isinstance(event, GroupRecallEvent):
+            return event.user_id == event.self_id and event.operator_id != event.self_id
+        return False
+
+    @staticmethod
+    def _notice_actor(event: Event) -> int | None:
+        actor = getattr(event, "operator_id", None)
+        if actor is None:
+            actor = event.user_id
+        return int(actor) if actor is not None else None
+
+    async def _on_group_notice(self, event: Event) -> None:
+        if event.group_id is None or event.blocked or event.is_silent:
+            return
+        gid = int(event.group_id)
+        if not _white.get(gid):
+            return
+        key = SessionKey("group", gid)
+        col = self.collectors.setdefault(key, _Collector(gid, "grp", lambda: self._core_for_key("grp", gid)))
+        actor = self._notice_actor(event)
+        if self._notice_triggers(event):
+            await self._immediate_event(
+                event.data,
+                "group",
+                gid,
+                self._perm_of(actor, gid),
+                actor,
+                event.self_id,
+            )
+            return
+        await col.append_passive(event.data)
+
+    async def _on_private_notice(self, event: Event) -> None:
+        if event.user_id is None or event.blocked or event.is_silent:
+            return
+        uid = int(event.user_id)
+        key = SessionKey("private", uid)
+        col = self.collectors.setdefault(key, _Collector(uid, "usr", lambda: self._core_for_key("usr", uid)))
+        actor = self._notice_actor(event)
+        if self._notice_triggers(event):
+            await self._immediate_event(
+                event.data,
+                "private",
+                uid,
+                self._perm_of(actor, None),
+                actor,
+                event.self_id,
+            )
+            return
+        await col.append_passive(event.data)
+
+    # -- 立即处理(被 @ / 主人私聊 / 高信号通知) --
 
     async def _immediate(self, event: GroupMessageEvent) -> None:
         gid = cast(int, event.group_id)
-        key = SessionKey("group", gid)
-        col = self.collectors.setdefault(key, _Collector(gid, "grp", lambda: self._core_for_key("grp", gid)))
-        batch = list(col.buffer) + [event.data]
+        await self._immediate_event(
+            event.data,
+            "group",
+            gid,
+            self._perm_of(event.user_id, gid, event.sender.role),
+            event.user_id,
+            event.self_id,
+        )
+
+    async def _immediate_event(
+        self,
+        event_data: dict[str, Any],
+        ev_type: Literal["group", "private"],
+        scene_id: int,
+        perm_group: str,
+        principal_id: int | None,
+        self_id: int | None,
+    ) -> None:
+        key = SessionKey(ev_type, scene_id)
+        stype: Literal["grp", "usr"] = "grp" if ev_type == "group" else "usr"
+        col = self.collectors.setdefault(key, _Collector(scene_id, stype, lambda: self._core_for_key(stype, scene_id)))
+        batch = list(col.buffer) + [event_data]
         col.buffer.clear()
         if col.doing_task is not None and not col.doing_task.done():
             col.doing_task.cancel()
         col.doing_task = None
         col.active = False
-        asyncio.create_task(
-            self._process(
-                batch, "group", gid, self._perm_of(event.user_id, gid, event.sender.role), event.user_id, event.self_id
-            )
-        )
+        asyncio.create_task(self._process(batch, ev_type, scene_id, perm_group, principal_id, self_id))
 
     async def _process(
         self,
@@ -832,8 +938,8 @@ class _Agent:
 _agent = _Agent()
 
 
-@ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
-class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
+@ModuleClass.ModuleRegister.register(*_COLLECTED_EVENTS)
+class Module(ModuleClass.Module[Event]):
     @override
     @staticmethod
     def info() -> ModuleClass.ModuleInfo:

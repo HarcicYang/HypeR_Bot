@@ -1,4 +1,4 @@
-"""Buffered QQ message collection for Agent contexts."""
+"""Buffered QQ message and notice collection for Agent contexts."""
 
 import asyncio
 import json
@@ -9,8 +9,9 @@ from collections.abc import Callable
 from typing import Any, Literal, Protocol
 
 from hyperot import configurator, hyperogger
-from hyperot.events import MessageEvent
+from hyperot.events import Event
 
+from modules.AgentRuntime.event_text import event_actor_id, event_text
 from modules.AgentTools.info_tools import GEMINI_MODEL
 
 config = configurator.BotConfig.get("hyper-bot")
@@ -58,20 +59,10 @@ class Collector:
         self.perm_group = "member"
         self.self_id: int | None = None
 
-    @staticmethod
-    def _event_text(event: dict[str, Any]) -> str:
-        parts: list[str] = []
-        for segment in event.get("message", []):
-            if segment.get("type") == "text":
-                parts.append((segment.get("data") or {}).get("text", ""))
-            else:
-                parts.append(f"[{segment.get('type')}]")
-        return "".join(parts)
-
     def _timeline(self) -> str:
         lines: list[str] = []
         for event in self.buffer:
-            lines.append(f"[{event.get('time')}] {event.get('user_id')}: {self._event_text(event)}")
+            lines.append(f"[{event.get('time')}] {event_actor_id(event)}: {event_text(event)}")
         return "\n".join(lines)
 
     async def _compress(self) -> dict[str, Any]:
@@ -114,11 +105,11 @@ class Collector:
         self.delay = (2 / 3) * (1 - math.cos(math.pi * rate)) + (2 / 3) * weight + 2.5
         self.delay = max(min(self.delay, 16), 5)
 
-    async def append(self, event: MessageEvent) -> None:
+    async def append(self, event: Event) -> None:
         await self.append_batch([event.data])
 
     async def append_passive(self, event_data: dict[str, Any]) -> None:
-        """只把消息放进 buffer,不更新节奏、不重置收集窗口(供非白名单环境消息使用)。"""
+        """只把事件放进 buffer,不更新节奏、不重置收集窗口(供通知与非白名单消息使用)。"""
         self.buffer.append(event_data)
         await self._maybe_compress()
 
@@ -128,7 +119,7 @@ class Collector:
         self.buffer.extend(events)
         await self._maybe_compress()
         now = time.time()
-        length = len(str(events[-1].get("message", "")))
+        length = len(event_text(events[-1]))
         if len(self.buffer) > len(events):
             self._update_delay(now - self.last_receive, length)
         else:
