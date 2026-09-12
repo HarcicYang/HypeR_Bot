@@ -24,6 +24,7 @@ dependencies = [
     "typing-extensions",
     "ucfgr",
     "psutil",
+    "ddgs>=9.16.0",
 ]
 
 [dependency-groups]
