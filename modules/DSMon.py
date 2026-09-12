@@ -1,8 +1,16 @@
 from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
 from hyperot.events import *
 from typing_extensions import override
 
 import ModuleClass
+
+BEIJING_TZ = ZoneInfo("Asia/Shanghai")
+PEAK_PERIODS: tuple[tuple[time, time], ...] = (
+    (time(9, 0), time(12, 0)),
+    (time(14, 0), time(18, 0)),
+)
 
 
 @ModuleClass.ModuleRegister.register(GroupMessageEvent)
@@ -13,12 +21,46 @@ class Module(ModuleClass.Module[GroupMessageEvent]):
         return ModuleClass.ModuleInfo(
             is_hidden=False,
             module_name="DSMon",
-            desc="展示 DeepSeek 定价时段",
+            desc="展示 DeepSeek 工作日峰谷定价时段",
             helps="发送“梁文”或 .ds 即可",
         )
 
+    @staticmethod
+    def is_peak_at(moment: datetime) -> bool:
+        if moment.weekday() >= 5:
+            return False
+        current_time = moment.time()
+        return any(start <= current_time < end for start, end in PEAK_PERIODS)
+
     def is_peak(self) -> bool:
-        return time(9, 0) <= datetime.now().time() <= time(12, 0) or time(14, 0) <= datetime.now().time() <= time(18, 0)
+        return self.is_peak_at(datetime.now(BEIJING_TZ))
+
+    @staticmethod
+    def get_next_peak_start(now: datetime) -> datetime:
+        for days_ahead in range(8):
+            candidate_date = now.date() + timedelta(days=days_ahead)
+            if candidate_date.weekday() >= 5:
+                continue
+            for start, _ in PEAK_PERIODS:
+                candidate = datetime.combine(candidate_date, start).replace(tzinfo=now.tzinfo)
+                if candidate > now:
+                    return candidate
+        raise RuntimeError("无法计算下一个 DeepSeek 高峰时段")
+
+    @staticmethod
+    def format_duration(delta: timedelta) -> str:
+        total_minutes = max(0, int(delta.total_seconds() // 60))
+        days, remaining_minutes = divmod(total_minutes, 24 * 60)
+        hours, minutes = divmod(remaining_minutes, 60)
+
+        parts: list[str] = []
+        if days > 0:
+            parts.append(f"{days}天")
+        if hours > 0 or days > 0:
+            parts.append(f"{hours}小时")
+        if minutes > 0 or not parts:
+            parts.append(f"{minutes}分钟")
+        return "".join(parts)
 
     def get_remaining_time_str(self) -> str:
         """
@@ -26,39 +68,17 @@ class Module(ModuleClass.Module[GroupMessageEvent]):
         峰时：显示距离峰时结束的剩余时间。
         谷时：显示距离下一个峰时开始的剩余时间。
         """
-        now = datetime.now()
+        now = datetime.now(BEIJING_TZ)
         current_time = now.time()
         today = now.date()
 
-        peak1_start = time(9, 0)
-        peak1_end = time(12, 0)
-        peak2_start = time(14, 0)
-        peak2_end = time(18, 0)
-
         if self.is_peak():
-            # 判断是上午峰时还是下午峰时
-            if peak1_start <= current_time <= peak1_end:
-                end_dt = datetime.combine(today, peak1_end)
-            else:  # 下午峰时
-                end_dt = datetime.combine(today, peak2_end)
-            delta = end_dt - now
-            if delta.total_seconds() <= 0:
-                return "剩余0分钟"
-            total_minutes = int(delta.total_seconds() // 60)
-            hours, minutes = divmod(total_minutes, 60)
-            return f"剩余{hours}小时{minutes}分钟" if hours > 0 else f"剩余{minutes}分钟"
-        else:
-            # 谷时：判断下一个峰时开始时间
-            if peak1_end < current_time < peak2_start:
-                # 12:00 之后，14:00 之前
-                next_start_dt = datetime.combine(today, peak2_start)
-            else:
-                # 18:00 之后，或 0:00 - 9:00 之前
-                next_start_dt = datetime.combine(today + timedelta(days=1), peak1_start)
-            delta = next_start_dt - now
-            total_minutes = int(delta.total_seconds() // 60)
-            hours, minutes = divmod(total_minutes, 60)
-            return f"距下峰还有{hours}小时{minutes}分钟" if hours > 0 else f"距下峰还有{minutes}分钟"
+            end_time = next(end for start, end in PEAK_PERIODS if start <= current_time < end)
+            end_dt = datetime.combine(today, end_time).replace(tzinfo=now.tzinfo)
+            return f"剩余{self.format_duration(end_dt - now)}"
+
+        next_start_dt = self.get_next_peak_start(now)
+        return f"距下峰还有{self.format_duration(next_start_dt - now)}"
 
     def build_msg(self) -> str:
         status = "峰，小心钱包" if self.is_peak() else "谷，放心蹬"
