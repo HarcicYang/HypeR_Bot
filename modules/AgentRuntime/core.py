@@ -1422,35 +1422,35 @@ class AgentCore:
                 return None
         return None
 
-    async def _chat_user_content(self, content: Any) -> Any:
-        """用户历史消息 → Chat Completions content。
+    async def _multimodal_user_parts(self, content: Any) -> list[tuple[Literal["text", "image"], str]] | None:
+        """用户历史消息 → 协议无关的 text/image 内容。
 
-        开启 native_multimodal 且当前用户消息包含图片段时,输出 OpenAI 原生
-        text/image_url 内容数组;否则保持原字符串,兼容旧行为。
+        开启 native_multimodal 且当前用户消息包含可读取图片时,返回协议无关的内容
+        列表;没有图片或结构不匹配时返回 None,由调用方保持原有字符串。
         """
         if not self.native_multimodal or not isinstance(content, str):
-            return content
+            return None
         try:
             wrapper = json.loads(content)
         except json.JSONDecodeError:
-            return content
+            return None
         if not isinstance(wrapper, dict):
-            return content
+            return None
         event = wrapper.get("event")
         if not isinstance(event, dict):
-            return content
+            return None
         payload = event.get("payload")
         if isinstance(payload, str):
             try:
                 batch = json.loads(payload)
             except json.JSONDecodeError:
-                return content
+                return None
         else:
             batch = payload
         if not isinstance(batch, list):
-            return content
+            return None
 
-        parts: list[dict[str, Any]] = []
+        parts: list[tuple[Literal["text", "image"], str]] = []
         image_count = 0
         has_text = False
         for ev in batch:
@@ -1461,7 +1461,7 @@ class AgentCore:
             if not isinstance(message, list):
                 text = _event_text(ev).strip()
                 if text:
-                    parts.append({"type": "text", "text": text})
+                    parts.append(("text", text))
                     has_text = True
                 continue
             texts: list[str] = []
@@ -1486,16 +1486,40 @@ class AgentCore:
 
             text = " ".join(texts).strip()
             if text:
-                parts.append({"type": "text", "text": f"{uid}: {text}" if uid else text})
+                parts.append(("text", f"{uid}: {text}" if uid else text))
                 has_text = True
             for image_url in image_urls:
-                parts.append({"type": "image_url", "image_url": {"url": image_url}})
+                parts.append(("image", image_url))
 
         if image_count == 0:
-            return content
+            return None
         if not has_text:
-            parts.insert(0, {"type": "text", "text": "用户发送了图片"})
+            parts.insert(0, ("text", "用户发送了图片"))
         return parts
+
+    async def _chat_user_content(self, content: Any) -> Any:
+        """用户历史消息 → Chat Completions content。"""
+        parts = await self._multimodal_user_parts(content)
+        if parts is None:
+            return content
+        return [
+            ({"type": "text", "text": value} if kind == "text" else {"type": "image_url", "image_url": {"url": value}})
+            for kind, value in parts
+        ]
+
+    async def _responses_user_content(self, content: Any) -> Any:
+        """用户历史消息 → Responses API content。"""
+        parts = await self._multimodal_user_parts(content)
+        if parts is None:
+            return content
+        return [
+            (
+                {"type": "input_text", "text": value}
+                if kind == "text"
+                else {"type": "input_image", "image_url": value, "detail": "auto"}
+            )
+            for kind, value in parts
+        ]
 
     def _build_tool_call_dict(self, call: dict[str, Any]) -> dict[str, Any]:
         """把一条内部 tool_calls 字典转换为 Chat Completions 需求的格式。
@@ -1583,7 +1607,7 @@ class AgentCore:
         if self.api_mode == "responses":
             return await self._oai.responses.create(  # pyrefly: ignore[no-matching-overload]
                 model=self.model,
-                input=self._with_injected_memory(self._history_to_items()),
+                input=self._with_injected_memory(await self._history_to_items()),
                 tools=self._tools_for_responses(),
                 tool_choice=tool_choice_n,
                 # 保持服务端默认的并行工具调用能力;本层会等当前 assistant 的
@@ -1601,7 +1625,7 @@ class AgentCore:
             extra_body=self.extra
         )
 
-    def _history_to_items(self) -> list[dict[str, Any]]:
+    async def _history_to_items(self) -> list[dict[str, Any]]:
         """内部 chat 格式 history → Responses API 输入 items。
 
         顺序约定(关键,来自 DeepSeek 文档「输入 Items」兼容性):
@@ -1623,7 +1647,13 @@ class AgentCore:
             if role == "system":
                 items.append({"type": "message", "role": "system", "content": m.get("content", "")})
             elif role == "user":
-                items.append({"type": "message", "role": "user", "content": m.get("content", "")})
+                items.append(
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": await self._responses_user_content(m.get("content", "")),
+                    }
+                )
             elif role == "tool":
                 continue  # 已在 function_call 后作为 output 输出
             elif role == "assistant":

@@ -163,12 +163,12 @@ def web_search_note() -> str:
 
 
 def native_multimodal_note() -> str:
-    """原生多模态能力说明(chat 模式 + agent_native_multimodal 开启时附加)。"""
-    if config.others.get("agent_api", "chat") != "chat" or not config.others.get("agent_native_multimodal", True):
+    """原生多模态能力说明(agent_native_multimodal 开启时附加)。"""
+    if not config.others.get("agent_native_multimodal", True):
         return ""
     return (
         "\n\n# 原生多模态\n\n"
-        "用户消息中的图片会以 image_url 直接提供,你可以直接查看并理解图片内容;"
+        "用户消息中的图片会作为原生图片内容直接提供,你可以直接查看并理解图片内容;"
         "优先直接回答,不要再调用 read_image 重复识别。"
     )
 

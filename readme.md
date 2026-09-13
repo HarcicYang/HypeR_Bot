@@ -124,7 +124,7 @@ AI 聊天模块（`.chat`）需要在 `others` 中配置后端：
 
 - `openai_*`：LLM 后端（OpenAI 兼容接口，如 DeepSeek）；`agent_api`：`chat`（当前默认，兼容性更好）或 `responses`；`agent_web_search`：是否启用服务端搜索（仅 `responses` 模式生效）；
 - `agent_reasoning_effort`：模型推理强度，默认 `low`；可设为 `none` / `low` / `medium` / `high` 等模型支持的值；
-- `agent_native_multimodal`：Chat Completions 原生多模态，默认 `true`。开启后用户消息中的图片由 bot 本地下载并转为 base64 data URI，再以 OpenAI `image_url` 格式发给模型，无需 `read_image` 工具；下载失败会回退为文本事件；不支持图片输入的提供方请设为 `false`；
+- `agent_native_multimodal`：原生多模态，默认 `true`。开启后用户消息中的图片由 bot 本地下载并转为 base64 data URI，再按当前 API 以 Chat Completions `image_url` 或 Responses `input_image` 格式发给模型，无需 `read_image` 工具；下载失败会回退为文本事件；不支持图片输入的提供方请设为 `false`；
 - `agent_white`：各群白名单（群号 → QQ 列表），白名单成员发言触发自动处理，被 @ 时无视白名单立即处理；
 - `agent_profile`：当前人设名（来自 `profiles.json`，不存在则自动生成）；`agent_memory_limit`：RAG 记忆容量上限；
 - `profiles.json` 人设条目支持 `{"prompt": "人设文本", "inject_master": true|false}`：`inject_master=true` 时在系统提示词中注入「`User_id in [ulist]` 是你的主人」，`false` 则不注入；省略时默认 `true`（兼容旧的纯文本条目格式）。
