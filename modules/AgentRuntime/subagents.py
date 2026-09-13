@@ -79,13 +79,14 @@ class SubAgentManager:
             return f"SubAgent 数量已达上限({self.MAX_SUBAGENTS}),请先销毁其他 SubAgent 再创建"
         if scene_type not in ("group", "private"):
             return f"调用不合法：scene_type 必须为 group 或 private，当前为 {scene_type}"
+        session_manager = self.owner.session_manager
+        if session_manager is None:
+            return "调用不合法：上下文管理器不可用"
         sub_id = self._next_id
         self._next_id += 1
         core = self.core_factory(
             bot_api=cast(Actions, self.owner.actions),
-            key=cast(str, config.others.get("openai_key")),
-            model=cast(str, config.others.get("openai_model")),
-            base_url=cast(str, config.others.get("openai_endpoint") or ""),
+            api_manager=session_manager.api_manager,
             system_prompt=prompt,
             name=f"sub:{sub_id}",
             history_path=f"./temps/agent_sub_{sub_id}_history.json",

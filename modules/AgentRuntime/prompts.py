@@ -206,9 +206,11 @@ ROLE_PROMPT = """# 角色
 """
 
 
-def web_search_note() -> str:
+def web_search_note(api_mode: str | None = None, web_search: bool | None = None) -> str:
     """联网搜索能力说明(responses 模式 + agent_web_search 开启时附加到提示词)。"""
-    if config.others.get("agent_api", "chat") == "chat" or not config.others.get("agent_web_search", True):
+    mode = api_mode if api_mode is not None else str(config.others.get("agent_api") or "chat")
+    enabled = web_search if web_search is not None else bool(config.others.get("agent_web_search", True))
+    if mode == "chat" or not enabled:
         return ""
     return (
         "\n\n# 联网搜索\n\n"
@@ -217,9 +219,14 @@ def web_search_note() -> str:
     )
 
 
-def native_multimodal_note() -> str:
+def native_multimodal_note(native_multimodal: bool | None = None) -> str:
     """原生多模态能力说明(agent_native_multimodal 开启时附加)。"""
-    if not config.others.get("agent_native_multimodal", True):
+    enabled = (
+        native_multimodal
+        if native_multimodal is not None
+        else bool(config.others.get("agent_native_multimodal", True))
+    )
+    if not enabled:
         return ""
     return (
         "\n\n# 原生多模态\n\n"
@@ -228,7 +235,13 @@ def native_multimodal_note() -> str:
     )
 
 
-def build_system_prompt(profile: AgentProfile | str | None = None) -> str:
+def build_system_prompt(
+    profile: AgentProfile | str | None = None,
+    *,
+    api_mode: str | None = None,
+    web_search: bool | None = None,
+    native_multimodal: bool | None = None,
+) -> str:
     """主 Agent 系统提示词:人设全文(自带「# 角色」等标题)+ 指令模板。
 
     profile 为 None 时使用当前人设(config.others.agent_profile 对应的 profiles.json 条目,
@@ -260,8 +273,8 @@ def build_system_prompt(profile: AgentProfile | str | None = None) -> str:
         + MAIN_CONTEXT_RULE
         + "\n\n"
         + CONTENT_RULE
-        + web_search_note()
-        + native_multimodal_note()
+        + web_search_note(api_mode, web_search)
+        + native_multimodal_note(native_multimodal)
         + "\n\n"
         + text
     )

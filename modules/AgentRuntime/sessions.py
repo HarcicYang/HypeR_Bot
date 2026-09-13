@@ -12,6 +12,7 @@ from typing import Any, Literal, cast
 from hyperot import common, configurator, hyperogger, segments
 from hyperot.listener import Actions
 
+from modules.AgentRuntime.api_profiles import ApiProfileManager
 from modules.AgentRuntime.content_store import cleanup_all
 from modules.AgentRuntime.core import AgentCore
 from modules.AgentRuntime.models import (
@@ -47,11 +48,18 @@ class SessionManager:
     def _sort_context(item: tuple[SessionKey, AgentCore]) -> str:
         return item[0].value
 
-    def __init__(self, owner: Any, actions: Actions) -> None:
+    def __init__(
+        self,
+        owner: Any,
+        actions: Actions,
+        *,
+        api_manager: ApiProfileManager | None = None,
+    ) -> None:
         from modules.AgentTools.memory_store import MemoryStore
 
         self.owner = owner
         self.actions = actions
+        self.api_manager = api_manager or ApiProfileManager.load(config.others)
         self.cores: dict[SessionKey, AgentCore] = {}
         self._cleanup_task: asyncio.Task[None] | None = None
         self.sys_requests: dict[str, SysRequest] = {}  # 待回调的系统请求(request_id -> 记录)
@@ -113,9 +121,7 @@ class SessionManager:
         self._ensure_cleanup_task()
         core = AgentCore(
             bot_api=self.actions,
-            key=cast(str, config.others.get("openai_key")),
-            model=cast(str, config.others.get("openai_model")),
-            base_url=cast(str, config.others.get("openai_endpoint") or ""),
+            api_manager=self.api_manager,
             name="system" if role == "system" else "main",
             history_path=os.path.join(key.directory, "history.json"),
             tasks_path=os.path.join(key.directory, "tasks.json"),

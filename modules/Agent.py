@@ -19,9 +19,12 @@
 - agent_white: dict[str, list[int]] —— 各群的用户白名单(群 id -> QQ 列表)
 - agent_heartbeat: bool —— 是否启用心跳自主行动(默认关闭;开启后 Agent 会周期性收到
   system 事件,可自主发消息、处理任务列表)
+
+LLM 服务商与模型配置独立保存在 api_profiles.json;旧 openai_* 配置会在加载时自动迁移。
 """
 
 import asyncio
+import contextlib
 import json
 import re
 import traceback
@@ -33,6 +36,8 @@ from hyperot.listener import Actions
 from typing_extensions import override
 
 import ModuleClass
+from modules.AgentRuntime.api_profiles import ApiProfile, ApiProfileError, ApiProfileManager
+from modules.AgentRuntime.api_wizard import ApiProfileWizard as _ApiProfileWizard
 from modules.AgentRuntime.collector import Collector as _Collector
 from modules.AgentRuntime.core import AgentCore as _AgentCore
 from modules.AgentRuntime.models import SessionKey
@@ -236,7 +241,8 @@ def _current_profile() -> _AgentProfile:
 
 def _web_search_note() -> str:
     """联网搜索能力说明(responses 模式 + agent_web_search 开启时附加到提示词)。"""
-    if config.others.get("agent_api", "chat") == "chat" or not config.others.get("agent_web_search", True):
+    profile = _active_api_profile()
+    if profile is None or profile.api_mode == "chat" or not profile.web_search:
         return ""
     return (
         "\n\n# 联网搜索\n\n"
@@ -247,13 +253,24 @@ def _web_search_note() -> str:
 
 def _native_multimodal_note() -> str:
     """原生多模态能力说明(agent_native_multimodal 开启时附加)。"""
-    if not config.others.get("agent_native_multimodal", True):
+    profile = _active_api_profile()
+    if profile is None or not profile.native_multimodal:
         return ""
     return (
         "\n\n# 原生多模态\n\n"
         "用户消息中的图片会作为原生图片内容直接提供,你可以直接查看并理解图片内容;"
         "优先直接回答,不要再调用 read_image 重复识别。"
     )
+
+
+def _active_api_profile() -> ApiProfile | None:
+    manager = getattr(_agent, "session_manager", None)
+    if manager is None:
+        return None
+    try:
+        return manager.api_manager.get_profile(manager.api_manager.active_profile)
+    except ApiProfileError:
+        return None
 
 
 def _build_system_prompt(profile: _AgentProfile | str | None = None) -> str:
@@ -316,6 +333,16 @@ AGENT_HELP = (
     ".ag.func.en <名称> - 启用被禁用的工具(仅主人;全名 .ag.function.enable)\n"
     ".ag.func.dis <名称> [时长] - 禁用工具(仅主人;全名 .ag.function.disable)\n"
     "  时长如 30s/5m/1h/1d 或 30秒/5分钟/1小时/1天,裸数字为分钟,缺省=禁用至手动启用\n"
+    "API profile(仅主人;私聊执行新增/修改/删除):\n"
+    ".ag.api - 查看全部 API profile 和当前项\n"
+    ".ag.api <profile> - 立即切换 API profile\n"
+    ".ag.api.add - 私聊向导新增 profile\n"
+    ".ag.api.set <profile> [字段] - 私聊向导修改 profile\n"
+    ".ag.api.rm <profile> - 私聊确认后删除 profile\n"
+    ".ag.api.show <profile> / .ag.api.sh <profile> - 查看脱敏详情\n"
+    ".ag.api.reload / .ag.api.rl - 重新读取 api_profiles.json\n"
+    ".ag.model [完整模型名] / .ag.md [完整模型名] - 查看或切换当前模型\n"
+    "  模型名保留空格和大小写,例如 Claude Fable 5.1\n"
 )
 
 # Runtime internals are implemented in AgentRuntime; aliases preserve historical
@@ -358,8 +385,10 @@ class _Agent:
     def __init__(self) -> None:
         self.actions: Actions | None = None
         self.session_manager: _SessionManager | None = None
+        self.api_manager = ApiProfileManager.load(config.others)
         self.collectors: dict[SessionKey, _Collector] = {}
         self.sub_manager: _SubAgentManager | None = None
+        self.api_wizard: _ApiProfileWizard | None = None
         self.heartbeat_task: asyncio.Task[Any] | None = None
         self.acted = 0
 
@@ -518,8 +547,9 @@ class _Agent:
         if self.session_manager is None:
             self.actions = actions
             self.sub_manager = _SubAgentManager(self, _AgentCore)
-            self.session_manager = _SessionManager(self, actions)
+            self.session_manager = _SessionManager(self, actions, api_manager=self.api_manager)
             self.session_manager.system_core.sub_manager = self.sub_manager
+            self.api_wizard = _ApiProfileWizard(self.session_manager.api_manager)
             if config.others.get("agent_heartbeat") and self.heartbeat_task is None:
                 self.heartbeat_task = asyncio.create_task(self._heartbeat())
         if isinstance(event, GroupMessageEvent):
@@ -566,11 +596,26 @@ class _Agent:
     async def _on_private(self, event: PrivateMessageEvent) -> None:
         if event.user_id is None or event.blocked or event.is_silent:
             return
+        uid = event.user_id
+        if self.api_wizard is not None:
+            raw_input = str(event.message)
+            secret_input = self.api_wizard.expects_secret(uid) and raw_input.strip().lower() not in (
+                "back",
+                "cancel",
+                "show",
+                "skip",
+            )
+            wizard_reply = await self.api_wizard.handle_message(uid, raw_input)
+            if wizard_reply is not None:
+                if secret_input and self.actions is not None:
+                    with contextlib.suppress(Exception):
+                        await self.actions.del_msg(int(event.message_id))
+                await self._reply(event, wizard_reply.response)
+                return
         text = str(event.message).strip()
         if text.startswith((".agent", ".ag")):
             await self._cmd(event)
             return
-        uid = event.user_id
         if uid in config.owner:
             # 主人私聊:不走收集,立即处理
             await self._immediate_event(
@@ -733,7 +778,14 @@ class _Agent:
             "func.disable": "func.dis",
             "function.dis": "func.dis",
             "function.disable": "func.dis",
+            "md": "model",
         }.get(sub, sub)
+        if sub == "api" or sub.startswith("api."):
+            await self._cmd_api(event, text, parts, sub)
+            return
+        if sub == "model":
+            await self._cmd_model(event, text, parts)
+            return
         if sub in ("on", "off"):
             if gid is None:
                 await self._reply(event, "私聊自动处理始终开启,无需白名单")
@@ -902,6 +954,138 @@ class _Agent:
         else:
             # 帮助信息由 Helps 模块统一展示(.help Agent),不在本模块内自回复
             await self._reply(event, "未知的子命令。发送 .help Agent 查看模块帮助")
+
+    async def _cmd_api(self, event: MessageEvent, text: str, parts: list[str], sub: str) -> None:
+        uid = cast(int, event.user_id)
+        if uid not in config.owner:
+            await self._reply(event, "仅主人可管理 API profile")
+            return
+        if self.session_manager is None or self.api_wizard is None:
+            await self._reply(event, "Agent 尚未初始化")
+            return
+
+        manager = self.session_manager.api_manager
+        action = sub[4:] if sub.startswith("api.") else ""
+        args = parts[2:]
+        if not action and parts[2:]:
+            token = parts[2].lower()
+            if token in ("add", "set", "rm", "ls", "show", "sh", "reload", "rl", "list", "remove"):
+                action = token
+                args = parts[3:]
+            else:
+                action = "use"
+        action = "ls" if not action else action.lower()
+
+        if action in ("ls", "list"):
+            lines = ["API profiles:"]
+            for name, profile in manager.profiles.items():
+                marker = " (当前)" if name == manager.active_profile else ""
+                endpoint = profile.base_url or "(SDK 默认地址)"
+                lines.append(f"- {name}{marker}: {profile.model} | {endpoint}")
+            lines.append(f"当前 API profile: {manager.active_profile}")
+            await self._reply(event, "\n".join(lines))
+            return
+
+        if action in ("add", "set", "rm", "remove") and event.group_id is not None:
+            await self._reply(event, "API 配置向导仅能在主人私聊中使用")
+            return
+
+        if action == "add":
+            if args:
+                await self._reply(event, "请只发送 .ag.api.add，随后按向导逐项填写")
+                return
+            await self._reply(event, await self.api_wizard.start_add(uid))
+            return
+
+        if action == "set":
+            if not args:
+                await self._reply(event, "用法: .ag.api.set <profile> [字段]")
+                return
+            field_name = args[1] if len(args) > 1 else ""
+            await self._reply(event, await self.api_wizard.start_set(uid, args[0], field_name))
+            return
+
+        if action in ("rm", "remove"):
+            if not args:
+                await self._reply(event, "用法: .ag.api.rm <profile>")
+                return
+            await self._reply(event, await self.api_wizard.start_remove(uid, args[0]))
+            return
+
+        if action in ("show", "sh"):
+            if not args:
+                await self._reply(event, "用法: .ag.api.show <profile>")
+                return
+            try:
+                profile = manager.get_profile(args[0])
+            except ApiProfileError as exc:
+                await self._reply(event, repr(exc))
+                return
+            await self._reply(event, self._format_api_profile(profile))
+            return
+
+        if action in ("reload", "rl"):
+            try:
+                await manager.reload()
+            except ApiProfileError as exc:
+                await self._reply(event, f"重载失败: {exc}")
+                return
+            await self._reply(event, f"已重载 API profiles，当前为「{manager.active_profile}」")
+            return
+
+        if action == "use":
+            if not args:
+                await self._reply(event, "用法: .ag.api <profile>")
+                return
+            try:
+                profile = await manager.set_active(args[0])
+            except ApiProfileError as exc:
+                await self._reply(event, repr(exc))
+                return
+            await self._reply(event, f"已切换到 API profile「{profile.name}」，模型: {profile.model}")
+            return
+
+        await self._reply(event, f"未知的 API 子命令「{action}」")
+
+    async def _cmd_model(self, event: MessageEvent, text: str, parts: list[str]) -> None:
+        uid = cast(int, event.user_id)
+        if uid not in config.owner:
+            await self._reply(event, "仅主人可切换模型")
+            return
+        if self.session_manager is None:
+            await self._reply(event, "Agent 尚未初始化")
+            return
+        manager = self.session_manager.api_manager
+        split = text.split(None, 2)
+        if len(split) < 3:
+            profile = manager.get_profile(manager.active_profile)
+            await self._reply(event, f"当前 API profile: {profile.name}\n当前模型: {profile.model}")
+            return
+        model = split[2].strip()
+        if len(model) >= 2 and model[0] == model[-1] and model[0] in ("'", '"'):
+            model = model[1:-1]
+        try:
+            profile = await manager.set_active_model(model)
+        except ApiProfileError as exc:
+            await self._reply(event, repr(exc))
+            return
+        await self._reply(event, f"已切换 API profile「{profile.name}」的模型为: {profile.model}")
+
+    @staticmethod
+    def _format_api_profile(profile: ApiProfile) -> str:
+        data = profile.redacted_dict()
+        headers = json.dumps(data.get("headers") or {}, ensure_ascii=False, sort_keys=True)
+        return (
+            f"profile: {profile.name}\n"
+            f"base_url: {data.get('base_url') or '(SDK 默认地址)'}\n"
+            f"api_key: {data.get('api_key')}\n"
+            f"model: {data.get('model')}\n"
+            f"api_mode: {data.get('api_mode')}\n"
+            f"reasoning_effort: {data.get('reasoning_effort')}\n"
+            f"web_search: {'on' if data.get('web_search') else 'off'}\n"
+            f"native_multimodal: {'on' if data.get('native_multimodal') else 'off'}\n"
+            f"headers: {headers}"
+        )
 
     async def _reply(self, event: MessageEvent, text: str) -> None:
         await self._core_for_event(event).bot_api.send_msg(

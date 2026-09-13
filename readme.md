@@ -111,11 +111,6 @@ AI 聊天模块（`.chat`）需要在 `others` 中配置后端：
 
 ```json
 "others": {
-    "openai_key": "",
-    "openai_endpoint": "https://api.deepseek.com",
-    "openai_model": "deepseek-chat",
-    "agent_api": "chat",
-    "agent_web_search": true,
     "agent_white": {},
     "agent_profile": "cat",
     "agent_memory_limit": 500,
@@ -123,8 +118,33 @@ AI 聊天模块（`.chat`）需要在 `others` 中配置后端：
 }
 ```
 
-- `openai_*`：LLM 后端（OpenAI 兼容接口，如 DeepSeek）；`agent_api`：`chat`（当前默认，兼容性更好）或 `responses`；`agent_web_search`：是否启用服务端搜索（仅 `responses` 模式生效）；
-- `agent_reasoning_effort`：模型推理强度，默认 `low`；可设为 `none` / `low` / `medium` / `high` 等模型支持的值；
+LLM 连接配置保存在 `api_profiles.json`，支持多个 OpenAI 兼容服务商和精确模型名：
+
+```json
+{
+  "version": 1,
+  "active_profile": "default",
+  "profiles": {
+    "default": {
+      "base_url": "https://api.deepseek.com",
+      "api_key": "",
+      "model": "deepseek-chat",
+      "api_mode": "chat",
+      "reasoning_effort": "low",
+      "web_search": true,
+      "native_multimodal": true,
+      "headers": {}
+    }
+  }
+}
+```
+
+旧的 `openai_key` / `openai_endpoint` / `openai_model` / `agent_api` / `agent_reasoning_effort` / `agent_web_search` / `agent_native_multimodal` 会在 Agent 加载时自动迁移到 `default` profile，并从 `config.json` 删除旧键。
+
+- `base_url`：OpenAI 兼容 API 地址；留空使用 SDK 默认地址；`api_key`：服务商密钥；
+- `model`：原样传给 API，支持 `Claude Fable 5.1` 这类包含空格的名称；
+- `api_mode`：`chat` 或 `responses`；`reasoning_effort`：模型推理强度；
+- `web_search`：Responses 模式下的服务端搜索；`native_multimodal`：是否把用户图片作为原生图片输入；
 - `agent_profile_switch_summary`：切换人设前是否归档全部 Main 上下文，默认 `true`；`agent_profile_switch_keep_turns` 控制保留多少轮原文，默认 6；长历史分块大小和最终摘要上限分别由 `agent_profile_summary_chunk_chars`、`agent_profile_summary_max_tokens` 控制；
 
 ```json
@@ -134,7 +154,6 @@ AI 聊天模块（`.chat`）需要在 `others` 中配置后端：
 "agent_profile_summary_max_tokens": 3000
 ```
 
-- `agent_native_multimodal`：原生多模态，默认 `true`。开启后用户消息中的图片由 bot 本地下载并转为 base64 data URI，再按当前 API 以 Chat Completions `image_url` 或 Responses `input_image` 格式发给模型，无需 `read_image` 工具；下载失败会回退为文本事件；不支持图片输入的提供方请设为 `false`；
 - `agent_content_*`：大型工具结果自动保存到 `temps/agent_content/`，模型通过 `content_search` / `content_read` 检索完整内容；默认保留 7 天、单上下文最多 300 条、全局最多 512 MB，启动时清理并按写入惰性回收；
 
 ```json
@@ -177,6 +196,21 @@ Agent 命令（支持点号/空格两种写法；简写 `ag`=agent、`pf`=profil
 .agent.context.clear          # 清空上下文历史（仅主人）
 .agent.context.summary <内容> # 用总结替换上下文历史（仅主人）
 ```
+
+API profile 命令（仅主人；新增、修改、删除必须在私聊中执行）：
+
+```
+.ag.api                       # 查看 profile 和当前项
+.ag.api <profile>             # 立即切换服务商和该 profile 的模型
+.ag.api.add                   # 启动询问式新增向导
+.ag.api.set <profile> [字段]  # 启动询问式修改向导
+.ag.api.rm <profile>          # 确认后删除
+.ag.api.show <profile>        # 查看脱敏详情(.ag.api.sh)
+.ag.api.reload                # 重载 api_profiles.json(.ag.api.rl)
+.ag.model [完整模型名]         # 查看或切换当前模型(.ag.md)
+```
+
+向导支持 `back`、`skip`、`show`、`cancel`、`confirm`。API Key 只在主人私聊中录入，不会回显到日志或状态输出。
 
 Agent 内置能力：人设切换（bot 工具 `switch_profile` 与命令 `.agent.profile` 同一入口）、上下文总结（bot 工具 `summary` 与命令 `.agent.context.summary` 同一入口）、RAG 长期记忆（本地 BGE 向量检索，`mem_add`/`mem_query`/`mem_list`/`mem_del`，相关记忆自动注入）、调用其他功能模块（`run_module`/`list_modules`/`get_module_source`，模块输出以段 JSON 移交 Agent 决定是否转发）。
 

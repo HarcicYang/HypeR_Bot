@@ -19,9 +19,9 @@ from hyperot import configurator, hyperogger, segments
 from hyperot.events import *
 from hyperot.listener import Actions
 from hyperot.protocol.builder import OneBotEventBuilder, OneBotJsonMessageBuilder
-from openai import AsyncOpenAI
 
 import ModuleClass
+from modules.AgentRuntime.api_profiles import ApiProfileManager, ApiRuntime
 from modules.AgentRuntime.capture import CaptureActions as _CaptureActions
 from modules.AgentRuntime.dsml import parse_embedded_tool_calls as _parse_embedded_tool_calls
 from modules.AgentRuntime.event_text import event_text as _event_text
@@ -54,7 +54,6 @@ logger.set_level(config.log_level)
 
 _concurrency_limit: int = int(config.others.get("agent_max_concurrency") or 0)
 _semaphore: asyncio.Semaphore | None = None
-_OPENAI_TRANSPORT_HEADERS = {"User-Agent": ""}
 
 # Google 官方文档给出的占位签名,用于历史消息兜底
 # https://ai.google.dev/gemini-api/docs/thought-signatures
@@ -177,9 +176,7 @@ class AgentCore:
     def __init__(
             self,
             bot_api: Actions,
-            key: str,
-            model: str,
-            base_url: str = "",
+            api_manager: ApiProfileManager,
             system_prompt: str | None = None,
             name: str = "main",
             history_path: str = HISTORY_PATH,
@@ -193,9 +190,12 @@ class AgentCore:
             shared_memory: Any = None,
     ) -> None:
         self.bot_api = bot_api
-        self.model = model
+        self.api_manager = api_manager
+        runtime = api_manager.snapshot()
+        self._api_runtime: ApiRuntime = runtime
         self.name = name
         self.role: Literal["main", "sub", "system"] = role or ("main" if name == "main" else "sub")
+        self._set_api_runtime_attrs(runtime)
         self.session_key = session_key
         self.session_manager = session_manager
         self._base_prompt = system_prompt
@@ -216,10 +216,6 @@ class AgentCore:
                 # }
             }
         }
-        if base_url:
-            self._oai = AsyncOpenAI(api_key=key, base_url=base_url, default_headers=_OPENAI_TRANSPORT_HEADERS)
-        else:
-            self._oai = AsyncOpenAI(api_key=key, default_headers=_OPENAI_TRANSPORT_HEADERS)
         self.history: list[Any] = [
             {"role": "system", "content": self.system_prompt.replace("[ulist]", str(config.owner))}
         ]
@@ -289,10 +285,7 @@ class AgentCore:
         self._state_lock = asyncio.Lock()
         self._idle_event = asyncio.Event()
         self._idle_event.set()
-        self.api_mode = cast(str, config.others.get("agent_api") or "chat")
-        self.reasoning_effort = str(config.others.get("agent_reasoning_effort") or "low")
-        self.web_search = self.role != "system" and bool(config.others.get("agent_web_search", True))
-        self.native_multimodal = self.role != "system" and bool(config.others.get("agent_native_multimodal", True))
+        self._apply_api_runtime(runtime, refresh_prompt=False)
 
     # -- runtime 接口(供工具经 ToolContext.runtime 调用) --
 
@@ -331,7 +324,12 @@ class AgentCore:
 
     def _apply_profile_prompt(self, profile: _AgentProfile) -> None:
         """把指定人设写入 system_prompt 与 history 的第一条 system 消息(不落盘)。"""
-        self.system_prompt = _build_system_prompt(profile)
+        self.system_prompt = _build_system_prompt(
+            profile,
+            api_mode=self.api_mode,
+            web_search=self.web_search,
+            native_multimodal=self.native_multimodal,
+        )
         new_content = self.system_prompt.replace("[ulist]", str(config.owner))
         for i, m in enumerate(self.history):
             if isinstance(m, dict) and m.get("role") == "system":
@@ -1271,10 +1269,35 @@ class AgentCore:
 
     # -- 工具状态刷新(禁用/启用后,主/子核心的 schema 与 system prompt 保持一致) --
 
+    def _set_api_runtime_attrs(self, runtime: ApiRuntime) -> None:
+        profile = runtime.profile
+        self._api_runtime = runtime
+        self._api_fingerprint = runtime.fingerprint
+        self._oai = runtime.client
+        self.model = profile.model
+        self.api_mode = profile.api_mode
+        self.reasoning_effort = profile.reasoning_effort
+        self.web_search = self.role != "system" and profile.web_search
+        self.native_multimodal = self.role != "system" and profile.native_multimodal
+        self._google_endpoint_cache: bool | None = None
+
+    def _apply_api_runtime(self, runtime: ApiRuntime, *, refresh_prompt: bool = True) -> None:
+        changed = runtime.fingerprint != getattr(self, "_api_fingerprint", None)
+        self._set_api_runtime_attrs(runtime)
+        if changed and refresh_prompt and hasattr(self, "history"):
+            self._refresh_tools()
+
+    def _sync_api_runtime(self) -> None:
+        self._apply_api_runtime(self.api_manager.snapshot())
+
     def _build_system_prompt_for_role(self) -> str:
         """按角色重建 Main、SubAgent 或 System Context 提示词。"""
         if self.role == "main":
-            base = _build_system_prompt()
+            base = _build_system_prompt(
+                api_mode=self.api_mode,
+                web_search=self.web_search,
+                native_multimodal=self.native_multimodal,
+            )
             if self.session_key is not None:
                 base += f"\n\n# 当前上下文\n\n- 当前上下文标识：`{self.session_key.value}`。"
             return base
@@ -1298,7 +1321,7 @@ class AgentCore:
             + SUBAGENT_RULE
             + "\n\n"
             + CONTENT_RULE
-            + _web_search_note()
+            + _web_search_note(self.api_mode, self.web_search)
         )
 
     def _refresh_tools(self) -> None:
@@ -1331,8 +1354,8 @@ class AgentCore:
             self._idle_event.set()
 
     async def aclose(self) -> None:
-        """释放底层 HTTP 连接池;调用方需保证没有正在进行的处理。"""
-        await self._oai.close()
+        """Shared API clients are owned by ApiProfileManager, not individual cores."""
+        return
 
     async def _notify_execution_error(
         self,
@@ -1397,6 +1420,7 @@ class AgentCore:
         sem = _acquire_semaphore()
         if sem is not None:
             await sem.acquire()
+        self._sync_api_runtime()
         await self._ensure_profile_context()
         self._flush_notices()
         sys_msg = "如果要回复消息，唯一正确方法是调用工具"
