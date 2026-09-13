@@ -395,7 +395,7 @@ async def _preserve_large_result(
         return result
 
     source = ""
-    for key in ("url", "repo", "module", "target", "forward_id", "message_id"):
+    for key in ("url", "file_id", "file_name", "repo", "module", "target", "forward_id", "message_id"):
         if params.get(key) not in (None, ""):
             source = f"{key}={params[key]}"
             break

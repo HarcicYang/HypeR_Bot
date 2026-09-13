@@ -139,6 +139,16 @@ AI 聊天模块（`.chat`）需要在 `others` 中配置后端：
 "agent_content_cleanup_interval": 60
 ```
 
+- `agent_document_*`：QQ 文件与文档阅读限制；默认单文件 50 MB、压缩包解压上限 100 MB、单文档最多提取 1000 万字符，扫描版 PDF 默认取前 5 页交给视觉模型；
+
+```json
+"agent_document_max_mb": 50,
+"agent_archive_max_mb": 100,
+"agent_document_max_chars": 10000000,
+"agent_document_vision_pages": 5,
+"agent_document_vision_threshold": 200
+```
+
 - `agent_white`：各群白名单（群号 → QQ 列表），白名单成员发言触发自动处理，被 @ 时无视白名单立即处理；
 - `agent_profile`：当前人设名（来自 `profiles.json`，不存在则自动生成）；`agent_memory_limit`：RAG 记忆容量上限；
 - `profiles.json` 人设条目支持 `{"prompt": "人设文本", "inject_master": true|false}`：`inject_master=true` 时在系统提示词中注入「`User_id in [ulist]` 是你的主人」，`false` 则不注入；省略时默认 `true`（兼容旧的纯文本条目格式）。

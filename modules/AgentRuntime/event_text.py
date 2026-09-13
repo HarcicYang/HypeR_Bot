@@ -21,6 +21,16 @@ def _file_name(file: Any) -> str:
     return "未知文件"
 
 
+def _file_label(file: Any) -> str:
+    name = _file_name(file)
+    if not isinstance(file, dict):
+        return name
+    file_id = file.get("id") or file.get("file_id")
+    if file_id not in (None, "", name):
+        return f"{name}(file_id: {file_id})"
+    return name
+
+
 def _message_text(message: list[Any]) -> str:
     parts: list[str] = []
     for segment in message:
@@ -29,6 +39,8 @@ def _message_text(message: list[Any]) -> str:
         segment_type = segment.get("type")
         if segment_type == "text":
             parts.append(str((segment.get("data") or {}).get("text", "")))
+        elif segment_type == "file":
+            parts.append(f"[文件: {_file_label(segment.get('data'))}]")
         else:
             parts.append(f"[{segment_type}]")
     return "".join(parts)
@@ -43,7 +55,7 @@ def _notice_text(event: dict[str, Any]) -> str:
 
     match notice_type:
         case "group_upload":
-            return f"{_user(user_id)} 上传了群文件「{_file_name(event.get('file'))}」"
+            return f"{_user(user_id)} 上传了群文件「{_file_label(event.get('file'))}」"
         case "group_admin":
             action = "被设置" if sub_type == "set" else "被取消"
             return f"{_user(user_id)} {action}群管理员{_operator(operator_id)}"
@@ -69,7 +81,7 @@ def _notice_text(event: dict[str, Any]) -> str:
         case "group_recall":
             return f"{_user(operator_id)} 撤回了{_user(user_id)} 的消息 {event.get('message_id', '')}".rstrip()
         case "friend_upload":
-            return f"{_user(user_id)} 上传了文件「{_file_name(event.get('file'))}」"
+            return f"{_user(user_id)} 上传了文件「{_file_label(event.get('file'))}」"
         case "friend_recall":
             return f"{_user(user_id)} 撤回了一条消息 {event.get('message_id', '')}".rstrip()
         case "friend_add":

@@ -288,6 +288,9 @@ def _build_system_prompt(profile: _AgentProfile | str | None = None) -> str:
 AGENT_HELP = (
     "Agent 模块(移植自 HyperAG)\n"
     "\n"
+    "文档阅读:支持 QQ 上传或链接形式的 PDF/DOCX/XLSX/PPTX/文本/JSON/CSV/HTML/ZIP;\n"
+    "上传文件后 @Agent 并说明要读取的内容即可,完整结果会保存在可检索内容库中。\n"
+    "\n"
     "群内自动处理需要白名单:白名单用户的消息触发收集,处理时混杂\n"
     "缓存消息(按时间顺序交给 Agent);没有任何白名单设置的群不缓存消息。\n"
     "白名单成员被 @ 时跳过消息收集机制,立即处理。\n"
@@ -570,8 +573,13 @@ class _Agent:
         uid = event.user_id
         if uid in config.owner:
             # 主人私聊:不走收集,立即处理
-            asyncio.create_task(
-                self._process([event.data], "private", uid, self._perm_of(uid, None), uid, event.self_id)
+            await self._immediate_event(
+                event.data,
+                "private",
+                uid,
+                self._perm_of(uid, None),
+                uid,
+                event.self_id,
             )
             return
         # 私聊不配置白名单:所有消息都走收集处理

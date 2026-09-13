@@ -36,6 +36,7 @@ CONTENT_RULE = """# 长内容读取
 - `content_read` 返回 `next_offset` 时,继续读取应把该值作为下一次 `offset`。
 - 只有元数据明确标记内容超过存储上限时,才向用户说明原文被截断。
 - 不要为了展示完整过程而机械读取全部内容;优先检索与当前目标相关的部分。
+- QQ 上传文件先用 `list_uploaded_files` 查 `file_id`,再调用 `read_uploaded_file`;网络文档使用 `read_document`。
 """
 
 MAIN_CONTEXT_RULE = """# 多上下文协作
