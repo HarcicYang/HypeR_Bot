@@ -54,6 +54,7 @@ logger.set_level(config.log_level)
 
 _concurrency_limit: int = int(config.others.get("agent_max_concurrency") or 0)
 _semaphore: asyncio.Semaphore | None = None
+_OPENAI_TRANSPORT_HEADERS = {"User-Agent": ""}
 
 # Google 官方文档给出的占位签名,用于历史消息兜底
 # https://ai.google.dev/gemini-api/docs/thought-signatures
@@ -216,9 +217,9 @@ class AgentCore:
             }
         }
         if base_url:
-            self._oai = AsyncOpenAI(api_key=key, base_url=base_url)
+            self._oai = AsyncOpenAI(api_key=key, base_url=base_url, default_headers=_OPENAI_TRANSPORT_HEADERS)
         else:
-            self._oai = AsyncOpenAI(api_key=key)
+            self._oai = AsyncOpenAI(api_key=key, default_headers=_OPENAI_TRANSPORT_HEADERS)
         self.history: list[Any] = [
             {"role": "system", "content": self.system_prompt.replace("[ulist]", str(config.owner))}
         ]
