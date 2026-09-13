@@ -27,10 +27,14 @@ from modules.AgentRuntime.dsml import parse_embedded_tool_calls as _parse_embedd
 from modules.AgentRuntime.event_text import event_text as _event_text
 from modules.AgentRuntime.models import HISTORY_PATH, REPORT_TIMEOUT, TASKS_PATH, AgentEvent, SessionKey
 from modules.AgentRuntime.profiles import AgentProfile as _AgentProfile
+from modules.AgentRuntime.profiles import history_needs_profile_summary as _history_needs_profile_summary
 from modules.AgentRuntime.profiles import load_profiles as _runtime_load_profiles
 from modules.AgentRuntime.prompts import (
     CONTENT_RULE,
     OUTPUT_RULE,
+    PROFILE_SUMMARY_MARKER,
+    PROFILE_SUMMARY_MERGE_SYSTEM,
+    PROFILE_SUMMARY_SYSTEM,
     ROLE_PROMPT,
     SUBAGENT_RULE,
     SYSTEM_CONTEXT_PROMPT,
@@ -249,6 +253,13 @@ class AgentCore:
             self.history = data
         except (FileNotFoundError, IndexError, KeyError, json.JSONDecodeError):
             pass
+        self._profile_summary_pending = (
+            bool(config.others.get("agent_profile_switch_summary", True))
+            and self.role == "main"
+            and self.session_key is not None
+            and self._has_substantive_history()
+            and _history_needs_profile_summary(self.history_path)
+        )
         self.chat_tasks: list[str] = []
         try:
             with open(self.tasks_path, encoding="utf-8") as f:
@@ -348,6 +359,226 @@ class AgentCore:
                 lines.append(f"{role}: {content[:1200]}")
         return "\n".join(lines)
 
+    def _has_substantive_history(self) -> bool:
+        return any(
+            isinstance(message, dict)
+            and message.get("role") != "system"
+            and str(message.get("content") or "").strip()
+            for message in self.history
+        )
+
+    def _history_without_summary(self) -> tuple[list[dict[str, Any]], str]:
+        """Return raw messages without the existing summary and the summary text."""
+        markers = {
+            PROFILE_SUMMARY_MARKER,
+            "SYSTEM -- 先前消息的全部总结 --",
+            "SYSTEM -- 先前消息的所有总结 --",
+        }
+        messages = [
+            dict(message)
+            for message in self.history
+            if isinstance(message, dict) and message.get("role") != "system"
+        ]
+        if (
+            len(messages) >= 2
+            and messages[0].get("role") == "user"
+            and str(messages[0].get("content") or "").strip() in markers
+            and messages[1].get("role") == "assistant"
+        ):
+            existing = str(messages[1].get("content") or "").strip()
+            return messages[2:], existing
+        return messages, ""
+
+    @staticmethod
+    def _turns_from_messages(messages: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+        turns: list[list[dict[str, Any]]] = []
+        current: list[dict[str, Any]] = []
+        for message in messages:
+            if message.get("role") == "user":
+                if current:
+                    turns.append(current)
+                current = [message]
+            elif current:
+                current.append(message)
+        if current:
+            turns.append(current)
+        return turns
+
+    def _summary_message_text(self, message: dict[str, Any]) -> str:
+        role = str(message.get("role") or "unknown")
+        content = message.get("content")
+        text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+        if role == "assistant" and message.get("tool_calls"):
+            names = []
+            for call in message.get("tool_calls") or []:
+                function = call.get("function") if isinstance(call, dict) else None
+                if isinstance(function, dict):
+                    names.append(str(function.get("name") or "?"))
+            if names:
+                text = (text + "\n" if text else "") + "工具调用: " + ", ".join(names)
+        elif role == "tool":
+            text = f"工具 {message.get('name') or '?'} 返回: {text}"
+        return f"{role}: {self._short_text(text, 4000)}"
+
+    def _profile_summary_chunks(self, messages: list[dict[str, Any]]) -> list[str]:
+        max_chars = max(2000, int(config.others.get("agent_profile_summary_chunk_chars") or 24000))
+        chunks: list[str] = []
+        current: list[str] = []
+        current_chars = 0
+        for message in messages:
+            block = self._summary_message_text(message)
+            if len(block) > max_chars:
+                block = block[:max_chars]
+            if current and current_chars + len(block) + 1 > max_chars:
+                chunks.append("\n".join(current))
+                current = []
+                current_chars = 0
+            current.append(block)
+            current_chars += len(block) + 1
+        if current:
+            chunks.append("\n".join(current))
+        return chunks
+
+    async def _summary_completion(self, system_prompt: str, text: str, max_tokens: int) -> str:
+        """Run one text-only summary request through the configured API mode."""
+        if self.api_mode == "responses":
+            response = await asyncio.wait_for(
+                self._oai.responses.create(
+                    model=self.model,
+                    input=cast(
+                        Any,
+                        [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": text},
+                        ],
+                    ),
+                    max_output_tokens=max_tokens,
+                ),
+                timeout=90,
+            )
+            result = str(getattr(response, "output_text", "") or "").strip()
+            if result:
+                return result
+            parts: list[str] = []
+            for item in getattr(response, "output", []) or []:
+                if getattr(item, "type", "") != "message":
+                    continue
+                for part in getattr(item, "content", []) or []:
+                    part_text = getattr(part, "text", "")
+                    if part_text:
+                        parts.append(str(part_text))
+            return "".join(parts).strip()
+
+        response = await asyncio.wait_for(
+            self._oai.chat.completions.create(
+                model=self.model,
+                messages=cast(
+                    Any,
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": text},
+                    ],
+                ),
+                temperature=0.2,
+                max_tokens=max_tokens,
+                extra_body=self.extra,
+            ),
+            timeout=90,
+        )
+        return str(response.choices[0].message.content or "").strip()
+
+    async def _generate_profile_switch_summary(
+        self,
+        messages: list[dict[str, Any]],
+        existing_summary: str,
+    ) -> str:
+        """Summarize a profile switch prefix in chunks, then merge the partials."""
+        chunks = self._profile_summary_chunks(messages)
+        if not chunks:
+            return existing_summary or "（无历史内容）"
+        max_tokens = max(500, int(config.others.get("agent_profile_summary_max_tokens") or 3000))
+        try:
+            partials: list[str] = []
+            for index, chunk in enumerate(chunks, start=1):
+                partial = await self._summary_completion(
+                    PROFILE_SUMMARY_SYSTEM,
+                    f"这是第 {index}/{len(chunks)} 段记录:\n\n{chunk}",
+                    min(1500, max_tokens),
+                )
+                if partial:
+                    partials.append(partial)
+            if len(partials) == 1 and not existing_summary:
+                return partials[0]
+            merge_parts: list[str] = []
+            if existing_summary:
+                merge_parts.append("## 已有状态\n" + existing_summary)
+            merge_parts.extend(f"## 新增分段摘要 {index}\n{partial}" for index, partial in enumerate(partials, start=1))
+            if not merge_parts:
+                return "（无历史内容）"
+            merged = await self._summary_completion(
+                PROFILE_SUMMARY_MERGE_SYSTEM,
+                "\n\n".join(merge_parts),
+                max_tokens,
+            )
+            return merged or "（无历史内容）"
+        except Exception:
+            logger.warning("人设切换总结失败,降级为原文摘录: " + traceback.format_exc())
+            return self._fallback_summary("\n\n".join(chunks))
+
+    async def _prepare_profile_switch_history(self) -> bool:
+        """Archive old profile context while retaining the most recent raw turns."""
+        if self.role != "main":
+            return False
+        keep_turns = max(0, int(config.others.get("agent_profile_switch_keep_turns") or 6))
+        messages, existing_summary = self._history_without_summary()
+        turns = self._turns_from_messages(messages)
+        if not turns:
+            self._profile_summary_pending = False
+            return False
+
+        prefix_turns: list[list[dict[str, Any]]]
+        tail_turns: list[list[dict[str, Any]]]
+        if keep_turns > 0 and len(turns) > keep_turns:
+            prefix_turns = turns[:-keep_turns]
+            tail_turns = turns[-keep_turns:]
+        elif keep_turns > 0:
+            prefix_turns = []
+            tail_turns = turns
+        else:
+            prefix_turns = turns
+            tail_turns = []
+
+        prefix_messages = [message for turn in prefix_turns for message in turn]
+        if not prefix_messages:
+            self._profile_summary_pending = False
+            return False
+
+        summary = await self._generate_profile_switch_summary(prefix_messages, existing_summary)
+        new_history: list[dict[str, Any]] = [
+            {"role": "system", "content": self.system_prompt.replace("[ulist]", str(config.owner))},
+            {"role": "user", "content": PROFILE_SUMMARY_MARKER},
+            {"role": "assistant", "content": summary},
+        ]
+        for turn in tail_turns:
+            new_history.extend(dict(message) for message in turn)
+        self.history = new_history
+        self._profile_summary_pending = False
+        return True
+
+    async def _ensure_profile_context(self) -> None:
+        """Lazily summarize history that predates the last global profile switch."""
+        if not self._profile_summary_pending:
+            return
+        try:
+            summarized = await self._prepare_profile_switch_history()
+            if summarized:
+                logger.info(f"{self.name} 已完成人设切换前的上下文归档")
+            await self.save()
+        except Exception:
+            logger.error("人设切换上下文归档失败: " + traceback.format_exc())
+        finally:
+            self._profile_summary_pending = False
+
     def _fallback_summary(self, text: str) -> str:
         lines = text.splitlines()
         tail = lines[-120:]
@@ -359,27 +590,15 @@ class AgentCore:
         if not text.strip():
             return "（当前无对话历史）"
         try:
-            resp = await asyncio.wait_for(
-                self._oai.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "你是对话上下文压缩器。请把下面的QQ机器人聊天历史压缩为一段简洁中文摘要，"
-                                "保留关键话题、事件、人物关系、未完成任务与需要跟进的事项。"
-                                "不要寒暄，直接输出摘要。"
-                            ),
-                        },
-                        {"role": "user", "content": text[-16000:]},
-                    ],
-                    temperature=0.2,
-                    max_tokens=2000,
-                    extra_body=self.extra
+            summary = await self._summary_completion(
+                (
+                    "你是对话上下文压缩器。请把下面的QQ机器人聊天历史压缩为一段简洁中文摘要，"
+                    "保留关键话题、事件、人物关系、未完成任务与需要跟进的事项。"
+                    "不要寒暄，直接输出摘要。"
                 ),
-                timeout=90,
+                text[-int(config.others.get("agent_summary_input_chars") or 60000) :],
+                2000,
             )
-            summary = (resp.choices[0].message.content or "").strip()
             if summary:
                 return summary
         except Exception:
@@ -1177,6 +1396,7 @@ class AgentCore:
         sem = _acquire_semaphore()
         if sem is not None:
             await sem.acquire()
+        await self._ensure_profile_context()
         self._flush_notices()
         sys_msg = "如果要回复消息，唯一正确方法是调用工具"
         start_time = time.time()

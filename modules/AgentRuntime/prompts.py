@@ -39,6 +39,49 @@ CONTENT_RULE = """# 长内容读取
 - QQ 上传文件先用 `list_uploaded_files` 查 `file_id`,再调用 `read_uploaded_file`;网络文档使用 `read_document`。
 """
 
+PROFILE_SUMMARY_MARKER = "SYSTEM -- 人设切换前的上下文状态 --"
+
+PROFILE_SUMMARY_SYSTEM = """你是对话上下文归档器。请把输入记录整理成与人设无关的事实性状态，供机器人在切换人设后继续工作。
+
+重点保留:
+- 人物身份、关系和称呼
+- 用户偏好、禁忌、长期要求
+- 已确认的事实、决定和约定
+- 未完成任务、承诺、待回复事项
+- 最近讨论的话题和下一步
+
+规则:
+- 删除角色语气、口癖、表演性表达和寒暄，不要模仿原人设。
+- 明确区分用户陈述、机器人承诺和不确定信息。
+- 保留日期、编号、URL、文件名、代码标识等关键精确信息。
+- 不补全记录中没有的信息，不推测。
+- 没有信息的分类写“无”。
+
+按以下 Markdown 结构输出:
+## 人物与关系
+## 用户偏好与要求
+## 已确认事实
+## 共同决定
+## 未完成任务与承诺
+## 最近话题与下一步"""
+
+PROFILE_SUMMARY_MERGE_SYSTEM = """你是对话上下文归档器。请合并“已有状态”和“新增分段摘要”，生成一份去重、无冲突的完整状态。
+
+规则:
+- 保留人物关系、偏好、事实、决定、承诺、任务和近期话题。
+- 新信息与旧信息冲突时，以时间更晚的新信息为准，并明确记录变化。
+- 不添加记录中没有的信息。
+- 删除角色语气、口癖和重复内容。
+- 没有信息的分类写“无”。
+
+按以下 Markdown 结构输出:
+## 人物与关系
+## 用户偏好与要求
+## 已确认事实
+## 共同决定
+## 未完成任务与承诺
+## 最近话题与下一步"""
+
 MAIN_CONTEXT_RULE = """# 多上下文协作
 
 - 当前群聊或私聊拥有独立上下文；不要假设你自动看见其他会话的历史。
@@ -59,7 +102,7 @@ SYSTEM_CONTEXT_PROMPT = """# System Context
 - 使用 `context_send`、`context_request`、`context_reply` 与 Main 上下文通信。
 - 只能调用已暴露的上下文管理工具；不得尝试发送 QQ 消息、执行模块、运行代码或调用未暴露工具。
 - 每个请求都带来源上下文；处理结果应定向返回来源，不得无目标广播。
-- 每个 `system_request` 都携带 `request_id`；处理完成后必须调用 `sys_ack(request_id, 结果内容)` 把结果(成功或失败)回传给发起用户，不要用 `context_send` 代替。
+- 每个 `system_request` 都携带 `request_id`；处理完成后用 `sys_ack(request_id, 结果内容)` 回传。若请求说明某个工具会自动回调，则不要重复调用 `sys_ack`。
 
 {content}
 
@@ -229,6 +272,9 @@ __all__ = [
     "MAIN_CONTEXT_RULE",
     "MASTER_RULE",
     "OUTPUT_RULE",
+    "PROFILE_SUMMARY_MARKER",
+    "PROFILE_SUMMARY_MERGE_SYSTEM",
+    "PROFILE_SUMMARY_SYSTEM",
     "ROLE_PROMPT",
     "SUBAGENT_RULE",
     "SYSTEM_CONTEXT_PROMPT",

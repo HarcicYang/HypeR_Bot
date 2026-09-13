@@ -125,6 +125,15 @@ AI 聊天模块（`.chat`）需要在 `others` 中配置后端：
 
 - `openai_*`：LLM 后端（OpenAI 兼容接口，如 DeepSeek）；`agent_api`：`chat`（当前默认，兼容性更好）或 `responses`；`agent_web_search`：是否启用服务端搜索（仅 `responses` 模式生效）；
 - `agent_reasoning_effort`：模型推理强度，默认 `low`；可设为 `none` / `low` / `medium` / `high` 等模型支持的值；
+- `agent_profile_switch_summary`：切换人设前是否归档全部 Main 上下文，默认 `true`；`agent_profile_switch_keep_turns` 控制保留多少轮原文，默认 6；长历史分块大小和最终摘要上限分别由 `agent_profile_summary_chunk_chars`、`agent_profile_summary_max_tokens` 控制；
+
+```json
+"agent_profile_switch_summary": true,
+"agent_profile_switch_keep_turns": 6,
+"agent_profile_summary_chunk_chars": 24000,
+"agent_profile_summary_max_tokens": 3000
+```
+
 - `agent_native_multimodal`：原生多模态，默认 `true`。开启后用户消息中的图片由 bot 本地下载并转为 base64 data URI，再按当前 API 以 Chat Completions `image_url` 或 Responses `input_image` 格式发给模型，无需 `read_image` 工具；下载失败会回退为文本事件；不支持图片输入的提供方请设为 `false`；
 - `agent_content_*`：大型工具结果自动保存到 `temps/agent_content/`，模型通过 `content_search` / `content_read` 检索完整内容；默认保留 7 天、单上下文最多 300 条、全局最多 512 MB，启动时清理并按写入惰性回收；
 

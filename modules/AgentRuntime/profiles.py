@@ -3,11 +3,15 @@
 import contextlib
 import dataclasses
 import json
+import os
+import time
+from typing import Any
 
 from hyperot import configurator
 
 config = configurator.BotConfig.get("hyper-bot")
 PROFILES_PATH = "./profiles.json"
+PROFILE_SWITCH_PATH = "./temps/agent_profile_switch.json"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -58,3 +62,37 @@ def load_profiles(default_prompt: str) -> dict[str, AgentProfile]:
 
 def current_profile_name() -> str:
     return str(config.others.get("agent_profile") or "cat")
+
+
+def mark_profile_switch(name: str) -> dict[str, Any]:
+    """Persist the last global profile switch timestamp."""
+    data = {"profile": str(name), "switched_at": time.time()}
+    directory = os.path.dirname(PROFILE_SWITCH_PATH)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    tmp = PROFILE_SWITCH_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=2)
+    os.replace(tmp, PROFILE_SWITCH_PATH)
+    return data
+
+
+def load_profile_switch() -> dict[str, Any] | None:
+    try:
+        with open(PROFILE_SWITCH_PATH, encoding="utf-8") as file:
+            data = json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def history_needs_profile_summary(history_path: str) -> bool:
+    """Return whether a Main history predates the last global profile switch."""
+    state = load_profile_switch()
+    if state is None or not os.path.isfile(history_path):
+        return False
+    try:
+        switched_at = float(state.get("switched_at") or 0)
+        return os.path.getmtime(history_path) < switched_at
+    except OSError:
+        return False

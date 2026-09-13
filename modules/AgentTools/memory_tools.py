@@ -25,7 +25,7 @@ class MemoryTools(AgentToolBase):
         system_visible=True,
     )
     async def switch_profile(self, ctx: ToolContext, name: str) -> str:
-        """切换到 profiles.json 中的指定人设；切换前自动总结当前上下文；与命令 `.agent.profile <名称>` 同效，仅 bot_owner 可用"""
+        """全局切换人设；切换前归档已加载 Main 上下文并保留最近原文，仅 bot_owner 可用。"""
         return await ctx.runtime.switch_profile(name)
 
     @tool(group="memory")

@@ -305,7 +305,7 @@ AGENT_HELP = (
     ".agent.off [QQ号或@用户] - 移出当前群白名单;指定其他用户需 any_admin\n"
     ".agent.status - 查看当前群白名单状态\n"
     ".agent.profile - 查看可用人设(来自 profiles.json)\n"
-    ".agent.profile <名称> - 请求 System Context 全局切换人设(仅主人)\n"
+    ".agent.profile <名称> - 全局切换人设并归档各 Main 上下文(仅主人)\n"
     ".agent.profile.add <名称> <内容> - 添加/更新人设(仅主人,内容可含空格)\n"
     ".agent.profile.remove <名称> - 删除人设(仅主人)\n"
     ".agent.profile.master <名称> [on/off] - 查看/设置该人设是否注入主人设定(设置仅主人,简写 ma)\n"

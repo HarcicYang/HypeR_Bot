@@ -22,7 +22,7 @@ from modules.AgentRuntime.models import (
     SessionKey,
     SysRequest,
 )
-from modules.AgentRuntime.profiles import AgentProfile, load_profiles
+from modules.AgentRuntime.profiles import AgentProfile, load_profiles, mark_profile_switch
 from modules.AgentRuntime.prompts import ROLE_PROMPT
 
 config = configurator.BotConfig.get("hyper-bot")
@@ -373,8 +373,8 @@ class SessionManager:
                 "source": source.value,
                 "name": name,
                 "instruction": (
-                    "调用 switch_profile 执行全局人设切换，完成后调用 sys_ack(request_id, 结果说明) "
-                    "回调给来源用户(成功或失败都要回调，由代码兜底，勿重复调用)。"
+                    "调用 switch_profile 执行全局人设切换。该工具会按 request_id 自动回调结果，"
+                    "不要再调用 sys_ack，也不要手动重复通知来源用户。"
                 ),
             },
         )
@@ -393,19 +393,35 @@ class SessionManager:
         profile = profiles.get(name)
         if profile is None:
             return f"人设「{name}」不存在,可用: {', '.join(profiles.keys()) or '(无)'}"
+        summary_enabled = bool(config.others.get("agent_profile_switch_summary", True))
         config.others["agent_profile"] = name
         _save_profile_name_to_config(name)
-        for core in self.cores.values():
+        if summary_enabled:
+            mark_profile_switch(name)
+
+        summarized = 0
+        for core in list(self.cores.values()):
             if core.role != "main":
                 continue
             await core._acquire_processing_slot()
             try:
+                if summary_enabled:
+                    try:
+                        if await core._prepare_profile_switch_history():
+                            summarized += 1
+                    except Exception:
+                        logger.error(f"归档 {core.name} 的切换前上下文失败: " + traceback.format_exc())
                 core._apply_profile_prompt(profile)
                 core._refresh_tools()
                 await core.save()
             finally:
                 await core._release_processing_slot()
-        return f"已切换到人设「{name}」并刷新全部 Main 上下文"
+        suffix = (
+            f"，已归档 {summarized} 个已加载上下文；未加载上下文将在下次使用时归档"
+            if summary_enabled
+            else ""
+        )
+        return f"已切换到人设「{name}」并刷新全部 Main 上下文{suffix}"
 
     async def request_summary(
         self,
