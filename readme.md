@@ -34,6 +34,7 @@ HypeR Bot是一个适配 OneBot 和 Milky 协议并支持拓展自定义协议�
 
 ```shell
 uv sync          # 安装运行时与开发依赖到 .venv
+uv run patchright install chromium  # 安装网页阅读使用的 Chromium
 uv run python main.py
 ```
 

@@ -25,6 +25,7 @@ dependencies = [
     "ucfgr",
     "psutil",
     "ddgs>=9.16.0",
+    "patchright>=1.62.3",
 ]
 
 [dependency-groups]
