@@ -67,7 +67,7 @@ class InfoTools(AgentToolBase):
         except Exception as e:
             return f"（二维码扫描失败: {e}）"
 
-    @tool(group="info")
+    @tool(group="info", preserve=True)
     async def read_image(self, ctx: ToolContext, url: str, goal: str = "描述图片内容") -> str:
         """阅读图片并返回文字结果。
 

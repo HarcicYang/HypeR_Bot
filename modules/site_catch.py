@@ -173,7 +173,7 @@ class Catcher:
         """真实渲染后提取网页正文文本,返回 (标题, 正文)。
 
         与 catch 共用共享浏览器与加载策略;正文优先取 main/article/[role=main] 容器,
-        兜底 document.body.innerText(上限 20000 字符),并压缩多余空白。
+        兜底 document.body.innerText,完整交给上层内容仓库处理。
         """
         self.context = await self._get_context()
 
@@ -186,7 +186,7 @@ class Catcher:
                     """() => {
                         const main = document.querySelector('main, article, [role="main"]');
                         const el = main || document.body;
-                        return (el.innerText || '').slice(0, 20000);
+                        return el.innerText || '';
                     }"""
                 )
                 return title, text

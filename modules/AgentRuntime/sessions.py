@@ -12,6 +12,7 @@ from typing import Any, Literal, cast
 from hyperot import common, configurator, hyperogger, segments
 from hyperot.listener import Actions
 
+from modules.AgentRuntime.content_store import cleanup_all
 from modules.AgentRuntime.core import AgentCore
 from modules.AgentRuntime.models import (
     HISTORY_PATH,
@@ -67,11 +68,15 @@ class SessionManager:
     async def _idle_cleanup_loop(self) -> None:
         """周期扫描,关闭并移除长期空闲的 Main Core;history 已落盘,重建无损。"""
         while True:
-            await asyncio.sleep(1800)
+            try:
+                await asyncio.to_thread(cleanup_all)
+            except Exception:
+                logger.error("内容仓库清理失败: " + traceback.format_exc())
             try:
                 await self._evict_idle_cores()
             except Exception:
                 logger.error("空闲上下文清理失败: " + traceback.format_exc())
+            await asyncio.sleep(1800)
 
     async def _evict_idle_cores(self) -> None:
         idle_hours = float(config.others.get("agent_core_idle_hours") or 12)

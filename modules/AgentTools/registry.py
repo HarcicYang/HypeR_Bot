@@ -7,6 +7,7 @@
 - 异常照搬 HyperAG:工具内异常捕获后 `repr(e)` 作为 tool result 回填,让模型自纠
 """
 
+import asyncio
 import dataclasses
 import inspect
 import json
@@ -14,9 +15,11 @@ import os
 import time
 import types as _types
 from collections.abc import Callable
-from typing import Any, Union, cast, get_args, get_origin, get_type_hints, TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal, Union, cast, get_args, get_origin, get_type_hints
 
 from hyperot import common, configurator, segments
+
+from modules.AgentRuntime.content_store import INLINE_CHARS, ContentStore
 
 if TYPE_CHECKING:
     from hyperot.listener import Actions
@@ -147,6 +150,7 @@ class ToolRegistration:
     main_visible: bool = True  # 主 Agent 可见
     sub_visible: bool = True  # SubAgent 可见
     system_visible: bool = False  # System Context 可见(默认最小权限工具集)
+    preserve: bool = False  # 大结果自动保存全文并返回 content_id
 
     def visible_for(self, role: str) -> bool:
         if role == "sub":
@@ -293,6 +297,7 @@ class ToolRegistry:
         main_visible: bool = True,
         sub_visible: bool = True,
         system_visible: bool = False,
+        preserve: bool = False,
     ) -> None:
         hints = get_type_hints(method)
         sig = inspect.signature(method)
@@ -321,6 +326,7 @@ class ToolRegistry:
             main_visible=main_visible,
             sub_visible=sub_visible,
             system_visible=system_visible,
+            preserve=preserve,
         )
 
     @classmethod
@@ -358,9 +364,67 @@ class ToolRegistry:
         except ToolParamError as e:
             return repr(e)
         result = await reg.method(ctx, **kwargs)
+        if reg.preserve:
+            result = await _preserve_large_result(reg, params, ctx, result)
         if reg.release:
             ctx.release_requested = True
         return result
+
+
+def _content_scope(ctx: "ToolContext") -> str:
+    runtime = ctx.runtime
+    session_key = getattr(runtime, "session_key", None)
+    scope = getattr(session_key, "value", None) or getattr(runtime, "name", None) or "default"
+    return str(scope)
+
+
+async def _preserve_large_result(
+    reg: ToolRegistration,
+    params: dict[str, Any],
+    ctx: "ToolContext",
+    result: Any,
+) -> Any:
+    """Save oversized output and return a preview with retrieval instructions."""
+    if isinstance(result, str):
+        text = result
+    elif isinstance(result, (dict, list)):
+        text = json.dumps(result, ensure_ascii=False)
+    else:
+        return result
+    if not ContentStore.should_preserve(text):
+        return result
+
+    source = ""
+    for key in ("url", "repo", "module", "target", "forward_id", "message_id"):
+        if params.get(key) not in (None, ""):
+            source = f"{key}={params[key]}"
+            break
+    try:
+        store = ContentStore(_content_scope(ctx))
+        meta = await asyncio.to_thread(
+            store.put,
+            text,
+            kind=reg.group,
+            source=source,
+            title=reg.name,
+            metadata={
+                "tool": reg.name,
+                "params": {str(key): str(value)[:200] for key, value in params.items()},
+            },
+        )
+    except Exception as exc:
+        return text[:INLINE_CHARS] + f"\n...(内容保存失败，已截断: {exc!r})"
+
+    warning = "（内容本身超过单条存储上限，已截断）" if meta.get("truncated") else ""
+    return (
+        f"[完整内容已保存]\n"
+        f"content_id: {meta['content_id']}\n"
+        f"来源: {reg.name} | 类型: {reg.group} | 长度: {meta['chars']} 字符{warning}\n"
+        f"预览:\n{ContentStore.preview(text)}\n\n"
+        f"需要更多内容时使用 content_search(content_id, query) 定位，"
+        f"或 content_read(content_id, offset, limit) 分段读取。"
+        f"不要仅凭预览断定原文已截断。"
+    )
 
 
 def tool(
@@ -373,6 +437,7 @@ def tool(
     main_visible: bool = True,
     sub_visible: bool = True,
     system_visible: bool = False,
+    preserve: bool = False,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         cast(Any, func).__agent_tool__ = (
@@ -385,6 +450,7 @@ def tool(
             main_visible,
             sub_visible,
             system_visible,
+            preserve,
         )
         return func
 
@@ -401,7 +467,7 @@ class AgentToolBase:
             spec = getattr(attr, "__agent_tool__", None)
             if spec is None:
                 continue
-            name, desc, perm, scenes, release, group, main_visible, sub_visible, system_visible = spec
+            name, desc, perm, scenes, release, group, main_visible, sub_visible, system_visible, preserve = spec
             ToolRegistry.register(
                 name,
                 desc,
@@ -414,6 +480,7 @@ class AgentToolBase:
                 main_visible,
                 sub_visible,
                 system_visible,
+                preserve,
             )
 
 

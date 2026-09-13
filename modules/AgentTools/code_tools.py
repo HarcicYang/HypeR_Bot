@@ -4,9 +4,9 @@
 1. bwrap(Linux 且存在):只读挂载根文件系统 + 断网 + PID 隔离 + 空文件覆盖 config.json。
    代码不能改/删任何文件、不能联网、读不到密钥。
 2. Linux 无 bwrap:子进程 + setrlimit(内存/CPU/文件大小/进程数) + 超时杀进程组。
-3. Windows:仅子进程超时 + 输出截断 + 专用工作目录(隔离显著弱化)。
+3. Windows:仅子进程超时 + 专用工作目录(隔离显著弱化)。
 
-贯穿所有层:AST 黑名单(纵深防御,非安全边界)、15s 超时、输出 ≤4000 字符截断、
+贯穿所有层:AST 黑名单(纵深防御,非安全边界)、15s 超时、
 专用工作目录 temps/agent_code/、最小环境变量(不含 GOOGLE_API_KEY 等敏感项)。
 """
 
@@ -22,7 +22,6 @@ from modules.AgentTools.registry import AgentToolBase, ToolContext, tool
 WORKDIR = "./temps/agent_code/"
 WRAPPER_NAME = "_wrapper.py"
 TIMEOUT = 15
-MAX_OUTPUT = 4000
 _MEM_LIMIT = 512 * 1024 * 1024  # RLIMIT_AS: 512MB
 _FSIZE_LIMIT = 10 * 1024 * 1024  # RLIMIT_FSIZE: 10MB
 
@@ -89,10 +88,7 @@ def _minimal_env() -> dict[str, str]:
 def _format_output(proc: subprocess.CompletedProcess[bytes]) -> str:
     out = (proc.stdout or b"").decode("utf-8", errors="replace")
     err = (proc.stderr or b"").decode("utf-8", errors="replace")
-    text = (out + err).strip() or "(无输出)"
-    if len(text) > MAX_OUTPUT:
-        text = text[:MAX_OUTPUT] + "\n...（输出过长，已截断）"
-    return text
+    return (out + err).strip() or "(无输出)"
 
 
 def _run_bwrap(bwrap: str, code: str, env: dict[str, str], workdir_abs: str) -> str:
@@ -184,7 +180,7 @@ def _execute_code(code: str) -> str:
 
 
 class CodeTools(AgentToolBase):
-    @tool(group="code")
+    @tool(group="code", preserve=True)
     async def run_python(self, ctx: ToolContext, code: str) -> str:
         """在受限沙箱中执行 Python 代码并返回文本输出，可用于计算、数据处理、文本生成等"""
         return await asyncio.to_thread(_execute_code, code)

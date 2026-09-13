@@ -29,6 +29,7 @@ from modules.AgentRuntime.models import HISTORY_PATH, REPORT_TIMEOUT, TASKS_PATH
 from modules.AgentRuntime.profiles import AgentProfile as _AgentProfile
 from modules.AgentRuntime.profiles import load_profiles as _runtime_load_profiles
 from modules.AgentRuntime.prompts import (
+    CONTENT_RULE,
     OUTPUT_RULE,
     ROLE_PROMPT,
     SUBAGENT_RULE,
@@ -700,7 +701,7 @@ class AgentCore:
         )
 
     async def get_module_source(self, module: str) -> str:
-        """返回模块类源码(截断 4000 字),供模型理解触发方式。"""
+        """返回模块类完整源码,供模型理解触发方式。"""
         cls = self._find_module(module)
         if cls is None:
             return f"模块「{module}」不存在。\n{await self.list_modules()}"
@@ -708,8 +709,7 @@ class AgentCore:
             src = inspect.getsource(cls)
         except (OSError, TypeError):
             return f"无法获取模块「{module}」源码"
-        body = src if len(src) <= 4000 else src[:4000] + "\n...(源码过长已截断)"
-        return f"模块「{module}」源码:\n{body}"
+        return f"模块「{module}」源码:\n{src}"
 
     async def resolve_forward(self, forward_id: str) -> str:
         """解析合并转发消息:每条 node 的昵称 + 内容段 JSON(参考 TestMarkDown 的 forward_solve)。"""
@@ -1059,14 +1059,27 @@ class AgentCore:
                 base += f"\n\n# 当前上下文\n\n- 当前上下文标识：`{self.session_key.value}`。"
             return base
         if self.role == "system":
-            return SYSTEM_CONTEXT_PROMPT.replace("{output}", OUTPUT_RULE).replace(
-                "{tools}", _build_tools_section(role="system")
+            return (
+                SYSTEM_CONTEXT_PROMPT.replace("{output}", OUTPUT_RULE)
+                .replace("{tools}", _build_tools_section(role="system"))
+                .replace("{content}", CONTENT_RULE)
             )
         base = self._base_prompt or ""
         tools = _build_tools_section(role="sub")
         if "{tools}" in base:
-            return base.replace("{output}", OUTPUT_RULE).replace("{tools}", tools)
-        return base + "\n\n# 可用工具\n\n" + tools + "\n\n" + OUTPUT_RULE + "\n\n" + SUBAGENT_RULE + _web_search_note()
+            return base.replace("{output}", OUTPUT_RULE).replace("{tools}", tools) + "\n\n" + CONTENT_RULE
+        return (
+            base
+            + "\n\n# 可用工具\n\n"
+            + tools
+            + "\n\n"
+            + OUTPUT_RULE
+            + "\n\n"
+            + SUBAGENT_RULE
+            + "\n\n"
+            + CONTENT_RULE
+            + _web_search_note()
+        )
 
     def _refresh_tools(self) -> None:
         """重建 tools schema 与 system prompt,并写回 history 的第一条 system。"""

@@ -116,7 +116,7 @@ class MessageTools(AgentToolBase):
         await ctx.actions.del_msg(message_id)
         return "(无返回)"
 
-    @tool(group="qq", sub_visible=False)
+    @tool(group="qq", sub_visible=False, preserve=True)
     async def get_msg(self, ctx: ToolContext, message_id: int) -> Any:
         """获取消息详情（含发送者、时间、消息段），可用于查看被提及的未收到消息。
 
@@ -124,7 +124,7 @@ class MessageTools(AgentToolBase):
         """
         return (await ctx.actions.get_msg(message_id)).raw
 
-    @tool(group="qq", sub_visible=False)
+    @tool(group="qq", sub_visible=False, preserve=True)
     async def resolve_forward(self, ctx: ToolContext, forward_id: str) -> str:
         """解析合并转发消息，返回每条消息的发送者昵称与内容（段 JSON）。
 

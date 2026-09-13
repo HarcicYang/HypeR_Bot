@@ -14,7 +14,7 @@ class ContextTools(AgentToolBase):
         """查看指定 Main 上下文状态。target 格式为 group:<群号> 或 private:<QQ号>。"""
         return await ctx.runtime.context_status(target)
 
-    @tool(group="context", sub_visible=False, system_visible=True)
+    @tool(group="context", sub_visible=False, system_visible=True, preserve=True)
     async def context_read(
         self,
         ctx: ToolContext,

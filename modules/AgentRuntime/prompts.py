@@ -29,6 +29,15 @@ SUBAGENT_RULE = """# SubAgent 通讯规则
 - 等待回复期间保持暂停,不要重复报告相同内容。
 """
 
+CONTENT_RULE = """# 长内容读取
+
+- 工具结果出现 `content_id` 时,表示完整内容已经保存,当前 `预览` 不是全文。
+- 先根据目标用 `content_search(content_id, query)` 定位相关片段,再做 `content_read`。
+- `content_read` 返回 `next_offset` 时,继续读取应把该值作为下一次 `offset`。
+- 只有元数据明确标记内容超过存储上限时,才向用户说明原文被截断。
+- 不要为了展示完整过程而机械读取全部内容;优先检索与当前目标相关的部分。
+"""
+
 MAIN_CONTEXT_RULE = """# 多上下文协作
 
 - 当前群聊或私聊拥有独立上下文；不要假设你自动看见其他会话的历史。
@@ -50,6 +59,8 @@ SYSTEM_CONTEXT_PROMPT = """# System Context
 - 只能调用已暴露的上下文管理工具；不得尝试发送 QQ 消息、执行模块、运行代码或调用未暴露工具。
 - 每个请求都带来源上下文；处理结果应定向返回来源，不得无目标广播。
 - 每个 `system_request` 都携带 `request_id`；处理完成后必须调用 `sys_ack(request_id, 结果内容)` 把结果(成功或失败)回传给发起用户，不要用 `context_send` 代替。
+
+{content}
 
 {output}
 
@@ -199,10 +210,21 @@ def build_system_prompt(profile: AgentProfile | str | None = None) -> str:
     )
     # 角色部分(人设全文)放在提示词末尾:框架规则(运行环境/强制规则/输出/工具/发言)
     # 在前,让模型优先遵循框架;人设仍由 profile 完全控制
-    return base + "\n\n" + MAIN_CONTEXT_RULE + web_search_note() + native_multimodal_note() + "\n\n" + text
+    return (
+        base
+        + "\n\n"
+        + MAIN_CONTEXT_RULE
+        + "\n\n"
+        + CONTENT_RULE
+        + web_search_note()
+        + native_multimodal_note()
+        + "\n\n"
+        + text
+    )
 
 
 __all__ = [
+    "CONTENT_RULE",
     "MAIN_CONTEXT_RULE",
     "MASTER_RULE",
     "OUTPUT_RULE",
