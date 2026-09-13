@@ -48,6 +48,21 @@ class MessageTools(AgentToolBase):
         return (await ctx.actions.send_msg(message=new_mess, user_id=user_id)).raw
 
     @tool(group="qq", sub_visible=False)
+    async def poke(self, ctx: ToolContext, user_id: int, group_id: int | None = None) -> str:
+        """戳一戳指定用户。
+
+        - user_id: 目标用户 QQ 号
+        - group_id: 在群聊中戳人时传目标群号；私聊戳人时省略
+        """
+        echo = await ctx.actions.custom.send_poke(user_id=user_id, group_id=group_id or 0)
+        ret = await common.Ret.fetch(echo)
+        if ret.status != "ok":
+            return f"戳一戳失败(status={ret.status}, retcode={ret.ret_code})"
+        if group_id is None:
+            return f"已戳一戳用户 {user_id}"
+        return f"已戳一戳群 {group_id} 中的用户 {user_id}"
+
+    @tool(group="qq", sub_visible=False)
     async def collected_send(
         self, ctx: ToolContext, message: SegmentsArg, group_id: int | None = None, user_id: int | None = None
     ) -> Any:
