@@ -1363,7 +1363,19 @@ class AgentCore:
         scene_id: int,
         error: Exception,
     ) -> None:
-        """把最终无法恢复的异常发送到当前会话。"""
+        """把最终无法恢复的异常发送到当前会话或全部 owner。"""
+        if ev_type == "system":
+            message = f"System Context 处理失败：{type(error).__name__}: {error}"
+            if self.session_manager is not None:
+                await self.session_manager.notify_owners(message)
+                return
+            try:
+                owners = list(dict.fromkeys(int(uid) for uid in config.owner if str(uid).strip()))
+                for owner_id in owners:
+                    await self.bot_api.send_msg(message=message, user_id=owner_id)
+            except Exception:
+                logger.error("发送 System Context owner 通知失败：\n" + traceback.format_exc())
+            return
         if ev_type not in ("group", "private"):
             return
         message = f"Agent Mod 不能解决的异常：{error}"
@@ -1395,15 +1407,21 @@ class AgentCore:
     ) -> None:
         await self._acquire_processing_slot()
         try:
-            await self._event_handler_with_slot(
-                event=event,
-                ev_type=ev_type,
-                scene_id=scene_id,
-                perm_group=perm_group,
-                principal_id=principal_id,
-                self_id=self_id,
-                tool_choice=tool_choice,
-            )
+            try:
+                await self._event_handler_with_slot(
+                    event=event,
+                    ev_type=ev_type,
+                    scene_id=scene_id,
+                    perm_group=perm_group,
+                    principal_id=principal_id,
+                    self_id=self_id,
+                    tool_choice=tool_choice,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                logger.error("Agent Core 最终处理异常：\n" + traceback.format_exc())
+                await self._notify_execution_error(ev_type, scene_id, error)
         finally:
             await self._release_processing_slot()
 
@@ -1431,6 +1449,7 @@ class AgentCore:
         error_retries = 0
         retry_delay = 5
         task: asyncio.Task[Any] | None = None
+        timed_out = False
         if event is None:
             ev_data: str | None = None
             query_text = ""
@@ -1484,6 +1503,7 @@ class AgentCore:
                     while not task.done():
                         if timer_ev.is_set():
                             task.cancel("请求超时")
+                            timed_out = True
                             break
                         await asyncio.sleep(0.01)
                     # 取回 task 异常:否则异常成为「never retrieved」,外层重试机制(历史修复)不会触发
@@ -1523,6 +1543,13 @@ class AgentCore:
                     logger.error(traceback.format_exc())
                     await asyncio.sleep(retry_delay)
                     retry_delay += 2
+            if timed_out and ev_type == "system":
+                logger.error("System Context 处理超时，已终止本次请求")
+                await self._notify_execution_error(
+                    ev_type,
+                    scene_id,
+                    TimeoutError("System Context 处理超时(600s)"),
+                )
         finally:
             timer_task.cancel()
             if task is not None and not task.done():

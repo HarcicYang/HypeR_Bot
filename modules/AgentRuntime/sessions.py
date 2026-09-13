@@ -315,7 +315,26 @@ class SessionManager:
         """超时兜底:System 一直未回调时给发起人一个结论。"""
         await asyncio.sleep(timeout)
         if request_id in self.sys_requests:
+            req = self.sys_requests[request_id]
+            await self.notify_owners(
+                f"System Context 请求超时\n"
+                f"request_id: {request_id}\n"
+                f"operation: {req.op}\n"
+                f"等待时间: {timeout:g}s"
+            )
             await self.ack_sys_request(request_id, f"请求处理超时(>{timeout:g}s)，未能确认完成")
+
+    async def notify_owners(self, message: str) -> None:
+        """向全部 bot owner 私信发送系统级异常通知。"""
+        owners = list(dict.fromkeys(int(uid) for uid in config.owner if str(uid).strip()))
+        if not owners:
+            logger.error("无法发送 owner 通知：config.owner 为空")
+            return
+        for owner_id in owners:
+            try:
+                await self.actions.send_msg(user_id=owner_id, message=message)
+            except Exception:
+                logger.error(f"向 owner {owner_id} 发送系统通知失败：\n" + traceback.format_exc())
 
     async def ack_sys_request(self, request_id: str, content: str) -> str:
         """按 request_id 回调结果给发起人(去重,仅首次生效)。"""
