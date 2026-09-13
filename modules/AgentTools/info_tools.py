@@ -3,7 +3,7 @@
 import asyncio
 from typing import Any, cast
 
-from hyperot import configurator
+from hyperot import common, configurator
 
 from modules.AgentTools.registry import AgentToolBase, ToolContext, tool
 
@@ -29,6 +29,36 @@ class InfoTools(AgentToolBase):
         - user_id: 目标用户 QQ 号
         """
         return (await ctx.actions.get_stranger_info(user_id)).raw
+
+    @tool(group="info")
+    async def get_group_member_info(self, ctx: ToolContext, group_id: int, user_id: int) -> Any:
+        """获取指定用户的群成员信息（昵称、群名片、角色、等级、入群时间等）。
+
+        - group_id: 目标群号
+        - user_id: 目标用户 QQ 号
+        """
+        return (await ctx.actions.get_group_member_info(group_id=group_id, user_id=user_id)).raw
+
+    @tool(group="info", preserve=True)
+    async def get_group_member_list(self, ctx: ToolContext, group_id: int) -> Any:
+        """获取指定群的全部成员信息。
+
+        - group_id: 目标群号
+        """
+        echo = await ctx.actions.custom.get_group_member_list(group_id=group_id)
+        return (await common.Ret.fetch(echo)).raw
+
+    @tool(group="info", preserve=True)
+    async def get_group_list(self, ctx: ToolContext) -> Any:
+        """获取 Bot 加入的群列表。"""
+        echo = await ctx.actions.custom.get_group_list()
+        return (await common.Ret.fetch(echo)).raw
+
+    @tool(group="info", preserve=True)
+    async def get_friend_list(self, ctx: ToolContext) -> Any:
+        """获取 Bot 的好友列表。"""
+        echo = await ctx.actions.custom.get_friend_list()
+        return (await common.Ret.fetch(echo)).raw
 
     @tool(group="info")
     async def time(self, ctx: ToolContext) -> str:
