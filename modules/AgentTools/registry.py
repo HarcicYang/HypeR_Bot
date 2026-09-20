@@ -12,6 +12,7 @@ import dataclasses
 import inspect
 import json
 import os
+import re
 import time
 import types as _types
 from collections.abc import Callable
@@ -41,11 +42,14 @@ PERM_LEVEL: dict[str, int] = {"member": 0, "whitelist": 1, "any_admin": 2, "bot_
 
 MESSAGE_SCHEMA: dict[str, Any] = {
     "type": "array",
+    "minItems": 1,
     "description": "标准消息类型，由消息段组合而成。支持 text / at / reply / image 四种消息段",
     "items": {
         "anyOf": [
             {
                 "type": "object",
+                "required": ["seg", "text"],
+                "additionalProperties": False,
                 "properties": {
                     "seg": {"type": "string", "enum": ["text"], "description": "消息段类型，必须为text"},
                     "text": {"type": "string", "description": "文本内容"},
@@ -53,6 +57,8 @@ MESSAGE_SCHEMA: dict[str, Any] = {
             },
             {
                 "type": "object",
+                "required": ["seg", "qq"],
+                "additionalProperties": False,
                 "properties": {
                     "seg": {"type": "string", "enum": ["at"], "description": "消息段类型，必须为at"},
                     "qq": {"type": "string", "description": "就是user_id，与事件上报对应"},
@@ -60,6 +66,8 @@ MESSAGE_SCHEMA: dict[str, Any] = {
             },
             {
                 "type": "object",
+                "required": ["seg", "id"],
+                "additionalProperties": False,
                 "properties": {
                     "seg": {"type": "string", "enum": ["reply"], "description": "消息段类型，必须为reply"},
                     "id": {"type": "string", "description": "就是message_id，与事件上报对应"},
@@ -68,6 +76,7 @@ MESSAGE_SCHEMA: dict[str, Any] = {
             {
                 "type": "object",
                 "required": ["seg", "file"],
+                "additionalProperties": False,
                 "properties": {
                     "seg": {"type": "string", "enum": ["image"], "description": "消息段类型，必须为image"},
                     "file": {
@@ -180,7 +189,7 @@ class ToolRegistration:
             if pname in ("self", "ctx"):
                 continue
             if pname in params:
-                kwargs[pname] = _coerce(self.hints.get(pname, Any), params[pname])
+                kwargs[pname] = _coerce(self.hints.get(pname, Any), params[pname], pname)
             elif p.default is not inspect.Parameter.empty:
                 kwargs[pname] = p.default
             else:
@@ -188,11 +197,21 @@ class ToolRegistration:
         return kwargs
 
 
-def _coerce(anno: Any, value: Any) -> Any:
+def _coerce(anno: Any, value: Any, name: str) -> Any:
     """把模型给的参数值强制转换为注解声明的类型(带注解参数已保证 required/类型)。"""
     anno = _unwrap_optional(anno)
-    if anno is int and not isinstance(value, int):
-        return int(value)
+    if anno is int:
+        if isinstance(value, bool):
+            raise ToolParamError(f"{name} 必须是整数，不能使用布尔值")
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            if value.is_integer():
+                return int(value)
+            raise ToolParamError(f"{name} 必须是整数")
+        if isinstance(value, str) and re.fullmatch(r"[+-]?\d+", value.strip()):
+            return int(value)
+        raise ToolParamError(f"{name} 必须是整数")
     if anno is str and not isinstance(value, str):
         return str(value)
     if anno is float and not isinstance(value, float):
@@ -362,7 +381,7 @@ class ToolRegistry:
         try:
             kwargs = reg.inject_params(params)
         except ToolParamError as e:
-            return repr(e)
+            return f"调用不合法：{e}"
         result = await reg.method(ctx, **kwargs)
         if reg.preserve:
             result = await _preserve_large_result(reg, params, ctx, result)

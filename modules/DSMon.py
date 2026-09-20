@@ -1,6 +1,7 @@
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from chinese_calendar import is_holiday
 from hyperot.events import *
 from typing_extensions import override
 
@@ -21,13 +22,21 @@ class Module(ModuleClass.Module[GroupMessageEvent]):
         return ModuleClass.ModuleInfo(
             is_hidden=False,
             module_name="DSMon",
-            desc="展示 DeepSeek 工作日峰谷定价时段",
+            desc="展示 DeepSeek 工作日峰谷定价时段（排除法定节假日）",
             helps="发送“梁文”或 .ds 即可",
         )
 
     @staticmethod
+    def is_statutory_holiday(day: date) -> bool:
+        """中国法定节假日判断；节假日数据未覆盖该年份时回退为普通工作日规则。"""
+        try:
+            return is_holiday(day)
+        except NotImplementedError:
+            return False
+
+    @staticmethod
     def is_peak_at(moment: datetime) -> bool:
-        if moment.weekday() >= 5:
+        if moment.weekday() >= 5 or Module.is_statutory_holiday(moment.date()):
             return False
         current_time = moment.time()
         return any(start <= current_time < end for start, end in PEAK_PERIODS)
@@ -37,9 +46,9 @@ class Module(ModuleClass.Module[GroupMessageEvent]):
 
     @staticmethod
     def get_next_peak_start(now: datetime) -> datetime:
-        for days_ahead in range(8):
+        for days_ahead in range(370):
             candidate_date = now.date() + timedelta(days=days_ahead)
-            if candidate_date.weekday() >= 5:
+            if candidate_date.weekday() >= 5 or Module.is_statutory_holiday(candidate_date):
                 continue
             for start, _ in PEAK_PERIODS:
                 candidate = datetime.combine(candidate_date, start).replace(tzinfo=now.tzinfo)
@@ -86,9 +95,7 @@ class Module(ModuleClass.Module[GroupMessageEvent]):
 
     @override
     async def handle(self):
-        if "梁文" == str(self.event.message) or str(self.event.message) == ".ds":
+        if str(self.event.message) == "梁文" or str(self.event.message) == ".ds":
             await self.actions.send_msg(
-                user_id=self.event.user_id,
-                group_id=self.event.group_id,
-                message=self.build_msg()
+                user_id=self.event.user_id, group_id=self.event.group_id, message=self.build_msg()
             )
