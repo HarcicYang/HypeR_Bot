@@ -1,6 +1,6 @@
 """网页阅读工具:先快速提取,再按需使用浏览器和视觉模型。
 
-1. HTTP(S) + Trafilatura:静态文章的快速路径
+1. HTTP(S) + Trafilatura/DOM:静态页面的快速路径与完整度召回
 2. Patchright 单次渲染:处理 JS/SPA,并在同一次导航中准备视觉截图
 3. Gemini 视觉:页面文本不足时阅读首屏
 4. jina 转写:浏览器和本地提取都失败时的最后后备
@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import ipaddress
 import logging
 import re
 import socket
 from html import unescape
+from html.parser import HTMLParser
 from typing import Any, cast
 from urllib.parse import urljoin, urlparse
 
@@ -24,6 +26,7 @@ from google.genai import types as genai_types
 from hyperot import configurator
 from hyperot.network import httpx_get
 from trafilatura import bare_extraction, extract
+from typing_extensions import override
 
 from modules.AgentTools.info_tools import GEMINI_MODEL
 from modules.AgentTools.registry import AgentToolBase, ToolContext, tool
@@ -46,6 +49,143 @@ _HTML_CONTENT_TYPES = {
     "text/plain",
 }
 _NOISE_LINE = re.compile(r"^(登录|注册|首页|主页|菜单|搜索|分享|收藏|评论|下一页|上一页)\s*$", re.IGNORECASE)
+_DYNAMIC_HTML_MARKER = re.compile(
+    r"(?:__next_f|__next_data__|__nuxt__|data-reactroot|id=[\"'](?:root|app)[\"'])",
+    re.IGNORECASE,
+)
+_CONTENT_SIGNAL_PATTERNS = (
+    re.compile(r"(?:常见问题|常见问答|\bfaq\b|\bq\s*&\s*a\b)", re.IGNORECASE),
+    re.compile(r"(?:套餐|价格|定价|方案|功能|规格|参数|\bfeatures?\b|\bpricing\b|\bplans?\b)", re.IGNORECASE),
+    re.compile(r"\d[\d,.]*\s*(?:[万亿kKmM]|credits?|tokens?|元|美元|[$¥￥])", re.IGNORECASE),
+)
+
+
+class _VisibleHTMLParser(HTMLParser):
+    """Extract visible page text without pulling scripts, navigation, or footers."""
+
+    _BLOCK_TAGS = frozenset(
+        {
+            "address",
+            "article",
+            "blockquote",
+            "br",
+            "dd",
+            "div",
+            "dl",
+            "dt",
+            "figcaption",
+            "figure",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "hr",
+            "li",
+            "main",
+            "ol",
+            "p",
+            "pre",
+            "section",
+            "table",
+            "tbody",
+            "td",
+            "tfoot",
+            "th",
+            "thead",
+            "tr",
+            "ul",
+        }
+    )
+    _SKIP_TAGS = frozenset(
+        {
+            "aside",
+            "canvas",
+            "dialog",
+            "footer",
+            "form",
+            "head",
+            "iframe",
+            "nav",
+            "noscript",
+            "script",
+            "style",
+            "svg",
+            "template",
+            "title",
+        }
+    )
+    _VOID_TAGS = frozenset(
+        {
+            "area",
+            "base",
+            "br",
+            "col",
+            "embed",
+            "hr",
+            "img",
+            "input",
+            "link",
+            "meta",
+            "param",
+            "source",
+            "track",
+            "wbr",
+        }
+    )
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parts: list[str] = []
+        self._skip_depth = 0
+
+    @staticmethod
+    def _is_hidden(attrs: list[tuple[str, str | None]]) -> bool:
+        attributes = {name.lower(): value or "" for name, value in attrs}
+        if "hidden" in attributes or attributes.get("aria-hidden", "").lower() == "true":
+            return True
+        style = attributes.get("style", "")
+        return bool(re.search(r"(?:display\s*:\s*none|visibility\s*:\s*hidden)", style, re.IGNORECASE))
+
+    @override
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag in self._VOID_TAGS:
+            if self._skip_depth == 0 and tag in self._BLOCK_TAGS:
+                self._parts.append("\n")
+            return
+        if self._skip_depth or tag in self._SKIP_TAGS or self._is_hidden(attrs):
+            self._skip_depth += 1
+            return
+        if tag in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
+    @override
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self._skip_depth == 0 and tag.lower() in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
+    @override
+    def handle_endtag(self, tag: str) -> None:
+        if self._skip_depth:
+            self._skip_depth -= 1
+            return
+        if tag.lower() in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
+    @override
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth == 0:
+            self._parts.append(data)
+
+
+@dataclasses.dataclass(frozen=True)
+class _StaticExtraction:
+    title: str
+    precision_text: str
+    recall_text: str
+    visible_text: str
 
 
 def _clean_text(text: str) -> str:
@@ -74,6 +214,63 @@ def _is_useful_text(text: str) -> bool:
     lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
     meaningful = sum(len(line) >= 30 for line in lines)
     return meaningful >= 2 or len(cleaned) >= 400
+
+
+def _visible_html_text_sync(html: str) -> str:
+    parser = _VisibleHTMLParser()
+    try:
+        parser.feed(html)
+        parser.close()
+    except Exception as exc:
+        _logger.debug("HTML 可见文本提取失败: %s", type(exc).__name__)
+    return _clean_text("".join(parser._parts))
+
+
+async def _visible_html_text(html: str) -> str:
+    return await asyncio.to_thread(_visible_html_text_sync, html)
+
+
+def _has_dynamic_html_marker(html: str) -> bool:
+    return bool(_DYNAMIC_HTML_MARKER.search(html))
+
+
+def _missing_content_signals(full_text: str, extracted_text: str) -> int:
+    return sum(
+        bool(pattern.search(full_text)) and not pattern.search(extracted_text) for pattern in _CONTENT_SIGNAL_PATTERNS
+    )
+
+
+def _needs_browser_for_static(
+    html: str,
+    precision_text: str,
+    recall_text: str,
+    visible_text: str,
+) -> bool:
+    """判断静态正文是否可能只是页面的一部分。"""
+    precision = _clean_text(precision_text)
+    recall = _clean_text(recall_text)
+    visible = _clean_text(visible_text)
+    if not _is_useful_text(precision):
+        return True
+    if len(visible) < 600:
+        return False
+
+    missing_signals = max(
+        _missing_content_signals(visible, precision),
+        _missing_content_signals(visible, recall),
+    )
+    dynamic = _has_dynamic_html_marker(html)
+    large_gap = len(precision) * 1.8 < len(visible) and len(visible) - len(precision) >= 300
+
+    # Dynamic applications often put the most important cards or pricing data in
+    # the initial DOM as placeholders. Let the browser resolve them when the
+    # static extractor leaves behind a much smaller or semantically incomplete
+    # result.
+    if dynamic and (large_gap or missing_signals >= 1):
+        return True
+    # Static pages can still be recovered from the DOM fallback without paying
+    # for a browser navigation when the omitted material is clearly structural.
+    return missing_signals >= 2
 
 
 def _normalize_url(raw_url: str) -> str:
@@ -197,16 +394,18 @@ def _title_from_html(html: str) -> str:
     return _clean_text(unescape(re.sub(r"<[^>]+>", "", match.group(1))))
 
 
-def _extract_html_sync(html: str, url: str) -> tuple[str, str]:
+def _extract_html_sync(html: str, url: str, *, favor_recall: bool = False) -> tuple[str, str]:
     title = ""
     text = ""
     try:
         document = bare_extraction(
             html,
             url=url,
+            favor_recall=favor_recall,
             include_comments=False,
             include_tables=True,
             include_images=False,
+            include_links=favor_recall,
         )
         if document is not None:
             title = str(getattr(document, "title", None) or "")
@@ -219,9 +418,11 @@ def _extract_html_sync(html: str, url: str) -> tuple[str, str]:
                 extract(
                     html,
                     url=url,
+                    favor_recall=favor_recall,
                     output_format="markdown",
                     include_comments=False,
                     include_tables=True,
+                    include_links=favor_recall,
                 )
                 or ""
             )
@@ -230,8 +431,39 @@ def _extract_html_sync(html: str, url: str) -> tuple[str, str]:
     return _clean_text(title or _title_from_html(html)), _clean_text(text)
 
 
-async def _extract_html(html: str, url: str) -> tuple[str, str]:
-    return await asyncio.to_thread(_extract_html_sync, html, url)
+async def _extract_html(html: str, url: str, *, favor_recall: bool = False) -> tuple[str, str]:
+    return await asyncio.to_thread(_extract_html_sync, html, url, favor_recall=favor_recall)
+
+
+async def _extract_static_page(html: str, url: str) -> _StaticExtraction:
+    (precision_title, precision_text), (recall_title, recall_text), visible_text = await asyncio.gather(
+        _extract_html(html, url),
+        _extract_html(html, url, favor_recall=True),
+        _visible_html_text(html),
+    )
+    return _StaticExtraction(
+        title=_clean_text(precision_title or recall_title or _title_from_html(html)),
+        precision_text=precision_text,
+        recall_text=recall_text,
+        visible_text=visible_text,
+    )
+
+
+def _select_static_fallback(extraction: _StaticExtraction) -> tuple[str, str] | None:
+    """Choose the broadest useful static result for a browser failure fallback."""
+    candidates = (
+        (extraction.precision_text, "HTTP + Trafilatura"),
+        (extraction.recall_text, "HTTP + Trafilatura（高召回）"),
+        (extraction.visible_text, "HTTP + DOM 结构化文本"),
+    )
+    useful = [(text, source) for text, source in candidates if _is_useful_text(text)]
+    if not useful:
+        return None
+
+    def score(item: tuple[str, str]) -> int:
+        return _text_score(item[0])
+
+    return max(useful, key=score)
 
 
 async def _vision_read(screenshot: bytes, goal: str) -> str | None:
@@ -315,16 +547,33 @@ class WebpageTools(AgentToolBase):
         except ValueError as exc:
             return f"（网页阅读失败: {exc}）"
 
-        # 1) 静态 HTML 快速路径
+        # 1) 静态 HTML 路径。除了精确正文，也准备高召回和 DOM 结果，
+        # 用完整度判断是否应该继续进入浏览器。
+        title = ""
+        static_fallback: tuple[str, str] | None = None
+        static_needs_browser = True
         static = await _fetch_static(normalized_url)
         if static is not None:
             final_url, html = static
-            title, text = await _extract_html(html, final_url)
-            if not is_cloudflare_challenge(title, text) and _is_useful_text(text):
+            extraction = await _extract_static_page(html, final_url)
+            title = extraction.title
+            static_fallback = _select_static_fallback(extraction)
+            static_needs_browser = _needs_browser_for_static(
+                html,
+                extraction.precision_text,
+                extraction.recall_text,
+                extraction.visible_text,
+            )
+            if (
+                not static_needs_browser
+                and _is_useful_text(extraction.precision_text)
+                and not is_cloudflare_challenge(title, extraction.precision_text)
+            ):
                 _logger.debug("网页阅读成功: source=http url=%s", normalized_url)
-                return _format_result(text, title, "HTTP + Trafilatura")
+                return _format_result(extraction.precision_text, title, "HTTP + Trafilatura")
 
-        # 2) 浏览器单次渲染；正文不足时同时准备截图，避免重复导航
+        # 2) 浏览器单次渲染；静态内容疑似不完整时也进入此路径，
+        # 同一次导航中同时准备截图，避免重复导航。
         rendered: RenderedPage | None = None
         try:
             catcher = await Catcher.init()
@@ -359,6 +608,11 @@ class WebpageTools(AgentToolBase):
             vision = await _vision_read(rendered.screenshot, goal)
             if vision:
                 return _format_result(vision, rendered.title, "Patchright + Gemini 视觉")
+
+        # 浏览器不可用时，优先返回已从静态 HTML 中恢复出的完整 DOM 文本，
+        # 不要因为 Trafilatura 的低召回结果而丢失套餐卡片、FAQ 等内容。
+        if static_fallback is not None and not is_cloudflare_challenge(title, static_fallback[0]):
+            return _format_result(static_fallback[0], title, static_fallback[1])
 
         # 4) 最后后备
         jina = await _jina_read(normalized_url)
