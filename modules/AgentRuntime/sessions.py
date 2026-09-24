@@ -195,7 +195,7 @@ class SessionManager:
     def core_for_key(self, key: SessionKey) -> AgentCore:
         if key.scene_type == "system":
             return self.system_core
-        return self.get_core(cast(Literal["group", "private"], key.scene_type), key.scene_id)
+        return self.get_core(key.scene_type, key.scene_id)
 
     async def list_contexts(self) -> str:
         self._discover_contexts()
@@ -341,7 +341,7 @@ class SessionManager:
         req = self.sys_requests.pop(request_id, None)
         if req is None:
             return f"未找到待回调的请求 #{request_id}(可能已完成或已超时)"
-        text = str(content)[:2000]
+        text = content[:2000]
         segs: list[Any] = []
         if req.reply_message_id:
             segs.append(segments.Reply(req.reply_message_id))

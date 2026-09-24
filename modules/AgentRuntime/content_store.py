@@ -49,7 +49,7 @@ _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
 def _safe_scope(scope: str) -> str:
-    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(scope or "default")).strip("._")
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", scope or "default").strip("._")
     return (cleaned or "default")[:100]
 
 
@@ -139,9 +139,9 @@ class ContentStore:
         meta: dict[str, Any] = {
             "content_id": content_id,
             "scope": self.scope,
-            "kind": str(kind or "content"),
-            "source": str(source or ""),
-            "title": str(title or ""),
+            "kind": kind or "content",
+            "source": source or "",
+            "title": title or "",
             "chars": len(stored),
             "original_chars": original_chars,
             "truncated": len(stored) < original_chars,
@@ -175,7 +175,7 @@ class ContentStore:
 
     def list(self, limit: int = 20) -> list[dict[str, Any]]:
         """Return recently used content metadata for this scope."""
-        limit = max(1, min(int(limit), 100))
+        limit = max(1, min(limit, 100))
         if not self.directory.is_dir():
             return []
         entries: list[dict[str, Any]] = []
@@ -217,7 +217,7 @@ class ContentStore:
         if offset < 0:
             offset = max(0, total + offset)
         offset = min(max(0, offset), total)
-        limit = max(1, min(int(limit), MAX_READ_CHARS))
+        limit = max(1, min(limit, MAX_READ_CHARS))
         end = min(total, offset + limit)
         chunk = text[offset:end]
         return {
@@ -271,8 +271,8 @@ class ContentStore:
         if not scored:
             return {"content_id": content_id, "query": query, "matches": []}
 
-        context_lines = max(0, min(int(context_lines), 10))
-        max_results = max(1, min(int(max_results), 20))
+        context_lines = max(0, min(context_lines, 10))
+        max_results = max(1, min(max_results, 20))
         ranges: list[list[int]] = []
         for score, line_index in sorted(scored, key=_line_match_score):
             start = max(0, line_index - context_lines)

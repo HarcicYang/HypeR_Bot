@@ -40,7 +40,7 @@ from modules.AgentRuntime.api_profiles import ApiProfile, ApiProfileError, ApiPr
 from modules.AgentRuntime.api_wizard import ApiProfileWizard as _ApiProfileWizard
 from modules.AgentRuntime.collector import Collector as _Collector
 from modules.AgentRuntime.core import AgentCore as _AgentCore
-from modules.AgentRuntime.models import SessionKey
+from modules.AgentRuntime.models import PermGroup, SessionKey
 from modules.AgentRuntime.profiles import AgentProfile as _AgentProfile
 from modules.AgentRuntime.profiles import current_profile_name as _current_profile_name
 from modules.AgentRuntime.profiles import load_profiles as _runtime_load_profiles
@@ -61,6 +61,24 @@ logger.set_level(config.log_level)
 # 全局 LLM 调用并发上限(config.others.agent_max_concurrency,0=不限;防止多 core 同时请求触发 API 限流)
 _concurrency_limit: int = int(config.others.get("agent_max_concurrency") or 0)
 _semaphore: asyncio.Semaphore | None = None
+
+# 中止命令(.ag.st):常规权限档下可用;当前处理超过阈值秒数后,对所有人生效
+_STOP_OPEN_AFTER: float = 10.0
+
+
+def _stop_perm() -> str:
+    """中止命令的常规权限档(默认 any_admin,可用 config.others.agent_stop_perm 覆盖)。"""
+    value = str(config.others.get("agent_stop_perm") or "").strip().lower()
+    return value if value in PERM_LEVEL else "any_admin"
+
+
+def _stop_open_after() -> float:
+    """中止命令对全体开放的耗时阈值(秒;默认 10,可用 config.others.agent_stop_open_after 覆盖)。"""
+    try:
+        value = float(config.others.get("agent_stop_open_after") or _STOP_OPEN_AFTER)
+    except (TypeError, ValueError):
+        return _STOP_OPEN_AFTER
+    return value if value > 0 else _STOP_OPEN_AFTER
 
 
 def _acquire_semaphore() -> asyncio.Semaphore | None:
@@ -315,12 +333,13 @@ AGENT_HELP = (
     "群内自动处理严格依据白名单，主人未加入白名单时也不会自动处理。私聊自动处理始终开启,无需白名单。\n"
     "\n"
     "命令(两种写法均可:`.agent.on` 或 `.agent on`;简写 `ag`=agent, `pf`=profile,\n"
-    "`ctx`=context, `ad`=add, `rm`=remove, `ma`=master, `sum`=summary, `clr`=clear,\n"
+    "`ctx`=context, `ad`=add, `rm`=remove, `ma`=master, `sum`=summary, `clr`=clear, `st`=stop,\n"
     "`func`=function, `en`=enable, `dis`=disable,\n"
     "如 `.ag.pf.ad` = `.agent.profile.add`, `.ag.pf.ma` = `.agent.profile.master`):\n"
     ".agent.on [QQ号或@用户] - 加入当前群白名单;指定其他用户需 any_admin\n"
     ".agent.off [QQ号或@用户] - 移出当前群白名单;指定其他用户需 any_admin\n"
     ".agent.status - 查看当前群白名单状态\n"
+    ".agent.stop / .ag.st - 立即中止当前会话正在进行的处理(默认需 any_admin;处理超过 10s 后所有人可用)\n"
     ".agent.profile - 查看可用人设(来自 profiles.json)\n"
     ".agent.profile <名称> - 全局切换人设并归档各 Main 上下文(仅主人)\n"
     ".agent.profile.add <名称> <内容> - 添加/更新人设(仅主人,内容可含空格)\n"
@@ -494,9 +513,9 @@ class _Agent:
         assert self.session_manager is not None
         if isinstance(event, GroupMessageEvent):
             assert event.group_id is not None
-            return self.session_manager.get_core("group", int(event.group_id))
+            return self.session_manager.get_core("group", event.group_id)
         assert event.user_id is not None
-        return self.session_manager.get_core("private", int(event.user_id))
+        return self.session_manager.get_core("private", event.user_id)
 
     def _core_for_key(self, stype: Literal["grp", "usr"], sid: int) -> _AgentCore | None:
         """按收集器场景取当前核心(惰性解析,可能被空闲回收后重建)。"""
@@ -504,7 +523,7 @@ class _Agent:
             return None
         return self.session_manager.get_core("group" if stype == "grp" else "private", sid)
 
-    def _perm_of(self, uid: int | None, gid: int | None, group_role: str | None = None) -> str:
+    def _perm_of(self, uid: int | None, gid: int | None, group_role: str | None = None) -> PermGroup:
         """权限档位:主人 → bot_owner;群主/管理员 → any_admin;白名单 → whitelist。"""
         if uid is None:
             return "member"
@@ -628,7 +647,7 @@ class _Agent:
             )
             return
         # 私聊不配置白名单:所有消息都走收集处理
-        key = SessionKey("private", int(uid))
+        key = SessionKey("private", uid)
         col = self.collectors.setdefault(key, _Collector(uid, "usr", lambda: self._core_for_key("usr", uid)))
         await col.append(event)
         await col.start(uid, self._perm_of(uid, None), event.self_id)
@@ -652,7 +671,7 @@ class _Agent:
     async def _on_group_notice(self, event: Event) -> None:
         if event.group_id is None or event.blocked or event.is_silent:
             return
-        gid = int(event.group_id)
+        gid = event.group_id
         if not _white.get(gid):
             return
         key = SessionKey("group", gid)
@@ -673,7 +692,7 @@ class _Agent:
     async def _on_private_notice(self, event: Event) -> None:
         if event.user_id is None or event.blocked or event.is_silent:
             return
-        uid = int(event.user_id)
+        uid = event.user_id
         key = SessionKey("private", uid)
         col = self.collectors.setdefault(key, _Collector(uid, "usr", lambda: self._core_for_key("usr", uid)))
         actor = self._notice_actor(event)
@@ -707,7 +726,7 @@ class _Agent:
         event_data: dict[str, Any],
         ev_type: Literal["group", "private"],
         scene_id: int,
-        perm_group: str,
+        perm_group: PermGroup,
         principal_id: int | None,
         self_id: int | None,
     ) -> None:
@@ -727,7 +746,7 @@ class _Agent:
         batch: list[dict[str, Any]],
         ev_type: Literal["group", "private"],
         scene_id: int,
-        perm_group: str,
+        perm_group: PermGroup,
         principal_id: int | None,
         self_id: int | None = None,
     ) -> None:
@@ -771,6 +790,7 @@ class _Agent:
             "profile.ma": "profile.master",
             "ctx.clr": "context.clear",
             "ctx.sum": "context.summary",
+            "st": "stop",
             "function": "func",
             "func.enable": "func.en",
             "function.en": "func.en",
@@ -818,6 +838,8 @@ class _Agent:
             else:
                 msg = "私聊 Agent 自动处理：开启（无需白名单）"
             await self._reply(event, msg)
+        elif sub == "stop":
+            await self._cmd_stop(event)
         elif sub == "profile.add":
             if len(parts) < 4:
                 await self._reply(event, "用法: .agent.profile.add <名称> <人设内容(可含空格)>")
@@ -879,7 +901,7 @@ class _Agent:
                     target,
                     principal_id=uid,
                     self_id=event.self_id,
-                    reply_message_id=str(event.message_id),
+                    reply_message_id=event.message_id,
                 ),
             )
         elif sub == "context":
@@ -907,7 +929,7 @@ class _Agent:
                     key,
                     principal_id=uid,
                     self_id=event.self_id,
-                    reply_message_id=str(event.message_id),
+                    reply_message_id=event.message_id,
                 ),
             )
         elif sub == "func":
@@ -954,6 +976,30 @@ class _Agent:
         else:
             # 帮助信息由 Helps 模块统一展示(.help Agent),不在本模块内自回复
             await self._reply(event, "未知的子命令。发送 .help Agent 查看模块帮助")
+
+    async def _cmd_stop(self, event: MessageEvent) -> None:
+        """`.ag.st` / `.agent.stop`:立即中止当前会话正在进行的处理。
+
+        常规权限档默认 any_admin;当前处理已超过阈值(默认 10s)时对所有人开放。
+        """
+        core = self._core_for_event(event)
+        elapsed = core.processing_elapsed()
+        if elapsed is None:
+            await self._reply(event, "当前没有正在进行的处理")
+            return
+        required = _stop_perm()
+        threshold = _stop_open_after()
+        if not self._has_perm(event, required) and elapsed < threshold:
+            await self._reply(
+                event,
+                f"处理才开始 {elapsed:.1f}s,你没权限中止(需要 {required});"
+                f"处理超过 {threshold:.0f}s 后所有人都可以中止",
+            )
+            return
+        if core.request_stop():
+            await self._reply(event, f"已中止当前处理(已进行 {elapsed:.1f}s)")
+        else:
+            await self._reply(event, "当前没有正在进行的处理")
 
     async def _cmd_api(self, event: MessageEvent, text: str, parts: list[str], sub: str) -> None:
         uid = cast(int, event.user_id)

@@ -1,9 +1,13 @@
+from collections.abc import Callable
 from functools import wraps
+from typing import Any
 
-def dec(func):
+
+def dec(func: Callable[..., Any]) -> Callable[..., Any]:
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         return func(*args, **kwargs)
+
     return wrapper
 
 
@@ -20,6 +24,5 @@ class A:
 
 ca = A(114514)
 print(ca.a(2))
-
 
 

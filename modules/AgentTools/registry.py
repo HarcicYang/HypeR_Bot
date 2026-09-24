@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Literal, Union, cast, get_args, get_origi
 from hyperot import common, configurator, segments
 
 from modules.AgentRuntime.content_store import INLINE_CHARS, ContentStore
+from modules.AgentRuntime.models import EvType, PermGroup
 
 if TYPE_CHECKING:
     from hyperot.listener import Actions
@@ -428,7 +429,7 @@ async def _preserve_large_result(
             title=reg.name,
             metadata={
                 "tool": reg.name,
-                "params": {str(key): str(value)[:200] for key, value in params.items()},
+                "params": {key: str(value)[:200] for key, value in params.items()},
             },
         )
     except Exception as exc:
@@ -511,9 +512,9 @@ class AgentToolBase:
 @dataclasses.dataclass
 class ToolContext:
     actions: Actions
-    ev_type: Literal["group", "private", "system"]
+    ev_type: EvType
     scene_id: int
-    perm_group: Literal["member", "whitelist", "any_admin", "bot_owner"] = "member"
+    perm_group: PermGroup = "member"
     principal_id: int | None = None  # 触发者 QQ
     self_id: int | None = None  # bot 自身 QQ
     runtime: Any = None  # Agent 核心暴露的受限接口

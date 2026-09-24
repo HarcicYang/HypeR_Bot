@@ -1,11 +1,11 @@
+import asyncio
 import datetime
 import platform
 from typing import Any
-import asyncio
 
 import hyperot
 import psutil
-from hyperot import common, events, segments, adapters
+from hyperot import adapters, common, events, segments
 from hyperot.events import *
 from typing_extensions import override
 
@@ -19,6 +19,12 @@ def bytes_to_human(num: float) -> str:
             return f"{num:.1f} {unit}"
         num /= 1024.0
     return f"{num:.1f} EB"
+
+
+def adapter_name() -> str:
+    """当前协议库实现名称(适配器尚未就绪时回退为未知)。"""
+    current = adapters.registry.current
+    return current.name if current is not None else "未知"
 
 
 def get_os_description() -> str:
@@ -89,7 +95,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
                 "https://github.com/HarcicYang/HypeR_Bot\n"
                 "------\n"
                 f"时间：{str(datetime.datetime.now())}\n"
-                f"协议库实现：{name} {code} ({adapters.registry.current.name})"
+                f"协议库实现：{name} {code} ({adapter_name()})"
             )
 
         await self.actions.send_msg(
@@ -123,7 +129,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
             "https://github.com/HarcicYang/HypeR_Bot\n"
             "------\n"
             f"时间：{str(datetime.datetime.now())}\n"
-            f"协议库实现：{name} {code} ({adapters.registry.current.name})\n"
+            f"协议库实现：{name} {code} ({adapter_name()})\n"
             f"操作系统：{os_desc}\n"
             f"CPU ：{cpu_percent}%\n"
             "内存 (RAM)：\n"

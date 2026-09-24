@@ -10,6 +10,10 @@ SESSIONS_PATH = "./temps/agent_sessions"
 SYSTEM_PATH = "./temps/agent_system"
 REPORT_TIMEOUT = 300
 
+# 事件场景与权限档位:AgentRuntime、AgentTools 与功能模块共用同一组字面量类型
+EvType = Literal["group", "private", "system", "nonmsg"]
+PermGroup = Literal["member", "whitelist", "any_admin", "bot_owner"]
+
 
 @dataclasses.dataclass(frozen=True)
 class SessionKey:

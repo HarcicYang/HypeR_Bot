@@ -25,7 +25,15 @@ from modules.AgentRuntime.api_profiles import ApiProfileManager, ApiRuntime
 from modules.AgentRuntime.capture import CaptureActions as _CaptureActions
 from modules.AgentRuntime.dsml import parse_embedded_tool_calls as _parse_embedded_tool_calls
 from modules.AgentRuntime.event_text import event_text as _event_text
-from modules.AgentRuntime.models import HISTORY_PATH, REPORT_TIMEOUT, TASKS_PATH, AgentEvent, SessionKey
+from modules.AgentRuntime.models import (
+    HISTORY_PATH,
+    REPORT_TIMEOUT,
+    TASKS_PATH,
+    AgentEvent,
+    EvType,
+    PermGroup,
+    SessionKey,
+)
 from modules.AgentRuntime.profiles import AgentProfile as _AgentProfile
 from modules.AgentRuntime.profiles import history_needs_profile_summary as _history_needs_profile_summary
 from modules.AgentRuntime.profiles import load_profiles as _runtime_load_profiles
@@ -172,6 +180,15 @@ async def timer(interval: int, ev: asyncio.Event) -> None:
     ev.set()
 
 
+async def sleep_or_stop(seconds: float, stop_ev: asyncio.Event) -> bool:
+    """等待 seconds 秒,期间收到停止请求则立即返回 True(用于可被中止的重试等待)。"""
+    try:
+        await asyncio.wait_for(stop_ev.wait(), timeout=seconds)
+    except TimeoutError:
+        return False
+    return True
+
+
 class AgentCore:
     def __init__(
             self,
@@ -285,6 +302,8 @@ class AgentCore:
         self._state_lock = asyncio.Lock()
         self._idle_event = asyncio.Event()
         self._idle_event.set()
+        self._processing_started: float | None = None  # 当前处理轮开始时刻(monotonic)
+        self._stop_ev: asyncio.Event | None = None  # 置位后当前处理轮立即中止
         self._apply_api_runtime(runtime, refresh_prompt=False)
 
     # -- runtime 接口(供工具经 ToolContext.runtime 调用) --
@@ -484,7 +503,7 @@ class AgentCore:
             ),
             timeout=90,
         )
-        return str(response.choices[0].message.content or "").strip()
+        return (response.choices[0].message.content or "").strip()
 
     async def _generate_profile_switch_summary(
         self,
@@ -955,7 +974,7 @@ class AgentCore:
     # -- SubAgent 管理(仅主 Agent core 可用;SubAgent 调用返回错误) --
 
     async def sub_create(
-            self, name: str, prompt: str, scene_id: int, scene_type: str, perm_group: str = "member"
+            self, name: str, prompt: str, scene_id: int, scene_type: str, perm_group: PermGroup = "member"
     ) -> str:
         if self.sub_manager is None:
             return "调用不合法：SubAgent 不能创建 SubAgent"
@@ -983,7 +1002,7 @@ class AgentCore:
             return "调用不合法：SubAgent 管理不可用"
         return self.sub_manager.status(sub_id)
 
-    async def sub_feed(self, sub_id: int, content: str, perm_group: str = "member") -> str:
+    async def sub_feed(self, sub_id: int, content: str, perm_group: PermGroup = "member") -> str:
         if self.sub_manager is None:
             return "调用不合法：SubAgent 管理不可用"
         return await self.sub_manager.feed(sub_id, content, perm_group)
@@ -1122,7 +1141,7 @@ class AgentCore:
         return result
 
     @staticmethod
-    def _to_plain_dict(obj) -> dict:
+    def _to_plain_dict(obj: Any) -> dict[str, Any]:
         """将 Pydantic 模型（ChatCompletionMessage / ToolCall）安全转换为 dict，
         并完整保留 model_extra 中的 extra_content（真签名所在地）。"""
         if isinstance(obj, dict):
@@ -1159,22 +1178,20 @@ class AgentCore:
             if not isinstance(raw_calls, list) or not raw_calls:
                 continue
 
-            new_calls = []
+            new_calls: list[Any] = []
             first_sig = None
 
             for call in raw_calls:
                 # 2. 关键：将 ChatCompletionMessageToolCall 对象转为普通 dict
                 call_dict = self._to_plain_dict(call)
 
-                extra = call_dict.get("extra_content")
-                if not isinstance(extra, dict):
-                    extra = {}
-                    call_dict["extra_content"] = extra
+                raw_extra = call_dict.get("extra_content")
+                extra: dict[str, Any] = raw_extra if isinstance(raw_extra, dict) else {}
+                call_dict["extra_content"] = extra
 
-                google = extra.get("google")
-                if not isinstance(google, dict):
-                    google = {}
-                    extra["google"] = google
+                raw_google = extra.get("google")
+                google: dict[str, Any] = raw_google if isinstance(raw_google, dict) else {}
+                extra["google"] = google
 
                 # 3. 已有真签名则保留；否则写入官方跳过校验签名
                 if not google.get("thought_signature"):
@@ -1191,14 +1208,12 @@ class AgentCore:
 
             # 4. 双保险：同时在 assistant message 顶层挂载 extra_content
             if first_sig:
-                msg_extra = msg.get("extra_content")
-                if not isinstance(msg_extra, dict):
-                    msg_extra = {}
-                    msg["extra_content"] = msg_extra
-                msg_google = msg_extra.get("google")
-                if not isinstance(msg_google, dict):
-                    msg_google = {}
-                    msg_extra["google"] = msg_google
+                raw_msg_extra = msg.get("extra_content")
+                msg_extra: dict[str, Any] = raw_msg_extra if isinstance(raw_msg_extra, dict) else {}
+                msg["extra_content"] = msg_extra
+                raw_msg_google = msg_extra.get("google")
+                msg_google: dict[str, Any] = raw_msg_google if isinstance(raw_msg_google, dict) else {}
+                msg_extra["google"] = msg_google
                 if not msg_google.get("thought_signature"):
                     msg_google["thought_signature"] = first_sig
 
@@ -1353,13 +1368,26 @@ class AgentCore:
             self.working = False
             self._idle_event.set()
 
+    def processing_elapsed(self) -> float | None:
+        """当前处理轮已进行的秒数;空闲时为 None。"""
+        started = self._processing_started
+        return None if started is None else time.monotonic() - started
+
+    def request_stop(self) -> bool:
+        """请求立即中止当前处理轮;没有处理在进行时返回 False。"""
+        stop_ev = self._stop_ev
+        if stop_ev is None or self._processing_started is None:
+            return False
+        stop_ev.set()
+        return True
+
     async def aclose(self) -> None:
         """Shared API clients are owned by ApiProfileManager, not individual cores."""
         return
 
     async def _notify_execution_error(
         self,
-        ev_type: Literal["group", "private", "system", "nonmsg"],
+        ev_type: EvType,
         scene_id: int,
         error: Exception,
     ) -> None:
@@ -1398,9 +1426,9 @@ class AgentCore:
     async def event_handler(
             self,
             event: Any,
-            ev_type: Literal["group", "private", "system", "nonmsg"],
+            ev_type: EvType,
             scene_id: int,
-            perm_group: str = "member",
+            perm_group: PermGroup = "member",
             principal_id: int | None = None,
             self_id: int | None = None,
             tool_choice: str = "auto",
@@ -1428,9 +1456,9 @@ class AgentCore:
     async def _event_handler_with_slot(
             self,
             event: Any,
-            ev_type: Literal["group", "private", "system", "nonmsg"],
+            ev_type: EvType,
             scene_id: int,
-            perm_group: str = "member",
+            perm_group: PermGroup = "member",
             principal_id: int | None = None,
             self_id: int | None = None,
             tool_choice: str = "auto",
@@ -1443,6 +1471,9 @@ class AgentCore:
         self._flush_notices()
         sys_msg = "如果要回复消息，唯一正确方法是调用工具"
         start_time = time.time()
+        stop_ev = asyncio.Event()
+        self._stop_ev = stop_ev
+        self._processing_started = time.monotonic()
         timer_ev = asyncio.Event()
         timer_task = asyncio.create_task(timer(600, timer_ev))
         bad_retries = 0
@@ -1450,6 +1481,7 @@ class AgentCore:
         retry_delay = 5
         task: asyncio.Task[Any] | None = None
         timed_out = False
+        stopped = False
         if event is None:
             ev_data: str | None = None
             query_text = ""
@@ -1479,7 +1511,7 @@ class AgentCore:
             except Exception:
                 self._injected_memory = ""
         try:
-            while not timer_ev.is_set():
+            while not timer_ev.is_set() and not stop_ev.is_set():
                 try:
                     ctx = ToolContext(
                         actions=self.bot_api,
@@ -1505,7 +1537,17 @@ class AgentCore:
                             task.cancel("请求超时")
                             timed_out = True
                             break
+                        if stop_ev.is_set():
+                            task.cancel("用户中止")
+                            stopped = True
+                            logger.info(f"{self.name} 处理已被用户中止，准备结束本轮")
+                            break
                         await asyncio.sleep(0.01)
+                    if (timed_out or stopped) and not task.done():
+                        # 取消是异步投递的:先等它落地,让 _event_handler 内的历史修复跑完,
+                        # 否则下面取 task.exception() 会因任务未结束而抛 InvalidStateError。
+                        with contextlib.suppress(asyncio.CancelledError, Exception):
+                            await task
                     # 取回 task 异常:否则异常成为「never retrieved」,外层重试机制(历史修复)不会触发
                     if not task.cancelled():
                         exc = task.exception()
@@ -1530,7 +1572,9 @@ class AgentCore:
                         break
                     sys_msg = repr(e)
                     logger.warning(f"{e}, {retry_delay}s 后重试")
-                    await asyncio.sleep(retry_delay)
+                    if await sleep_or_stop(retry_delay, stop_ev):
+                        stopped = True
+                        break
                     retry_delay += 2
                 except Exception as e:
                     error_retries += 1
@@ -1541,7 +1585,9 @@ class AgentCore:
                         break
                     logger.error(str(e))
                     logger.error(traceback.format_exc())
-                    await asyncio.sleep(retry_delay)
+                    if await sleep_or_stop(retry_delay, stop_ev):
+                        stopped = True
+                        break
                     retry_delay += 2
             if timed_out and ev_type == "system":
                 logger.error("System Context 处理超时，已终止本次请求")
@@ -1551,13 +1597,18 @@ class AgentCore:
                     TimeoutError("System Context 处理超时(600s)"),
                 )
         finally:
+            self._stop_ev = None
+            self._processing_started = None
             timer_task.cancel()
             if task is not None and not task.done():
                 task.cancel("外层处理结束")
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
             duration = time.time() - start_time
-            logger.info(f"处理完成，用时 {duration:.3f}s")
+            if stopped:
+                logger.info(f"处理已被用户中止，用时 {duration:.3f}s")
+            else:
+                logger.info(f"处理完成，用时 {duration:.3f}s")
             try:
                 # 事件处理已结束:此时注入待通知的 SubAgent 状态事件,不会打断 tool_calls 配对
                 self._flush_notices()
@@ -1571,7 +1622,7 @@ class AgentCore:
     async def _event_handler(
             self,
             data: str | None,
-            ev_type: Literal["group", "private", "system", "nonmsg"],
+            ev_type: EvType,
             scene_id: int,
             ctx: ToolContext,
             tool_choice: str = "auto",
@@ -1646,6 +1697,8 @@ class AgentCore:
         except asyncio.CancelledError as e:
             logger.error(f"处理中断：{repr(e)}")
             await self._history_fix()
+            # 修复后的历史立即落盘:否则重启后会带着悬空 tool_calls 再请求一次(触发 400 重试)
+            await self.save()
 
     # -- LLM 通道抽象(chat completions / responses api) --
 

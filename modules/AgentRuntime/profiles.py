@@ -66,7 +66,7 @@ def current_profile_name() -> str:
 
 def mark_profile_switch(name: str) -> dict[str, Any]:
     """Persist the last global profile switch timestamp."""
-    data = {"profile": str(name), "switched_at": time.time()}
+    data = {"profile": name, "switched_at": time.time()}
     directory = os.path.dirname(PROFILE_SWITCH_PATH)
     if directory:
         os.makedirs(directory, exist_ok=True)

@@ -38,6 +38,8 @@ dependencies = [
 dev = [
     "pyrefly",
     "ruff",
+    "types-openpyxl>=3.1.5.20260827",
+    "types-psutil>=7.2.2.20260906",
 ]
 
 [tool.setuptools]

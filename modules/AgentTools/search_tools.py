@@ -4,7 +4,14 @@ from typing import Any
 from modules.AgentTools.registry import AgentToolBase, ToolContext, tool
 
 
-def _do_search(query, region, safesearch, timelimit, max_results, backend):
+def _do_search(
+    query: str,
+    region: str,
+    safesearch: str,
+    timelimit: str,
+    max_results: int,
+    backend: str,
+) -> list[dict[str, Any]]:
     from ddgs import DDGS
 
     with DDGS() as ddgs:
@@ -37,7 +44,7 @@ class SearchTools(AgentToolBase):
         - timelimit: 时间过滤 d/w/m/y,留空为不限
         - backend: 指定引擎(duckduckgo/google/brave/mojeek/startpage/wikipedia),auto 为自动选
         """
-        max_results = max(1, min(int(max_results), 10))
+        max_results = max(1, min(max_results, 10))
         try:
             results = await asyncio.to_thread(
                 _do_search, query, region, "moderate", timelimit, max_results, backend
@@ -48,7 +55,7 @@ class SearchTools(AgentToolBase):
         if not results:
             return f"没有找到与「{query}」相关的结果"
 
-        lines = []
+        lines: list[str] = []
         for i, r in enumerate(results, 1):
             title = (r.get("title") or "").strip()
             href = (r.get("href") or r.get("url") or "").strip()

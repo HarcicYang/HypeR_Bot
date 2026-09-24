@@ -10,7 +10,7 @@ from typing import Any, Literal, cast
 from hyperot import configurator, hyperogger
 from hyperot.listener import Actions
 
-from modules.AgentRuntime.models import AgentEvent, SessionKey
+from modules.AgentRuntime.models import AgentEvent, PermGroup, SessionKey
 
 config = configurator.BotConfig.get("hyper-bot")
 logger = hyperogger.Logger()
@@ -25,7 +25,7 @@ class SubAgent:
         prompt: str,
         scene_type: str,
         scene_id: int,
-        perm_group: str,
+        perm_group: PermGroup,
         core: Any,
         owner_session: SessionKey | None,
     ) -> None:
@@ -72,7 +72,7 @@ class SubAgentManager:
         prompt: str,
         scene_type: str,
         scene_id: int,
-        perm_group: str = "member",
+        perm_group: PermGroup = "member",
         owner_session: SessionKey | None = None,
     ) -> str:
         if len(self.subagents) >= self.MAX_SUBAGENTS:
@@ -160,7 +160,7 @@ class SubAgentManager:
             f"创建于: {sub.created_at} | 历史消息数: {len(sub.core.history)}"
         )
 
-    async def feed(self, sub_id: int, content: str, perm_group: str = "member") -> str:
+    async def feed(self, sub_id: int, content: str, perm_group: PermGroup = "member") -> str:
         sub = self.subagents.get(sub_id)
         if sub is None:
             return f"SubAgent #{sub_id} 不存在"

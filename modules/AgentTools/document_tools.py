@@ -292,7 +292,7 @@ class DocumentTools(AgentToolBase):
             )
             unique[key] = item
         items = sorted(unique.values(), key=_upload_sort_key, reverse=True)
-        limit = max(1, min(int(limit), 50))
+        limit = max(1, min(limit, 50))
         return json.dumps({"files": items[:limit]}, ensure_ascii=False)
 
     @tool(group="document", preserve=True)
