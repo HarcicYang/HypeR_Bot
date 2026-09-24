@@ -3,10 +3,15 @@ from __future__ import annotations
 import asyncio
 import atexit
 import contextlib
+import dataclasses
 import logging
 import os
+import re
 import signal
 import time
+import uuid
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from patchright.async_api import BrowserContext, Page, Playwright, async_playwright
 from patchright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -25,6 +30,10 @@ SETTLE_TIMEOUT = 15
 STYLE_SETTLE = 3
 # Cloudflare 自动挑战最多等待时间。
 CHALLENGE_TIMEOUT = 20
+# 普通截图的最大高度，避免超长页面触发 Chromium 图片尺寸限制。
+SCREENSHOT_MAX_HEIGHT = 12_000
+# Agent 网页阅读需要把渲染后的 DOM 交给正文提取器；避免极端页面占满内存。
+MAX_RENDERED_HTML_CHARS = 8_000_000
 
 _CHALLENGE_MARKERS = (
     "just a moment",
@@ -37,6 +46,17 @@ _CHALLENGE_MARKERS = (
 )
 
 _driver_proc: asyncio.subprocess.Process | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class RenderedPage:
+    """一次浏览器导航得到的网页快照。"""
+
+    title: str
+    text: str
+    url: str
+    html: str = ""
+    screenshot: bytes | None = None
 
 
 class CloudflareChallengeError(RuntimeError):
@@ -114,6 +134,7 @@ class Catcher:
     _context: BrowserContext | None = None
     _playwright: Playwright | None = None
     _lock = asyncio.Lock()
+    _read_semaphore = asyncio.Semaphore(3)
 
     @classmethod
     async def init(cls, headless: bool = True) -> Catcher:
@@ -196,6 +217,117 @@ class Catcher:
 
         return await asyncio.wait_for(_do(), timeout=LOAD_TIMEOUT + 15)
 
+    async def read_page(
+        self,
+        url: str,
+        *,
+        include_html: bool = False,
+        screenshot_threshold: int = 0,
+        request_guard: Callable[[str], Awaitable[None]] | None = None,
+    ) -> RenderedPage:
+        """单次渲染网页并返回文本、DOM 和可选截图。
+
+        截图只在可见文本低于 ``screenshot_threshold`` 时生成，避免正文正常时
+        额外消耗截图时间；调用方可以用同一次导航结果完成文本提取和视觉兜底。
+        """
+        self.context = await self._get_context()
+
+        async def _do() -> RenderedPage:
+            async with type(self)._read_semaphore:
+                page = await self.context.new_page()
+                try:
+                    if request_guard is not None:
+
+                        async def _route(route: Any) -> None:
+                            try:
+                                await request_guard(route.request.url)
+                            except Exception:
+                                await route.abort()
+                            else:
+                                await route.continue_()
+
+                        await page.route("**/*", _route)
+                    await self._load(page, url)
+                    title = await page.title()
+                    text = await self._visible_text(page)
+                    html = await page.content() if include_html else ""
+                    if len(html) > MAX_RENDERED_HTML_CHARS:
+                        html = html[:MAX_RENDERED_HTML_CHARS]
+                    screenshot = None
+                    if screenshot_threshold > 0 and len(text.strip()) < screenshot_threshold:
+                        with contextlib.suppress(Exception):
+                            screenshot = await self._screenshot_bytes(page)
+                    return RenderedPage(
+                        title=title,
+                        text=text,
+                        url=page.url,
+                        html=html,
+                        screenshot=screenshot,
+                    )
+                finally:
+                    with contextlib.suppress(Exception):
+                        await page.close()
+
+        return await asyncio.wait_for(_do(), timeout=LOAD_TIMEOUT + 15)
+
+    @staticmethod
+    async def _visible_text(page: Page) -> str:
+        """从多个候选正文容器中选出信息量最大的可见文本。"""
+        candidates: Any = await page.evaluate(
+            """() => {
+                const selectors = [
+                    'article',
+                    '[itemprop="articleBody"]',
+                    'main',
+                    '[role="main"]',
+                    '.article-content',
+                    '.post-content',
+                    '.entry-content',
+                    'body',
+                ];
+                const seen = new Set();
+                const result = [];
+                for (const selector of selectors) {
+                    const node = document.querySelector(selector);
+                    if (!node || seen.has(node)) continue;
+                    seen.add(node);
+                    const clone = node.cloneNode(true);
+                    clone.querySelectorAll(
+                        'script, style, noscript, template, svg, canvas, nav, header, footer, aside, form, '
+                        + '[aria-hidden="true"], [role="navigation"], [role="contentinfo"]'
+                    ).forEach((item) => item.remove());
+                    const text = (clone.innerText || clone.textContent || '').trim();
+                    if (text) result.push({selector, text});
+                }
+                return result;
+            }"""
+        )
+        if not isinstance(candidates, list):
+            return ""
+
+        best_text = ""
+        best_score = -1
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            text = str(candidate.get("text") or "")
+            compact = re.sub(r"\s+", " ", text).strip()
+            if not compact:
+                continue
+            selector = str(candidate.get("selector") or "")
+            selector_bonus = 250 if selector != "body" else 0
+            score = len(compact) + selector_bonus
+            if score > best_score:
+                best_score = score
+                best_text = text
+        return best_text
+
+    @staticmethod
+    async def _screenshot_bytes(page: Page) -> bytes:
+        """截取受限高度的首屏，直接返回 bytes，避免临时文件竞争。"""
+        await page.set_viewport_size({"width": 1080, "height": 1600})
+        return await page.screenshot(type="jpeg", quality=75, full_page=False)
+
     @staticmethod
     async def _on_challenge_page(page: Page) -> bool:
         try:
@@ -236,11 +368,12 @@ class Catcher:
 
     @staticmethod
     async def _screenshot(page: Page, url: str, size: tuple[int, int]) -> str:
-        title = await page.title()
-        path = f"./temps/web_{''.join([str(ord(i)) for i in title][:12])}.png"
+        del url
+        path = f"./temps/web_{uuid.uuid4().hex}.png"
         if size[0] == size[1] == 0:
             await page.set_viewport_size({"width": 1080, "height": 250})
             height = await page.evaluate("document.body.scrollHeight")
+            height = min(max(250, int(height)), SCREENSHOT_MAX_HEIGHT)
             await page.set_viewport_size({"width": 1080, "height": height})
         else:
             await page.set_viewport_size({"width": size[0], "height": size[1]})
