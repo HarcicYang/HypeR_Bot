@@ -13,7 +13,7 @@ dependencies = [
     "GitPython",
     "google-genai",
     "httpx",
-    "hyper-bot==1.0.0.post3",
+    "hyper-bot==1.0.1",
     "jieba",
     "meme-generator<0.2.0",
     "numpy",
