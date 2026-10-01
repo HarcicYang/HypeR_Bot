@@ -12,7 +12,8 @@ import os
 import time
 
 from hyperot import configurator
-from hyperot.v2 import Image, Message
+from hyperot.v2 import Message
+from hyperot_adapter_onebot.segments import OneBotImage
 
 from modules.AgentRuntime.sticker_store import collect_sticker, get_sticker_store
 from modules.AgentTools.registry import AgentToolBase, ToolContext, tool
@@ -80,7 +81,9 @@ class StickerTools(AgentToolBase):
 
     @tool(group="sticker", scenes=("group", "private"))
     async def sticker_send(self, ctx: ToolContext, sticker_id: int) -> str:
-        """把指定 id 的表情包图片原样发送到当前会话（不带任何解释文字）。
+        """把指定 id 的表情包以 QQ 表情形式发送到当前会话（不带任何解释文字）。
+
+        发送时带 is_emoji 标志，QQ 客户端按表情包渲染；不带会被当成普通图片。
 
         - sticker_id: sticker_search 或 sticker_list 返回的表情包 id
         """
@@ -95,7 +98,9 @@ class StickerTools(AgentToolBase):
         left = _cooldown_left(scene_key)
         if left > 0:
             return f"表情包发送太频繁，约 {int(left) + 1} 秒后再试"
-        message = Message(Image(source="file://" + os.path.abspath(path)))
+        # 必须用 OneBotImage 并置 is_emoji=True:基类 Image 经 _adapting_encoder 编码时
+        # 没有该字段,wire 上 is_emoji 回落为 false,表情包会被当成普通图片发出
+        message = Message(OneBotImage(source="file://" + os.path.abspath(path), is_emoji=True))
         if ctx.ev_type == "group":
             result = await ctx.actions.group(str(ctx.scene_id)).send(message)
         else:

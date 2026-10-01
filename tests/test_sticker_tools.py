@@ -13,6 +13,7 @@ import unittest
 from types import SimpleNamespace
 from typing import Any
 
+from hyperot_adapter_onebot.segments import OneBotImage, OneBotSegmentCodec
 from typing_extensions import override
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -175,6 +176,16 @@ class StickerToolsTests(unittest.IsolatedAsyncioTestCase):
     def _tools(self) -> Any:
         return self.mod.StickerTools()
 
+    def _assert_emoji_wire(self, message: Any) -> None:
+        """发送出的表情包必须带 is_emoji,且编码到 OneBot wire 后该标志不丢失。"""
+        segment = next(iter(message))
+        self.assertIsInstance(segment, OneBotImage)
+        self.assertTrue(segment.is_emoji)
+        wire = OneBotSegmentCodec().encode_segments(message)
+        self.assertEqual(len(wire), 1)
+        self.assertEqual(wire[0]["type"], "image")
+        self.assertTrue(wire[0]["data"]["is_emoji"])
+
     def test_registration_is_permission_free(self) -> None:
         regs = {t.name: t for t in self.registry_mod.ToolRegistry.registrations() if t.group == "sticker"}
         self.assertEqual(
@@ -248,6 +259,7 @@ class StickerToolsTests(unittest.IsolatedAsyncioTestCase):
         sent = await tools.sticker_send(ctx, 1)
         self.assertIn("已发送：message_id=777", sent)
         self.assertEqual(len(ctx.actions.sent), 1)
+        self._assert_emoji_wire(ctx.actions.sent[0])
 
         cooled = await tools.sticker_send(ctx, 1)
         self.assertIn("发送太频繁", cooled)
