@@ -41,6 +41,13 @@ CONTENT_RULE = """# 长内容读取
 
 PROFILE_SUMMARY_MARKER = "SYSTEM -- 人设切换前的上下文状态 --"
 
+STICKER_RULE = """# 表情包
+
+- 表情包库由群友通过 `.ag.stk.add` 动态维护，每张都带有 Gemini 生成的画面/情绪摘要，可以用 `sticker_search(query)` 按语义检索。
+- 适合接梗、起哄、吐槽、复读、表达强烈情绪时使用；确定要发时用 `sticker_send(sticker_id)` 发到当前会话。
+- 表情包是调味剂不是主食：同一会话连续发送不超过一两次，严肃场合和长篇解释不要用，没有合适的就不要硬发。
+- 发送后继续正常对话，不要解释检索和发送过程。"""
+
 PROFILE_SUMMARY_SYSTEM = """你是对话上下文归档器。请把输入记录整理成与人设无关的事实性状态，供机器人在切换人设后继续工作。
 
 重点保留:
@@ -274,6 +281,8 @@ def build_system_prompt(
         + MAIN_CONTEXT_RULE
         + "\n\n"
         + CONTENT_RULE
+        + "\n\n"
+        + STICKER_RULE
         + web_search_note(api_mode, web_search)
         + native_multimodal_note(native_multimodal)
         + "\n\n"
@@ -290,6 +299,7 @@ __all__ = [
     "PROFILE_SUMMARY_MERGE_SYSTEM",
     "PROFILE_SUMMARY_SYSTEM",
     "ROLE_PROMPT",
+    "STICKER_RULE",
     "SUBAGENT_RULE",
     "SYSTEM_CONTEXT_PROMPT",
     "SYSTEM_INSTRUCTIONS",
