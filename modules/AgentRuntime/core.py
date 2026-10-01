@@ -22,6 +22,7 @@ from hyperot.v2 import ClientAPI
 import ModuleClass
 from modules.AgentRuntime.api_profiles import ApiProfileManager, ApiRuntime
 from modules.AgentRuntime.capture import CaptureActions as _CaptureActions
+from modules.AgentRuntime.capture import decode_message_event as _decode_event
 from modules.AgentRuntime.dsml import parse_embedded_tool_calls as _parse_embedded_tool_calls
 from modules.AgentRuntime.models import (
     HISTORY_PATH,
@@ -863,7 +864,7 @@ class AgentCore:
             return f"模块「{module}」不存在。\n{await self.list_modules()}"
         if cls.__name__ in deny:
             return f"模块「{cls.__name__}」已被禁用"
-        # 官方构建器构造 OneBot 事件 JSON → em.new 得到类型安全事件
+        # 官方构建器构造 OneBot 事件 JSON → 适配器 translate_event 得到 v2 事件
         now = int(time.time())
         builder = OneBotEventBuilder().init(
             time=now,
@@ -880,11 +881,10 @@ class AgentCore:
         else:
             builder.as_private_message(message=msg_json, message_id="0")
             builder.private_sender(nickname="Agent", sex="unknown", age=0)
-        import hyperot.events as v1_events  # v1 命名空间仍提供 em.new（保留的合成链路）
-
-        v1_events.init()  # 幂等：v1 事件管理器需要 init() 填充 logger/config
-
-        event = v1_events.em.new(builder.build())
+        # 被驱动模块按 v2 契约取 scene_type/scene_id/message:必须走适配器的事件翻译
+        event = _decode_event(builder.build())
+        if event is None:
+            return f"模块「{module}」事件构造失败,无法把命令合成为消息事件"
         cap = _CaptureActions(self.bot_api)
         try:
             await cast(Any, cls)(cap, event).handle()

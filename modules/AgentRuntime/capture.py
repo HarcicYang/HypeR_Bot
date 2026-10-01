@@ -10,9 +10,10 @@ import shutil
 import time
 from typing import Any
 
-from hyperot.v2 import ClientAPI, Message, SceneType
+from hyperot.v2 import ClientAPI, Event, Message, SceneType
 from hyperot.v2.actions import SendResult
 from hyperot.v2.api import SceneAPI
+from hyperot_adapter_onebot.events import translate_event
 from hyperot_adapter_onebot.segments import OneBotSegmentCodec
 from typing_extensions import override
 
@@ -23,6 +24,15 @@ _codec = OneBotSegmentCodec()
 from modules.OneBotExtraSegments import register_extra_segments  # noqa: E402
 
 register_extra_segments(_codec)
+
+
+def decode_message_event(data: dict[str, Any]) -> Event | None:
+    """把 OneBot 事件 JSON 翻译为 v2 事件(适配器官方链路,供 Agent 合成事件用)。
+
+    main.py 在 client.adapter.segment_codec 上注册扩展段,但该 codec 不经 ClientAPI 暴露,
+    这里复用捕获侧已注册扩展段的同一实例,避免编码路径分叉。
+    """
+    return translate_event(data, _codec)
 
 
 def _preserve_image_files(segs: list[Any]) -> list[Any]:
