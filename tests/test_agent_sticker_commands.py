@@ -56,6 +56,42 @@ def _load_agent() -> Any:
     return module
 
 
+def _load_sticker_store_mod() -> Any:
+    """加载 sticker_store 模块对象(命令的 collect_sticker 在其命名空间内解析 store/describe)。"""
+    if "test_sticker_store_module" in sys.modules:
+        return sys.modules["test_sticker_store_module"]
+    stubs: dict[str, types.ModuleType] = {}
+    for name, rel in (
+        ("modules", "modules"),
+        ("modules.AgentTools", os.path.join("modules", "AgentTools")),
+        ("modules.AgentRuntime", os.path.join("modules", "AgentRuntime")),
+    ):
+        if name not in sys.modules:
+            pkg = types.ModuleType(name)
+            pkg.__path__ = [os.path.join(ROOT, rel)]  # type: ignore[attr-defined]
+            sys.modules[name] = pkg
+            stubs[name] = pkg
+    try:
+        from hyperot import configurator
+
+        if "hyper-bot" not in configurator.BotConfig._loaded_cfgs:
+            configurator.BotConfig._loaded_cfgs["hyper-bot"] = configurator.BotConfig(
+                protocol="OneBot",
+                owner=[],
+                black_list=[],
+                silents=[],
+                connection={"mode": "FWS", "host": "127.0.0.1", "port": 0},
+                uin=0,
+                others={},
+            )
+        module = importlib.import_module("modules.AgentRuntime.sticker_store")
+    finally:
+        for name in stubs:
+            sys.modules.pop(name, None)
+    sys.modules["test_sticker_store_module"] = module
+    return module
+
+
 def _fake_event(text: str) -> Any:
     return SimpleNamespace(
         message=Message(Text(text=text)),
@@ -171,7 +207,9 @@ class _FakeStore:
 
 
 class AgentStickerFlowTests(unittest.IsolatedAsyncioTestCase):
-    """_cmd → _cmd_sticker_* 全链路:取图、去重、Gemini 描述、入库、权限与回复文案。"""
+    """_cmd → _cmd_sticker_* 全链路:取图、去重、Gemini 描述、入库与回复文案。
+
+    表情包库全局共享且不设权限分级:任何用户都能添加/删除任意表情包。"""
 
     @override
     def setUp(self) -> None:
@@ -200,7 +238,13 @@ class AgentStickerFlowTests(unittest.IsolatedAsyncioTestCase):
         asyncio.to_thread = sync_to_thread  # type: ignore[assignment]
         self.addCleanup(setattr, asyncio, "to_thread", original)
 
-    def _agent(self, allow_admin: bool = True) -> Any:
+    def _patch_attr(self, module: Any, name: str, value: Any) -> None:
+        """补模块属性并在测试后恢复,避免污染同一进程内的其他测试文件。"""
+        original = getattr(module, name)
+        setattr(module, name, value)
+        self.addCleanup(setattr, module, name, original)
+
+    def _agent(self) -> Any:
         agent = self.mod._Agent()
 
         async def fake_describe(raw: bytes, hint: str = "") -> str:
@@ -210,13 +254,12 @@ class AgentStickerFlowTests(unittest.IsolatedAsyncioTestCase):
         async def capture_reply(event: Any, text: str) -> None:
             self.replies.append(text)
 
-        def fake_perm(event: Any, required: str) -> bool:
-            return allow_admin if required == "any_admin" else True
-
-        self.mod.get_sticker_store = lambda: self.store  # type: ignore[method-assign]
-        self.mod.describe_sticker_image = fake_describe  # type: ignore[method-assign]
-        agent._reply = capture_reply  # type: ignore[method-assign]
-        agent._has_perm = fake_perm  # type: ignore[method-assign]
+        # 命令经 sticker_store.collect_sticker 编排,store/describe 都在该模块命名空间内解析
+        store_mod = _load_sticker_store_mod()
+        self._patch_attr(self.mod, "get_sticker_store", lambda: self.store)
+        self._patch_attr(store_mod, "get_sticker_store", lambda: self.store)
+        self._patch_attr(store_mod, "describe_sticker_image", fake_describe)
+        self._patch_attr(agent, "_reply", capture_reply)
         return agent
 
     def _event(self, text: str, with_image: bool = True) -> Any:
@@ -270,14 +313,10 @@ class AgentStickerFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.describe_calls), 1)
         self.assertIn("这张图片已收藏为表情包 #1", self.replies[-1])
 
-    async def test_add_without_image_or_permission_is_rejected(self) -> None:
+    async def test_add_without_image_is_rejected(self) -> None:
         agent = self._agent()
         await agent._cmd(self._event(".ag.stk.add 没有图", with_image=False))
         self.assertIn("请带上要收藏的图片", self.replies[-1])
-
-        agent._has_perm = lambda event, required: False  # type: ignore[method-assign]
-        await agent._cmd(self._event(".ag.stk.add 有图"))
-        self.assertIn("仅群白名单成员可以添加表情包", self.replies[-1])
 
     async def test_delete_own_sticker_allowed(self) -> None:
         agent = self._agent()
@@ -286,16 +325,13 @@ class AgentStickerFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.deleted, [1])
         self.assertIn("表情包 #1 已删除", self.replies[-1])
 
-    async def test_delete_others_sticker_requires_admin(self) -> None:
-        agent = self._agent(allow_admin=False)
+    async def test_delete_any_sticker_allowed(self) -> None:
+        # 全局库不区分用户:普通成员(uid 10001,非白名单/管理员)也能删别人收藏的表情包
+        agent = self._agent()
         self.store.add_sticker(b"b", "描述B", adder=999)
         await agent._cmd(self._event(".ag.stk.del 1", with_image=False))
-        self.assertEqual(self.store.deleted, [])
-        self.assertIn("只能删除自己收藏的表情包", self.replies[-1])
-
-        agent._has_perm = lambda event, required: True  # type: ignore[method-assign]
-        await agent._cmd(self._event(".ag.stk.del 1", with_image=False))
         self.assertEqual(self.store.deleted, [1])
+        self.assertIn("表情包 #1 已删除", self.replies[-1])
 
     async def test_delete_missing_sticker_reports_not_found(self) -> None:
         agent = self._agent()

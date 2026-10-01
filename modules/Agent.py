@@ -62,7 +62,7 @@ from modules.AgentRuntime.profiles import current_profile_name as _current_profi
 from modules.AgentRuntime.profiles import load_profiles as _runtime_load_profiles
 from modules.AgentRuntime.profiles import save_profiles as _save_profiles
 from modules.AgentRuntime.sessions import SessionManager as _SessionManager
-from modules.AgentRuntime.sticker_store import describe_sticker_image, get_sticker_store
+from modules.AgentRuntime.sticker_store import collect_sticker, get_sticker_store
 from modules.AgentRuntime.subagents import SubAgent
 from modules.AgentRuntime.subagents import SubAgentManager as _SubAgentManager
 from modules.AgentRuntime.tool_text import build_tools_section as _build_tools_section
@@ -339,7 +339,7 @@ def _build_system_prompt(profile: _AgentProfile | str | None = None) -> str:
 STICKER_USAGE = (
     "用法:\n"
     ".ag.stk.add [关键词] - 收藏图片(命令带图或回复一张图),Gemini 自动生成描述\n"
-    ".ag.stk.del <id> - 删除表情包(自己的;管理员可删他人)\n"
+    ".ag.stk.del <id> - 删除表情包(全局库,任何用户可删)\n"
     ".ag.stk.list [n] - 列出最近的表情包\n"
     ".ag.stk.info <id> - 查看表情包详情"
 )
@@ -373,8 +373,8 @@ AGENT_HELP = (
     ".agent.context.clear - 清空当前会话上下文历史(主人或当前群管理员/群主)\n"
     ".agent.context.summary - 请求 System Context 总结当前会话(主人或当前群管理员/群主)\n"
     "表情包库(每张都带 Gemini 生成的描述摘要,Agent 在聊天中自动选用;简写 stk):\n"
-    ".ag.stk.add [关键词] - 收藏命令中的图片或回复的图片(需群白名单)\n"
-    ".ag.stk.del <id> - 删除表情包(自己的需白名单,删他人需管理员)\n"
+    ".ag.stk.add [关键词] - 收藏命令中的图片或回复的图片(任何用户)\n"
+    ".ag.stk.del <id> - 删除表情包(全局库,任何用户可删)\n"
     ".ag.stk.list [n] - 列出最近收藏的表情包\n"
     ".ag.stk.info <id> - 查看表情包详情\n"
     ".ag.func - 查看全部 Agent 工具及启用状态(仅主人;全名 .ag.function)\n"
@@ -1050,7 +1050,7 @@ class _Agent:
     # -- 表情包(.ag.stk) --
 
     async def _cmd_sticker(self, event: MessageReceivedEvent, text: str, parts: list[str], sub: str) -> None:
-        """表情包库管理:add(收藏图片)/del/list/info。添加需群白名单,删他人需管理员。"""
+        """表情包库管理:add(收藏图片)/del/list/info。全局共享库,不设权限分级。"""
         action = sub.split(".", 1)[1] if "." in sub else ""
         if not action:
             action = (parts[2] if len(parts) > 2 else "").lower()
@@ -1069,9 +1069,6 @@ class _Agent:
 
     async def _cmd_sticker_add(self, event: MessageReceivedEvent, text: str, action_from_sub: bool = False) -> None:
         uid = _uid_of(event)
-        if not self._has_perm(event, "whitelist"):
-            await self._reply(event, "仅群白名单成员可以添加表情包(主人在私聊可直接添加)")
-            return
         sources = self._sticker_image_sources(event)
         if not sources:
             sources = await self._quoted_image_sources(event)
@@ -1085,24 +1082,12 @@ class _Agent:
         # 消息里的图片段在 str(message) 中渲染为 "[图片]",会紧贴关键词,先剔除再收敛空白
         keywords = head[index].replace("[图片]", " ") if len(head) > index else ""
         keywords = " ".join(keywords.split())
-        raw = await self._download_sticker_image(sources[0])
-        if not raw:
-            await self._reply(event, "图片下载失败,换个图片或稍后再试")
+        entry = await collect_sticker(sources[0], keywords, uid or 0)
+        if "error" in entry:
+            await self._reply(event, entry["error"])
             return
-        store = get_sticker_store()
-        existed = store.find_by_md5(raw)
-        if existed is not None:
-            await self._reply(
-                event, f"这张图片已收藏为表情包 #{existed.get('id')},描述:{existed.get('desc') or '(无)'}"
-            )
-            return
-        desc = await describe_sticker_image(raw, keywords)
-        if not desc:
-            # Gemini 不可用(未配 key 或调用失败)时退化为用户关键词,保证收藏不失败
-            desc = keywords or "(未生成描述)"
-        entry = await asyncio.to_thread(store.add_sticker, raw, desc, keywords, uid or 0)
-        if not entry:
-            await self._reply(event, "收藏失败,请稍后再试")
+        if entry.get("duplicate"):
+            await self._reply(event, f"这张图片已收藏为表情包 #{entry.get('id')},描述:{entry.get('desc') or '(无)'}")
             return
         await self._reply(
             event,
@@ -1113,21 +1098,14 @@ class _Agent:
         )
 
     async def _cmd_sticker_remove(self, event: MessageReceivedEvent, parts: list[str]) -> None:
-        uid = _uid_of(event)
         sticker_id = self._sticker_id_arg(parts)
         if sticker_id is None:
             await self._reply(event, "用法: .ag.stk.del <id>")
-            return
-        if not self._has_perm(event, "whitelist"):
-            await self._reply(event, "仅群白名单成员可以删除表情包")
             return
         store = get_sticker_store()
         entry = store.get(sticker_id)
         if entry is None:
             await self._reply(event, f"表情包 #{sticker_id} 不存在,发送 .ag.stk.list 查看已有表情包")
-            return
-        if uid != int(entry.get("adder") or 0) and not self._has_perm(event, "any_admin"):
-            await self._reply(event, f"只能删除自己收藏的表情包(#{sticker_id} 的收藏者是 {entry.get('adder')})")
             return
         if store.delete_sticker(sticker_id) is None:
             await self._reply(event, f"表情包 #{sticker_id} 删除失败")
@@ -1203,24 +1181,6 @@ class _Agent:
                     if source:
                         sources.append(source)
         return sources
-
-    @staticmethod
-    async def _download_sticker_image(source: str) -> bytes | None:
-        """下载待收藏的图片字节;http(s) 走网络、file:// 读本地,失败返回 None。"""
-        try:
-            if source.startswith("http"):
-                from hyperot.network import httpx_get
-
-                resp = await httpx_get(source)
-                if resp.status_code != 200:
-                    return None
-                return resp.content
-            if source.startswith("file://"):
-                with open(source[len("file://") :], "rb") as f:
-                    return f.read()
-        except Exception:
-            return None
-        return None
 
     @staticmethod
     def _sticker_id_arg(parts: list[str]) -> int | None:

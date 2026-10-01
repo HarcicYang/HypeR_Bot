@@ -66,6 +66,11 @@ def _guess_ext(raw: bytes) -> str:
     return ".jpg"
 
 
+def _read_file(path: str) -> bytes:
+    with open(path, "rb") as f:
+        return f.read()
+
+
 def _index_text(keywords: str, desc: str, md5: str) -> str:
     """检索文本：关键词在前（BM25 权重更高），md5 短缀保证每条唯一，
     避开 MemoryStore 对相同 text 的去重（不同图片的描述可能一模一样）。"""
@@ -196,3 +201,44 @@ def get_sticker_store() -> StickerStore:
     if _STORE is None:
         _STORE = StickerStore()
     return _STORE
+
+
+async def download_sticker_image(source: str) -> bytes | None:
+    """下载待收藏的图片字节;http(s) 走网络、file:// 读本地,失败返回 None。"""
+    try:
+        if source.startswith("http"):
+            from hyperot.network import httpx_get
+
+            resp = await httpx_get(source)
+            if resp.status_code != 200:
+                return None
+            return resp.content
+        if source.startswith("file://"):
+            return await asyncio.to_thread(_read_file, source[len("file://") :])
+    except Exception:
+        return None
+    return None
+
+
+async def collect_sticker(source: str, keywords: str = "", adder: int = 0) -> dict[str, Any]:
+    """下载图片并入库:md5 去重 → Gemini 描述 → 写文件与条目。
+
+    命令(.ag.stk.add)与工具(sticker_add)共用;表情包库是全局共享的单例,
+    不区分用户,adder 仅作展示元数据。成功返回条目(重复收藏时带 duplicate=True),
+    失败返回 {"error": 中文原因}。
+    """
+    raw = await download_sticker_image(source)
+    if not raw:
+        return {"error": "图片下载失败,换个图片或稍后再试"}
+    store = get_sticker_store()
+    existed = store.find_by_md5(raw)
+    if existed is not None:
+        return {**existed, "duplicate": True}
+    desc = await describe_sticker_image(raw, keywords)
+    if not desc:
+        # Gemini 不可用(未配 key 或调用失败)时退化为用户关键词,保证收藏不失败
+        desc = keywords or "(未生成描述)"
+    entry = await asyncio.to_thread(store.add_sticker, raw, desc, keywords, adder)
+    if not entry:
+        return {"error": "收藏失败,请稍后再试"}
+    return entry

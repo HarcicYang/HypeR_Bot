@@ -43,7 +43,8 @@ PROFILE_SUMMARY_MARKER = "SYSTEM -- 人设切换前的上下文状态 --"
 
 STICKER_RULE = """# 表情包
 
-- 表情包库由群友通过 `.ag.stk.add` 动态维护，每张都带有 Gemini 生成的画面/情绪摘要，可以用 `sticker_search(query)` 按语义检索。
+- 表情包库是全局共享的单例（所有群、私聊和用户共用一个库，不区分用户），每张都带有 Gemini 生成的画面/情绪摘要，可以用 `sticker_search(query)` 按语义检索。
+- 库由群友通过 `.ag.stk.add` 命令和你直接调用工具共同维护：用户要求收藏图片时用 `sticker_add(url, keywords)`（url 取消息中图片的下载链接），要求删除时用 `sticker_delete(sticker_id)`。表情包库不设权限分级，任何用户的要求都应当直接执行。
 - 适合接梗、起哄、吐槽、复读、表达强烈情绪时使用；确定要发时用 `sticker_send(sticker_id)` 发到当前会话。
 - 表情包是调味剂不是主食：同一会话连续发送不超过一两次，严肃场合和长篇解释不要用，没有合适的就不要硬发。
 - 发送后继续正常对话，不要解释检索和发送过程。"""

@@ -1,8 +1,9 @@
-"""表情包工具：检索库内表情包并发送到当前会话。
+"""表情包工具：检索、发送、添加、删除全局表情包库。
 
-表情包库由 `.ag.stk` 命令动态维护（add/del/list/info），每张表情包都带有
-Gemini 生成的画面/情绪摘要；这里只提供读取与发送，增删一律走 QQ 命令，
-避免模型绕过权限校验改动库内容。
+表情包库是全局共享的单例（所有群/私聊/用户共用一个库，不区分用户），每张表情包
+都带有 Gemini 生成的画面/情绪摘要。除 `.ag.stk` 命令外，Agent 也可以直接调用
+sticker_add / sticker_delete 维护库内容；表情包库不设权限分级，任何用户的消息
+都可以触发增删。
 """
 
 import asyncio
@@ -13,7 +14,7 @@ import time
 from hyperot import configurator
 from hyperot.v2 import Image, Message
 
-from modules.AgentRuntime.sticker_store import get_sticker_store
+from modules.AgentRuntime.sticker_store import collect_sticker, get_sticker_store
 from modules.AgentTools.registry import AgentToolBase, ToolContext, tool
 
 config = configurator.BotConfig.get("hyper-bot")
@@ -30,6 +31,39 @@ def _cooldown_left(scene_key: str) -> float:
 
 
 class StickerTools(AgentToolBase):
+    @tool(group="sticker", scenes=("group", "private"))
+    async def sticker_add(self, ctx: ToolContext, url: str, keywords: str = "") -> str:
+        """收藏一张图片到全局表情包库，Gemini 自动生成描述摘要。
+
+        - url: 图片的下载链接（消息上报中的图片 url，与 read_image 的取法一致）
+        - keywords: 可选关键词，空格分隔，辅助检索
+
+        重复图片（md5 相同）直接返回已存在的条目；表情包库不设权限分级，
+        任何用户要求收藏图片时都应当执行。
+        """
+        entry = await collect_sticker(url, keywords, ctx.principal_id or 0)
+        if "error" in entry:
+            return f"收藏失败：{entry['error']}"
+        if entry.get("duplicate"):
+            return f"这张图片已收藏为表情包 #{entry.get('id')}，描述:{entry.get('desc') or '(无)'}"
+        return (
+            f"已收藏为表情包 #{entry.get('id')}\n"
+            f"描述:{entry.get('desc') or '(无)'}\n"
+            f"关键词:{entry.get('keywords') or '(无)'}"
+        )
+
+    @tool(group="sticker", scenes=("group", "private"))
+    async def sticker_delete(self, ctx: ToolContext, sticker_id: int) -> str:
+        """从全局表情包库删除指定 id 的表情包（库内所有用户共享，不区分收藏者）。
+
+        - sticker_id: sticker_search 或 sticker_list 返回的表情包 id
+        """
+        store = get_sticker_store()
+        removed = await asyncio.to_thread(store.delete_sticker, sticker_id)
+        if removed is None:
+            return f"表情包 #{sticker_id} 不存在，可用 sticker_list 查看已有表情包"
+        return f"表情包 #{sticker_id} 已删除"
+
     @tool(group="sticker", scenes=("group", "private"))
     async def sticker_search(self, ctx: ToolContext, query: str, top_k: int = 5) -> str:
         """按画面、情绪或用途检索表情包库，返回候选列表（id、描述、关键词、收藏者）。
