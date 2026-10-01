@@ -3,8 +3,8 @@ import os.path
 import time
 from typing import Any
 
-from hyperot import common, segments
-from hyperot.events import *
+from hyperot.v2 import Mention, Message, Text
+from hyperot.v2.events import *
 from typing_extensions import override
 
 import ModuleClass
@@ -208,8 +208,13 @@ def string_similarity(s1: str, s2: str) -> float:
     return similarity
 
 
-@ModuleClass.ModuleRegister.register(GroupMessageEvent)
-class Module(ModuleClass.Module[GroupMessageEvent]):
+@ModuleClass.ModuleRegister.register(MessageReceivedEvent)
+class Module(ModuleClass.Module[MessageReceivedEvent]):
+    @override
+    @staticmethod
+    def filter(event: Any, allowed: list[Any]) -> bool:
+        return ModuleClass.group_message(event)
+
     @override
     @staticmethod
     def info() -> ModuleClass.ModuleInfo:
@@ -222,20 +227,23 @@ class Module(ModuleClass.Module[GroupMessageEvent]):
 
     @override
     async def handle(self):
-        if self.event.group_id is None or self.event.user_id is None:
+        if self.event.user_id is None:
             return
-        if self.event.is_owner:
+        gid = int(self.event.scene_id)
+        uid = int(self.event.user_id)
+        now_ts = int(self.event.timestamp.timestamp())
+        if ModuleClass.is_owner(self.event):
             if str(self.event.message) == ".dump":
                 print(data.dump())
             else:
                 return
 
-        user = data.get_group(self.event.group_id).get_user(self.event.user_id)
+        user = data.get_group(gid).get_user(uid)
         if not user.inited:
-            user.update(str(self.event.message), self.event.time)
+            user.update(str(self.event.message), now_ts)
             return
 
-        data.get_group(self.event.group_id).gen_k()
+        data.get_group(gid).gen_k()
 
         sim = string_similarity(user.last_message, str(self.event.message))
 
@@ -247,7 +255,7 @@ class Module(ModuleClass.Module[GroupMessageEvent]):
         #     user.inc_violations(0.7)
         # else:
         #     pass
-        user.inc_violations(-0.12 * (self.event.time - user.last_time) + 2.2)
+        user.inc_violations(-0.12 * (now_ts - user.last_time) + 2.2)
 
         if sim < 0.66:
             pass
@@ -287,27 +295,21 @@ class Module(ModuleClass.Module[GroupMessageEvent]):
         else:
             user.inc_violations(2.5)
 
-        user.update(str(self.event.message), self.event.time)
-        data.get_group(self.event.group_id).glb_dec()
+        user.update(str(self.event.message), now_ts)
+        data.get_group(gid).glb_dec()
 
         if user.need_mute:
-            await self.actions.set_group_ban(
-                user_id=self.event.user_id, group_id=self.event.group_id, duration=int(120 * user.violation_level)
-            )
+            await self.api.group(str(gid)).member(str(uid)).mute(int(120 * user.violation_level))
             user.punish(int(120 * user.violation_level))
 
         safety = WordSafety.check(text=str(self.event.message))
         if not safety.result:
-            await self.actions.del_msg(int(self.event.message_id))
+            await self.api.message(str(self.event.message_id)).recall()
             user.inc_unsafe_times()
             if user.need_mute:
-                await self.actions.set_group_ban(
-                    user_id=self.event.user_id, group_id=self.event.group_id, duration=int(120 * user.violation_level)
-                )
-                await self.actions.send_msg(
-                    user_id=self.event.user_id,
-                    group_id=self.event.group_id,
-                    message=common.Message(segments.At(str(self.event.user_id)), segments.Text("请勿发送违禁词")),
+                await self.api.group(str(gid)).member(str(uid)).mute(int(120 * user.violation_level))
+                await self.api.scene(self.event.scene_type, self.event.scene_id).send(
+                    Message(Mention(user_id=str(uid)), Text(text="请勿发送违禁词"))
                 )
                 user.clr_unsafe_times()
 

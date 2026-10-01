@@ -13,7 +13,8 @@ dependencies = [
     "GitPython",
     "google-genai",
     "httpx",
-    "hyper-bot==1.0.1",
+    "hyper-bot==2.0.1",
+    "hyperot-adapter-onebot==2.0.1",
     "jieba",
     "meme-generator<0.2.0",
     "numpy",
@@ -39,6 +40,7 @@ dependencies = [
 dev = [
     "pyrefly",
     "ruff",
+    "pytest>=9.1.1",
     "types-openpyxl>=3.1.5.20260827",
     "types-psutil>=7.2.2.20260906",
 ]

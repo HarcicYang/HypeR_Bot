@@ -9,8 +9,8 @@ import traceback
 import uuid
 from typing import Any, Literal, cast
 
-from hyperot import common, configurator, hyperogger, segments
-from hyperot.listener import Actions
+from hyperot import configurator, hyperogger
+from hyperot.v2 import ClientAPI, Message, Quote, Text
 
 from modules.AgentRuntime.api_profiles import ApiProfileManager
 from modules.AgentRuntime.content_store import cleanup_all
@@ -51,7 +51,7 @@ class SessionManager:
     def __init__(
         self,
         owner: Any,
-        actions: Actions,
+        actions: ClientAPI,
         *,
         api_manager: ApiProfileManager | None = None,
     ) -> None:
@@ -317,10 +317,7 @@ class SessionManager:
         if request_id in self.sys_requests:
             req = self.sys_requests[request_id]
             await self.notify_owners(
-                f"System Context 请求超时\n"
-                f"request_id: {request_id}\n"
-                f"operation: {req.op}\n"
-                f"等待时间: {timeout:g}s"
+                f"System Context 请求超时\nrequest_id: {request_id}\noperation: {req.op}\n等待时间: {timeout:g}s"
             )
             await self.ack_sys_request(request_id, f"请求处理超时(>{timeout:g}s)，未能确认完成")
 
@@ -332,7 +329,7 @@ class SessionManager:
             return
         for owner_id in owners:
             try:
-                await self.actions.send_msg(user_id=owner_id, message=message)
+                await self.actions.user(str(owner_id)).send(message)
             except Exception:
                 logger.error(f"向 owner {owner_id} 发送系统通知失败：\n" + traceback.format_exc())
 
@@ -342,16 +339,15 @@ class SessionManager:
         if req is None:
             return f"未找到待回调的请求 #{request_id}(可能已完成或已超时)"
         text = content[:2000]
-        segs: list[Any] = []
+        message = Message()
         if req.reply_message_id:
-            segs.append(segments.Reply(req.reply_message_id))
-        segs.append(segments.Text(text))
+            message = message.add(Quote(message_id=str(req.reply_message_id)))
+        message = message.add(Text(text=text))
         try:
-            await self.actions.send_msg(
-                group_id=req.source.scene_id if req.source.scene_type == "group" else None,
-                user_id=req.principal_id,
-                message=common.Message(*segs),
-            )
+            if req.source.scene_type == "group":
+                await self.actions.group(str(req.source.scene_id)).send(message)
+            else:
+                await self.actions.user(str(req.principal_id)).send(message)
         except Exception:
             logger.warning("系统请求回调发送失败: " + traceback.format_exc())
             return f"请求 #{request_id} 已完成但回调发送失败"
@@ -441,11 +437,7 @@ class SessionManager:
                 await core.save()
             finally:
                 await core._release_processing_slot()
-        suffix = (
-            f"，已归档 {summarized} 个已加载上下文；未加载上下文将在下次使用时归档"
-            if summary_enabled
-            else ""
-        )
+        suffix = f"，已归档 {summarized} 个已加载上下文；未加载上下文将在下次使用时归档" if summary_enabled else ""
         return f"已切换到人设「{name}」并刷新全部 Main 上下文{suffix}"
 
     async def request_summary(

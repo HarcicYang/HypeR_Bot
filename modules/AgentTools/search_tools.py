@@ -46,9 +46,7 @@ class SearchTools(AgentToolBase):
         """
         max_results = max(1, min(max_results, 10))
         try:
-            results = await asyncio.to_thread(
-                _do_search, query, region, "moderate", timelimit, max_results, backend
-            )
+            results = await asyncio.to_thread(_do_search, query, region, "moderate", timelimit, max_results, backend)
         except Exception as exc:
             return f"搜索失败: {type(exc).__name__}: {exc}"
 

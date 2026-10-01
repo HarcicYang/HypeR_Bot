@@ -7,9 +7,8 @@ from random import randint
 from typing import Any
 
 import httpx
-from hyperot.common import Message
-from hyperot.events import GroupMessageEvent, PrivateMessageEvent
-from hyperot.segments import *
+from hyperot.v2 import Image, Mention, Message, Quote, Text
+from hyperot.v2.events import MessageReceivedEvent
 from typing_extensions import override
 
 from ModuleClass import Module, ModuleInfo, ModuleRegister
@@ -41,17 +40,15 @@ class UserInfo:
 
 users: dict[str, UserInfo] = {}
 
-
 with open("./assets/quick.json", encoding="utf-8") as f:
     words = json.load(f)["ele"]
-
 
 setu_last = int(time.time())
 setu_cache = [file_url("./assets/serika.png")]
 
 
-@ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
-class Funny(Module[GroupMessageEvent | PrivateMessageEvent]):
+@ModuleRegister.register(MessageReceivedEvent)
+class Funny(Module[MessageReceivedEvent]):
     @override
     @staticmethod
     def info() -> ModuleInfo:
@@ -71,18 +68,24 @@ class Funny(Module[GroupMessageEvent | PrivateMessageEvent]):
                 uin = str(self.event.user_id)
             elif "@" in str(self.event.message):
                 name = ""
-                uin = self.event.message[0].qq
+                first = self.event.message[0] if len(self.event.message) else None
+                if not isinstance(first, Mention):
+                    return
+                uin = str(first.user_id)
             else:
                 return
 
             if str(uin) not in users:
                 users[str(uin)] = UserInfo.build()
-            msg = Message(At(uin), Text(f"{name}今天的分数: {users[str(uin)].goodness}\n评级: {users[str(uin)].level}"))
-            await self.actions.send_msg(group_id=self.event.group_id, user_id=self.event.user_id, message=msg)
+            msg = Message(
+                Mention(user_id=str(uin)),
+                Text(text=f"{name}今天的分数: {users[str(uin)].goodness}\n评级: {users[str(uin)].level}"),
+            )
+            await self.api.scene(self.event.scene_type, self.event.scene_id).send(msg)
         elif str(self.event.message) == "随机色图":
             if int(time.time()) - setu_last <= 15:
-                await self.actions.send_msg(
-                    group_id=self.event.group_id, user_id=self.event.user_id, message=Message(Text("调用过于频繁"))
+                await self.api.scene(self.event.scene_type, self.event.scene_id).send(
+                    Message(Text(text="调用过于频繁"))
                 )
                 return
 
@@ -126,14 +129,10 @@ class Funny(Module[GroupMessageEvent | PrivateMessageEvent]):
                 url = response[0]["url"]
                 setu_cache.append(url)
 
-            await self.actions.send_msg(
-                group_id=self.event.group_id, user_id=self.event.user_id, message=Message(Image(url))
-            )
+            await self.api.scene(self.event.scene_type, self.event.scene_id).send(Message(Image(source=url)))
         elif str(self.event.message).startswith("发电 "):
             tag = str(self.event.message).replace("发电 ", "", 1)
             word = random.choice(words).replace("{target_name}", tag)
-            await self.actions.send_msg(
-                group_id=self.event.group_id,
-                user_id=self.event.user_id,
-                message=Message(Reply(self.event.message_id), Text(word)),
+            await self.api.scene(self.event.scene_type, self.event.scene_id).send(
+                Message(Quote(message_id=str(self.event.message_id)), Text(text=word))
             )

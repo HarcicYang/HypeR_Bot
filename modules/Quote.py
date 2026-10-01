@@ -1,11 +1,12 @@
 import os
+from typing import Any
 
-from hyperot import segments
-from hyperot.common import Message
-from hyperot.events import *
+from hyperot.v2 import Image, Message
+from hyperot.v2 import Quote as QuoteSegment
+from hyperot.v2.events import MessageReceivedEvent
 from typing_extensions import override
 
-from ModuleClass import Module, ModuleInfo, ModuleRegister
+from ModuleClass import Module, ModuleInfo, ModuleRegister, group_message
 from modules.site_catch import Catcher, file_url
 
 
@@ -26,8 +27,13 @@ async def get_image(quote: str, ava_url: str, name: str, uin: int) -> str:
         os.remove(f"./temps/quote_{uin}.html")
 
 
-@ModuleRegister.register(GroupMessageEvent)
-class Quoter(Module[GroupMessageEvent]):
+@ModuleRegister.register(MessageReceivedEvent)
+class Quoter(Module[MessageReceivedEvent]):
+    @override
+    @staticmethod
+    def filter(event: Any, allowed: list[Any]) -> bool:
+        return group_message(event)
+
     @override
     @staticmethod
     def info() -> ModuleInfo:
@@ -41,24 +47,25 @@ class Quoter(Module[GroupMessageEvent]):
 
     @override
     async def handle(self):
-        if ".quote" in str(self.event.message):
-            if isinstance(self.event.message[0], segments.Reply):
-                msg_id = self.event.message[0].id
-            else:
-                return
+        if ".quote" not in str(self.event.message):
+            return
+        if not len(self.event.message) or not isinstance(self.event.message[0], QuoteSegment):
+            return
+        msg_id = int(self.event.message[0].message_id)
 
-            content = await self.actions.get_msg(int(msg_id))
-            sender = content.data.sender
-            name = (sender.card if isinstance(sender, GroupSender) and sender.card else sender.nickname) or "未知用户"
-            uin = content.data.sender.user_id
-            if uin is None:
-                return
-            message = content.data.message
-            text = str(message)
-            res = await get_image(text, f"http://q2.qlogo.cn/headimg_dl?dst_uin={uin}&spec=640", name, uin)
-            await self.actions.send_msg(
-                group_id=self.event.group_id,
-                user_id=self.event.user_id,
-                message=Message(segments.Reply(self.event.message_id), segments.Image(file_url(res))),
-            )
-            os.remove(res)
+        content = await self.api.message(str(msg_id)).fetch()
+        text = str(content)
+        # get_msg 的原始响应带 sender（昵称/名片），类型化 fetch 只返回消息本体，故这里走 raw。
+        raw = await self.api.raw("get_msg", {"message_id": msg_id})
+        payload: Any = raw.data
+        data = payload if isinstance(payload, dict) else dict[str, Any]()
+        sender: dict[str, Any] = data.get("sender") or dict[str, Any]()
+        name = (sender.get("card") if sender.get("card") else sender.get("nickname")) or "未知用户"
+        uin = sender.get("user_id")
+        if uin is None:
+            return
+        res = await get_image(text, f"http://q2.qlogo.cn/headimg_dl?dst_uin={uin}&spec=640", name, uin)
+        await self.api.scene(self.event.scene_type, self.event.scene_id).send(
+            Message(QuoteSegment(message_id=str(self.event.message_id)), Image(source=file_url(res)))
+        )
+        os.remove(res)

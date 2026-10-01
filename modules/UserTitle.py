@@ -1,14 +1,20 @@
-from hyperot.common import Message
-from hyperot.events import *
-from hyperot.segments import *
+from typing import Any
+
+from hyperot.v2 import Message, Quote, Text
+from hyperot.v2.events import MessageReceivedEvent
 from typing_extensions import override
 
 import ModuleClass
 from ModuleClass import ModuleInfo
 
 
-@ModuleClass.ModuleRegister.register(GroupMessageEvent)
-class UserTitle(ModuleClass.Module[GroupMessageEvent]):
+@ModuleClass.ModuleRegister.register(MessageReceivedEvent)
+class UserTitle(ModuleClass.Module[MessageReceivedEvent]):
+    @override
+    @staticmethod
+    def filter(event: Any, allowed: list[Any]) -> bool:
+        return ModuleClass.group_message(event)
+
     @override
     @staticmethod
     def info() -> ModuleInfo:
@@ -23,12 +29,9 @@ class UserTitle(ModuleClass.Module[GroupMessageEvent]):
     async def handle(self):
         if str(self.event.message).startswith(".title"):
             args = str(self.event.message).split(" ")
-            if len(args) == 3 and self.event.group_id is not None:
-                await self.actions.set_group_special_title(
-                    group_id=self.event.group_id, title=args[2], user_id=int(args[1])
-                )
-                await self.actions.send_msg(
-                    group_id=self.event.group_id,
-                    user_id=self.event.user_id,
-                    message=Message([Reply(self.event.message_id), Text("成功")]),
+            gid = int(self.event.scene_id)
+            if len(args) == 3:
+                await self.api.group(str(gid)).member(str(int(args[1]))).set_title(args[2])
+                await self.api.scene(self.event.scene_type, self.event.scene_id).send(
+                    Message(Quote(message_id=str(self.event.message_id)), Text(text="成功"))
                 )

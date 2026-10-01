@@ -16,17 +16,13 @@ import re
 import time
 import types as _types
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Literal, Union, cast, get_args, get_origin, get_type_hints
+from typing import Any, Literal, Union, cast, get_args, get_origin, get_type_hints
 
-from hyperot import common, configurator, segments
+from hyperot import configurator
+from hyperot.v2 import ClientAPI, Image, Mention, Message, Quote, Text
 
 from modules.AgentRuntime.content_store import INLINE_CHARS, ContentStore
 from modules.AgentRuntime.models import EvType, PermGroup
-
-if TYPE_CHECKING:
-    from hyperot.listener import Actions
-else:
-    Actions = Any
 
 config = configurator.BotConfig.get("hyper-bot")
 CONFIG_PATH = "config.json"
@@ -511,7 +507,7 @@ class AgentToolBase:
 
 @dataclasses.dataclass
 class ToolContext:
-    actions: Actions
+    actions: ClientAPI
     ev_type: EvType
     scene_id: int
     perm_group: PermGroup = "member"
@@ -521,7 +517,7 @@ class ToolContext:
     release_requested: bool = False  # 由 release=True 的工具置位:本轮处理应结束(长程任务交给后台)
     role: Literal["main", "sub", "system"] = "main"
 
-    async def create_msg(self, raw_mess: Any) -> common.Message:
+    async def create_msg(self, raw_mess: Any) -> Message:
         new_mess: list[Any] = []
         for j in raw_mess:
             seg_type = j.get("seg")
@@ -529,29 +525,25 @@ class ToolContext:
                 raise RuntimeError("请重新生成")
             match seg_type:
                 case "text":
-                    new_mess.append(segments.Text(j.get("text")))
+                    new_mess.append(Text(text=str(j.get("text") or "")))
                 case "at":
-                    new_mess.append(segments.At(j.get("qq")))
+                    new_mess.append(Mention(user_id=str(j.get("qq") or "")))
                 case "reply":
-                    new_mess.append(segments.Reply(j.get("id")))
+                    new_mess.append(Quote(message_id=str(j.get("id") or "")))
                 case "image":
                     file = j.get("file")
                     if not file:
                         raise RuntimeError("图片段缺少 file")
-                    if not file.startswith(("http", "file:", "base64:")):
-                        # 本地路径:校验存在并转 file:// 绝对路径(不用 MediaSeg.build,
-                        # hyperot 1.0.0 的 build 对绝对路径分支用无参构造会崩)
+                    source = str(j.get("url") or file)
+                    if not source.startswith(("http", "file:", "base64:")):
+                        # 本地路径:校验存在并转 file:// 绝对路径
                         if not os.path.isfile(file):
                             raise RuntimeError(f"图片文件不存在或无法识别: {file}")
-                        file = "file://" + os.path.abspath(file)
-                    img = segments.Image(file=file)
-                    url = j.get("url")
-                    if url:
-                        img.url = url
-                    new_mess.append(img)
+                        source = "file://" + os.path.abspath(str(file))
+                    new_mess.append(Image(source=source))
                 case _:
                     raise NotImplementedError(f"消息类型 {seg_type} 非法：{raw_mess}")
-        return common.Message(*new_mess)
+        return Message(*new_mess)
 
 
 ToolRegistry._load_disabled()

@@ -1,17 +1,22 @@
 from random import randint
+from typing import Any
 
-from hyperot.common import Message
-from hyperot.events import *
-from hyperot.segments import *
+from hyperot.v2 import Mention, Message, Text
+from hyperot.v2.events import *
 from typing_extensions import override
 
-from ModuleClass import Module, ModuleInfo, ModuleRegister
+from ModuleClass import Module, ModuleInfo, ModuleRegister, group_message
 
 user_hist: dict[int, int] = {}
 
 
-@ModuleRegister.register(GroupMessageEvent)
-class Sxx(Module[GroupMessageEvent]):
+@ModuleRegister.register(MessageReceivedEvent)
+class Sxx(Module[MessageReceivedEvent]):
+    @override
+    @staticmethod
+    def filter(event: Any, allowed: list[Any]) -> bool:
+        return group_message(event)
+
     @override
     @staticmethod
     def info() -> ModuleInfo:
@@ -19,8 +24,10 @@ class Sxx(Module[GroupMessageEvent]):
 
     @override
     async def handle(self):
-        if self.event.user_id is None or self.event.group_id is None:
+        if self.event.user_id is None:
             return
+        uid = int(self.event.user_id)
+        gid = int(self.event.scene_id)
         if "透我" in str(self.event.message):
             flag1 = True
             flag2 = True
@@ -28,9 +35,9 @@ class Sxx(Module[GroupMessageEvent]):
             while flag1 and flag2:
                 if flag2:
                     if self.event.user_id in list(user_hist.keys()):
-                        c: float = user_hist[self.event.user_id] * 0.1
+                        c: float = user_hist[uid] * 0.1
                     else:
-                        user_hist[self.event.user_id] = 0
+                        user_hist[uid] = 0
                         c: float = 0.0
                     time = int(randint(0, round(100 - c)) * 5.2)
                 else:
@@ -42,14 +49,14 @@ class Sxx(Module[GroupMessageEvent]):
                 continue
 
             if time < 20:
-                msg = Message([At(str(self.event.user_id)), Text("你被透了，但是你似乎很会啊，居然还能保持清醒")])
+                msg = Message(Mention(user_id=str(uid)), Text(text="你被透了，但是你似乎很会啊，居然还能保持清醒"))
             elif 20 <= time < 60:
-                msg = Message([At(str(self.event.user_id)), Text("你被透了，但是你好像经验丰富，快醒来了呢")])
+                msg = Message(Mention(user_id=str(uid)), Text(text="你被透了，但是你好像经验丰富，快醒来了呢"))
             elif 60 <= time < 180:
-                msg = Message([At(str(self.event.user_id)), Text("你被透了，头昏眼花")])
+                msg = Message(Mention(user_id=str(uid)), Text(text="你被透了，头昏眼花"))
             else:
-                msg = Message([At(str(self.event.user_id)), Text("才透了几下就成这样了，行不行啊小泡芙，又菜又爱玩")])
+                msg = Message(Mention(user_id=str(uid)), Text(text="才透了几下就成这样了，行不行啊小泡芙，又菜又爱玩"))
 
-            await self.actions.set_group_ban(self.event.group_id, self.event.user_id, time)
-            await self.actions.send_msg(group_id=self.event.group_id, message=msg)
-            user_hist[self.event.user_id] += 1
+            await self.api.group(str(gid)).member(str(uid)).mute(time)
+            await self.api.group(str(gid)).send(msg)
+            user_hist[uid] += 1

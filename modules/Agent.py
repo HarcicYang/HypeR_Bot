@@ -28,11 +28,27 @@ import contextlib
 import json
 import re
 import traceback
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
-from hyperot import common, configurator, hyperogger, segments
-from hyperot.events import *
-from hyperot.listener import Actions
+from hyperot import configurator, hyperogger
+from hyperot.v2 import ClientAPI, Mention, Message, Quote, SceneType, Text
+from hyperot.v2.events import (
+    EssenceChangedEvent,
+    Event,
+    FileUploadedEvent,
+    FriendAddedEvent,
+    GroupMuteChangedEvent,
+    GroupNameChangedEvent,
+    MemberJoinedEvent,
+    MemberLeftEvent,
+    MemberMuteChangedEvent,
+    MemberRoleChangedEvent,
+    MessageReactionChangedEvent,
+    MessageRecalledEvent,
+    MessageReceivedEvent,
+    PokeReceivedEvent,
+    SceneEvent,
+)
 from typing_extensions import override
 
 import ModuleClass
@@ -56,7 +72,6 @@ from modules.AgentTools.registry import PERM_LEVEL, ToolRegistry
 config = configurator.BotConfig.get("hyper-bot")
 logger = hyperogger.Logger()
 logger.set_level(config.log_level)
-
 
 # 全局 LLM 调用并发上限(config.others.agent_max_concurrency,0=不限;防止多 core 同时请求触发 API 限流)
 _concurrency_limit: int = int(config.others.get("agent_max_concurrency") or 0)
@@ -370,30 +385,40 @@ _SubAgent = SubAgent
 
 _white: dict[int, set[int]] = {int(k): set(v) for k, v in (config.others.get("agent_white") or {}).items()}
 
-_GROUP_NOTICE_EVENTS: tuple[type[Event], ...] = (
-    GroupFileUploadEvent,
-    GroupAdminEvent,
-    GroupMemberDecreaseEvent,
-    GroupMemberIncreaseEvent,
-    GroupMuteEvent,
-    GroupWholeMuteEvent,
-    GroupNameChangeEvent,
-    GroupRecallEvent,
-    GroupEssenceEvent,
-    MessageReactionEvent,
-)
-_PRIVATE_NOTICE_EVENTS: tuple[type[Event], ...] = (
-    FriendRecallEvent,
-    FriendFileUploadEvent,
-)
-_COLLECTED_EVENTS: tuple[type[Event], ...] = (
-    GroupMessageEvent,
-    PrivateMessageEvent,
-    NotifyEvent,
-    *_GROUP_NOTICE_EVENTS,
-    *_PRIVATE_NOTICE_EVENTS,
-)
 
+def _uid_of(event: Any) -> int | None:
+    value = getattr(event, "user_id", None)
+    return int(value) if value is not None else None
+
+
+def _gid_of(event: Any) -> int | None:
+    if getattr(event, "scene_type", None) == SceneType.GROUP:
+        value = getattr(event, "scene_id", None)
+        return int(value) if value is not None else None
+    return None
+
+
+def _role_of(event: Any) -> str | None:
+    sender = getattr(event, "sender", None)
+    role = getattr(sender, "role", None) if sender is not None else None
+    return str(role) if role is not None else None
+
+
+_COLLECTED_EVENTS: tuple[type[Event], ...] = (
+    MessageReceivedEvent,
+    MemberJoinedEvent,
+    MemberLeftEvent,
+    MemberRoleChangedEvent,
+    MemberMuteChangedEvent,
+    GroupMuteChangedEvent,
+    GroupNameChangedEvent,
+    MessageRecalledEvent,
+    MessageReactionChangedEvent,
+    EssenceChangedEvent,
+    FileUploadedEvent,
+    PokeReceivedEvent,
+    FriendAddedEvent,
+)
 
 # --------------------------------------------------------------------------- #
 # Agent 门面(持有核心与各会话收集器)
@@ -402,7 +427,7 @@ _COLLECTED_EVENTS: tuple[type[Event], ...] = (
 
 class _Agent:
     def __init__(self) -> None:
-        self.actions: Actions | None = None
+        self.actions: ClientAPI | None = None
         self.session_manager: _SessionManager | None = None
         self.api_manager = ApiProfileManager.load(config.others)
         self.collectors: dict[SessionKey, _Collector] = {}
@@ -509,13 +534,12 @@ class _Agent:
         logger.info(f"人设「{name}」的 inject_master 已设置为 {enabled}")
         return f"人设「{name}」的 inject_master 已{'开启' if enabled else '关闭'}"
 
-    def _core_for_event(self, event: MessageEvent) -> _AgentCore:
+    def _core_for_event(self, event: MessageReceivedEvent) -> _AgentCore:
         assert self.session_manager is not None
-        if isinstance(event, GroupMessageEvent):
-            assert event.group_id is not None
-            return self.session_manager.get_core("group", event.group_id)
+        if event.scene_type == SceneType.GROUP:
+            return self.session_manager.get_core("group", int(event.scene_id))
         assert event.user_id is not None
-        return self.session_manager.get_core("private", event.user_id)
+        return self.session_manager.get_core("private", int(event.user_id))
 
     def _core_for_key(self, stype: Literal["grp", "usr"], sid: int) -> _AgentCore | None:
         """按收集器场景取当前核心(惰性解析,可能被空闲回收后重建)。"""
@@ -535,13 +559,12 @@ class _Agent:
             return "whitelist"
         return "member"
 
-    def _has_perm(self, event: MessageEvent, required: str) -> bool:
-        role = event.sender.role if isinstance(event, GroupMessageEvent) else None
-        actual = self._perm_of(event.user_id, event.group_id, role)
+    def _has_perm(self, event: MessageReceivedEvent, required: str) -> bool:
+        actual = self._perm_of(_uid_of(event), _gid_of(event), _role_of(event))
         return PERM_LEVEL[actual] >= PERM_LEVEL[required]
 
     @staticmethod
-    def _command_target_user(event: MessageEvent, parts: list[str]) -> tuple[int | None, bool]:
+    def _command_target_user(event: MessageReceivedEvent, parts: list[str]) -> tuple[int | None, bool]:
         """解析 .ag.on/off 的可选目标；返回 (目标 QQ, 是否显式指定)。"""
         explicit = len(parts) > 2
         if explicit:
@@ -550,19 +573,19 @@ class _Agent:
             if match is not None:
                 return int(match.group(1)), True
         for segment in event.message:
-            if not isinstance(segment, segments.At):
+            if not isinstance(segment, Mention):
                 continue
             try:
-                target = int(segment.qq)
+                target = int(segment.user_id)
             except (TypeError, ValueError):
                 continue
-            if target != event.self_id:
+            if target != ModuleClass.self_id_of(event):
                 return target, True
-        return (None, True) if explicit else (event.user_id, False)
+        return (None, True) if explicit else (_uid_of(event), False)
 
     # -- 入口 --
 
-    async def on_event(self, actions: Actions, event: Event) -> None:
+    async def on_event(self, actions: ClientAPI, event: Event) -> None:
         if self.session_manager is None:
             self.actions = actions
             self.sub_manager = _SubAgentManager(self, _AgentCore)
@@ -571,29 +594,27 @@ class _Agent:
             self.api_wizard = _ApiProfileWizard(self.session_manager.api_manager)
             if config.others.get("agent_heartbeat") and self.heartbeat_task is None:
                 self.heartbeat_task = asyncio.create_task(self._heartbeat())
-        if isinstance(event, GroupMessageEvent):
-            await self._on_group(event)
-        elif isinstance(event, PrivateMessageEvent):
-            await self._on_private(event)
-        elif isinstance(event, _GROUP_NOTICE_EVENTS):
-            await self._on_group_notice(event)
-        elif isinstance(event, _PRIVATE_NOTICE_EVENTS):
-            await self._on_private_notice(event)
-        elif isinstance(event, NotifyEvent):
-            if event.group_id is not None:
+        if isinstance(event, MessageReceivedEvent):
+            if event.scene_type == SceneType.GROUP:
+                await self._on_group(event)
+            else:
+                await self._on_private(event)
+        elif isinstance(event, SceneEvent):
+            if event.scene_type == SceneType.GROUP:
                 await self._on_group_notice(event)
             else:
                 await self._on_private_notice(event)
 
-    async def _on_group(self, event: GroupMessageEvent) -> None:
-        if event.group_id is None or event.user_id is None or event.blocked or event.is_silent:
+    async def _on_group(self, event: MessageReceivedEvent) -> None:
+        if event.user_id is None:
             return
         text = str(event.message).strip()
         if text.startswith((".agent", ".ag")):
             await self._cmd(event)
             return
-        gid = event.group_id
-        if not _white.get(event.group_id) and not event.is_mentioned:
+        gid = int(event.scene_id)
+        uid = int(event.user_id)
+        if not _white.get(gid) and not event.is_mentioned:
             # 没有任何白名单设置的群不缓存消息，bot_owner 也必须显式加入白名单。
             return
         key = SessionKey("group", gid)
@@ -601,21 +622,21 @@ class _Agent:
         if event.is_mentioned:
             await self._immediate(event)
             return
-        await col.append_passive(event.data)
+        await col.append_passive(repr(event))
         if event.user_id not in self._group_white(gid):
             # 非白名单成员只进入 Collector buffer(不重置收集窗口),由白名单成员的
             # 下一条消息或被 @ 时的 _immediate 一并消费。
             return
         await col.start(
-            event.user_id,
-            self._perm_of(event.user_id, event.group_id, event.sender.role),
-            event.self_id,
+            uid,
+            self._perm_of(uid, gid, _role_of(event)),
+            ModuleClass.self_id_of(event),
         )
 
-    async def _on_private(self, event: PrivateMessageEvent) -> None:
-        if event.user_id is None or event.blocked or event.is_silent:
+    async def _on_private(self, event: MessageReceivedEvent) -> None:
+        if event.user_id is None:
             return
-        uid = event.user_id
+        uid = int(event.user_id)
         if self.api_wizard is not None:
             raw_input = str(event.message)
             secret_input = self.api_wizard.expects_secret(uid) and raw_input.strip().lower() not in (
@@ -628,7 +649,7 @@ class _Agent:
             if wizard_reply is not None:
                 if secret_input and self.actions is not None:
                     with contextlib.suppress(Exception):
-                        await self.actions.del_msg(int(event.message_id))
+                        await self.actions.message(str(event.message_id)).recall()
                 await self._reply(event, wizard_reply.response)
                 return
         text = str(event.message).strip()
@@ -638,40 +659,42 @@ class _Agent:
         if uid in config.owner:
             # 主人私聊:不走收集,立即处理
             await self._immediate_event(
-                event.data,
+                repr(event),
                 "private",
                 uid,
                 self._perm_of(uid, None),
                 uid,
-                event.self_id,
+                ModuleClass.self_id_of(event),
             )
             return
         # 私聊不配置白名单:所有消息都走收集处理
         key = SessionKey("private", uid)
         col = self.collectors.setdefault(key, _Collector(uid, "usr", lambda: self._core_for_key("usr", uid)))
         await col.append(event)
-        await col.start(uid, self._perm_of(uid, None), event.self_id)
+        await col.start(uid, self._perm_of(uid, None), ModuleClass.self_id_of(event))
 
     @staticmethod
     def _notice_triggers(event: Event) -> bool:
         """仅返回需要立即唤醒 Agent 的高信号通知。"""
-        if isinstance(event, NotifyEvent):
-            return event.sub_type == "poke" and event.target_id == event.self_id
-        if isinstance(event, GroupRecallEvent):
-            return event.user_id == event.self_id and event.operator_id != event.self_id
+        self_id = ModuleClass.self_id_of(event)
+        if isinstance(event, PokeReceivedEvent):
+            return int(event.target_id) == self_id
+        if isinstance(event, MessageRecalledEvent):
+            operator = event.operator_id
+            return int(event.user_id or 0) == self_id and (operator is None or int(operator) != self_id)
         return False
 
     @staticmethod
     def _notice_actor(event: Event) -> int | None:
         actor = getattr(event, "operator_id", None)
         if actor is None:
-            actor = event.user_id
+            actor = getattr(event, "member_id", None)
+        if actor is None:
+            actor = getattr(event, "user_id", None)
         return int(actor) if actor is not None else None
 
-    async def _on_group_notice(self, event: Event) -> None:
-        if event.group_id is None or event.blocked or event.is_silent:
-            return
-        gid = event.group_id
+    async def _on_group_notice(self, event: SceneEvent) -> None:
+        gid = int(event.scene_id)
         if not _white.get(gid):
             return
         key = SessionKey("group", gid)
@@ -679,51 +702,49 @@ class _Agent:
         actor = self._notice_actor(event)
         if self._notice_triggers(event):
             await self._immediate_event(
-                event.data,
+                repr(event),
                 "group",
                 gid,
                 self._perm_of(actor, gid),
                 actor,
-                event.self_id,
+                ModuleClass.self_id_of(event),
             )
             return
-        await col.append_passive(event.data)
+        await col.append_passive(repr(event))
 
-    async def _on_private_notice(self, event: Event) -> None:
-        if event.user_id is None or event.blocked or event.is_silent:
-            return
-        uid = event.user_id
+    async def _on_private_notice(self, event: SceneEvent) -> None:
+        uid = int(event.scene_id)
         key = SessionKey("private", uid)
         col = self.collectors.setdefault(key, _Collector(uid, "usr", lambda: self._core_for_key("usr", uid)))
         actor = self._notice_actor(event)
         if self._notice_triggers(event):
             await self._immediate_event(
-                event.data,
+                repr(event),
                 "private",
                 uid,
                 self._perm_of(actor, None),
                 actor,
-                event.self_id,
+                ModuleClass.self_id_of(event),
             )
             return
-        await col.append_passive(event.data)
+        await col.append_passive(repr(event))
 
     # -- 立即处理(被 @ / 主人私聊 / 高信号通知) --
 
-    async def _immediate(self, event: GroupMessageEvent) -> None:
-        gid = cast(int, event.group_id)
+    async def _immediate(self, event: MessageReceivedEvent) -> None:
+        gid = int(event.scene_id)
         await self._immediate_event(
-            event.data,
+            repr(event),
             "group",
             gid,
-            self._perm_of(event.user_id, gid, event.sender.role),
-            event.user_id,
-            event.self_id,
+            self._perm_of(_uid_of(event), gid, _role_of(event)),
+            _uid_of(event),
+            ModuleClass.self_id_of(event),
         )
 
     async def _immediate_event(
         self,
-        event_data: dict[str, Any],
+        event_data: str,
         ev_type: Literal["group", "private"],
         scene_id: int,
         perm_group: PermGroup,
@@ -768,9 +789,9 @@ class _Agent:
 
     # -- 命令 --
 
-    async def _cmd(self, event: MessageEvent) -> None:
-        uid = cast(int, event.user_id)
-        gid = event.group_id
+    async def _cmd(self, event: MessageReceivedEvent) -> None:
+        uid = _uid_of(event)
+        gid = _gid_of(event)
         text = str(event.message).strip()
         # 归一化:兼容 ".agent.on" 与 ".agent on";简写 ".ag" 等价 ".agent"(如 ".ag.pf.ad")
         if text.startswith(".agent.") or text.startswith(".ag."):
@@ -900,7 +921,7 @@ class _Agent:
                     core.session_key,
                     target,
                     principal_id=uid,
-                    self_id=event.self_id,
+                    self_id=ModuleClass.self_id_of(event),
                     reply_message_id=event.message_id,
                 ),
             )
@@ -928,7 +949,7 @@ class _Agent:
                     key,
                     key,
                     principal_id=uid,
-                    self_id=event.self_id,
+                    self_id=ModuleClass.self_id_of(event),
                     reply_message_id=event.message_id,
                 ),
             )
@@ -977,7 +998,7 @@ class _Agent:
             # 帮助信息由 Helps 模块统一展示(.help Agent),不在本模块内自回复
             await self._reply(event, "未知的子命令。发送 .help Agent 查看模块帮助")
 
-    async def _cmd_stop(self, event: MessageEvent) -> None:
+    async def _cmd_stop(self, event: MessageReceivedEvent) -> None:
         """`.ag.st` / `.agent.stop`:立即中止当前会话正在进行的处理。
 
         常规权限档默认 any_admin;当前处理已超过阈值(默认 10s)时对所有人开放。
@@ -992,8 +1013,7 @@ class _Agent:
         if not self._has_perm(event, required) and elapsed < threshold:
             await self._reply(
                 event,
-                f"处理才开始 {elapsed:.1f}s,你没权限中止(需要 {required});"
-                f"处理超过 {threshold:.0f}s 后所有人都可以中止",
+                f"处理才开始 {elapsed:.1f}s,你没权限中止(需要 {required});处理超过 {threshold:.0f}s 后所有人都可以中止",
             )
             return
         if core.request_stop():
@@ -1001,9 +1021,9 @@ class _Agent:
         else:
             await self._reply(event, "当前没有正在进行的处理")
 
-    async def _cmd_api(self, event: MessageEvent, text: str, parts: list[str], sub: str) -> None:
-        uid = cast(int, event.user_id)
-        if uid not in config.owner:
+    async def _cmd_api(self, event: MessageReceivedEvent, text: str, parts: list[str], sub: str) -> None:
+        uid = _uid_of(event)
+        if uid is None or uid not in config.owner:
             await self._reply(event, "仅主人可管理 API profile")
             return
         if self.session_manager is None or self.api_wizard is None:
@@ -1032,7 +1052,7 @@ class _Agent:
             await self._reply(event, "\n".join(lines))
             return
 
-        if action in ("add", "set", "rm", "remove") and event.group_id is not None:
+        if action in ("add", "set", "rm", "remove") and _gid_of(event) is not None:
             await self._reply(event, "API 配置向导仅能在主人私聊中使用")
             return
 
@@ -1093,8 +1113,8 @@ class _Agent:
 
         await self._reply(event, f"未知的 API 子命令「{action}」")
 
-    async def _cmd_model(self, event: MessageEvent, text: str, parts: list[str]) -> None:
-        uid = cast(int, event.user_id)
+    async def _cmd_model(self, event: MessageReceivedEvent, text: str, parts: list[str]) -> None:
+        uid = _uid_of(event)
         if uid not in config.owner:
             await self._reply(event, "仅主人可切换模型")
             return
@@ -1133,12 +1153,14 @@ class _Agent:
             f"headers: {headers}"
         )
 
-    async def _reply(self, event: MessageEvent, text: str) -> None:
-        await self._core_for_event(event).bot_api.send_msg(
-            group_id=event.group_id,
-            user_id=event.user_id,
-            message=common.Message(segments.Reply(event.message_id), segments.Text(text)),
-        )
+    async def _reply(self, event: MessageReceivedEvent, text: str) -> None:
+        message = Message(Quote(message_id=str(event.message_id)), Text(text=text))
+        core = self._core_for_event(event)
+        if event.scene_type == SceneType.GROUP:
+            await core.bot_api.group(str(event.scene_id)).send(message)
+        else:
+            if event.user_id is not None:
+                await core.bot_api.user(str(event.user_id)).send(message)
 
     # -- 心跳(可选,默认关闭) --
 
@@ -1190,4 +1212,4 @@ class Module(ModuleClass.Module[Event]):
 
     @override
     async def handle(self) -> None:
-        await _agent.on_event(self.actions, self.event)
+        await _agent.on_event(self.api, self.event)

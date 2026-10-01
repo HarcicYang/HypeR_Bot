@@ -222,9 +222,7 @@ def web_search_note(api_mode: str | None = None, web_search: bool | None = None)
 def native_multimodal_note(native_multimodal: bool | None = None) -> str:
     """原生多模态能力说明(agent_native_multimodal 开启时附加)。"""
     enabled = (
-        native_multimodal
-        if native_multimodal is not None
-        else bool(config.others.get("agent_native_multimodal", True))
+        native_multimodal if native_multimodal is not None else bool(config.others.get("agent_native_multimodal", True))
     )
     if not enabled:
         return ""

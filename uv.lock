@@ -756,19 +756,21 @@ wheels = [
 
 [[package]]
 name = "hyper-bot"
-version = "1.0.0.post3"
+version = "2.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "packaging" },
+    { name = "pydantic" },
     { name = "typing-extensions" },
     { name = "ucfgr" },
     { name = "uvicorn" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/54/5e/cd88a17c2424f1486a94e705d543f3025868aed889bccd8fedfa11b69893/hyper_bot-1.0.0.post3.tar.gz", hash = "sha256:fafc9850c34f070f96bfd87804dd5b1ad7294e6dc9e4702bb843945dfd75aaae", size = 53555, upload-time = "2026-08-16T05:18:45.536Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f0/57/4d68e4f6769a2f345898dde001fc299a31f3b5369f365aa235d2708c2fd5/hyper_bot-2.0.1.tar.gz", hash = "sha256:a7923272133edc1dccd90bbab5fa0c35965c1897edccf5ae4b68d258abaa9d43", size = 76596, upload-time = "2026-10-01T07:24:08.291Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b4/99/b57ab4ca635fc5176fac3b6b4f5e9e730b240129084cf9a2a12dfe3131e0/hyper_bot-1.0.0.post3-py3-none-any.whl", hash = "sha256:bb9882aa3c682ffcdfc3d7e48fd181603ae7e3e8b3e42371ba7ed68bfaa97331", size = 51052, upload-time = "2026-08-16T05:18:44.21Z" },
+    { url = "https://files.pythonhosted.org/packages/69/81/e2b6dd8091a4e4579af8085b14a5b1d0f7fe0bf504981302c412311e558d/hyper_bot-2.0.1-py3-none-any.whl", hash = "sha256:6ba322da31f609228196238088322b096e2f273b5f29010610faa53837f7132c", size = 84036, upload-time = "2026-10-01T07:24:07.023Z" },
 ]
 
 [[package]]
@@ -788,6 +790,7 @@ dependencies = [
     { name = "google-genai" },
     { name = "httpx" },
     { name = "hyper-bot" },
+    { name = "hyperot-adapter-onebot" },
     { name = "jieba" },
     { name = "meme-generator" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -810,6 +813,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "pyrefly" },
+    { name = "pytest" },
     { name = "ruff" },
     { name = "types-openpyxl" },
     { name = "types-psutil" },
@@ -828,7 +832,8 @@ requires-dist = [
     { name = "gitpython" },
     { name = "google-genai" },
     { name = "httpx" },
-    { name = "hyper-bot", specifier = "==1.0.0.post3" },
+    { name = "hyper-bot", specifier = "==2.0.1" },
+    { name = "hyperot-adapter-onebot", specifier = "==2.0.1" },
     { name = "jieba" },
     { name = "meme-generator", specifier = "<0.2.0" },
     { name = "numpy" },
@@ -850,9 +855,27 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "pyrefly" },
+    { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff" },
     { name = "types-openpyxl", specifier = ">=3.1.5.20260827" },
     { name = "types-psutil", specifier = ">=7.2.2.20260906" },
+]
+
+[[package]]
+name = "hyperot-adapter-onebot"
+version = "2.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "hyper-bot" },
+    { name = "pydantic" },
+    { name = "uvicorn" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/95/23/9640d95ad6525b29dca085b5061b19b74f2fa946d1572bd8a972f0b43221/hyperot_adapter_onebot-2.0.1.tar.gz", hash = "sha256:cf33ee714b8e5abde9ec650716c0dcf0d01e2034db08aabb76e519b403e38542", size = 18885, upload-time = "2026-10-01T07:24:48.68Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f3/3e/7b6dfe6bd3bac0387b352c396d72fcbed970d47b64f60f24be1204aa536f/hyperot_adapter_onebot-2.0.1-py3-none-any.whl", hash = "sha256:5c2339b96d9c57945bb90c4c6177a22318c1fd797b7f252b0addb8490492cf20", size = 21795, upload-time = "2026-10-01T07:24:47.421Z" },
 ]
 
 [[package]]
@@ -862,6 +885,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/cd/63/9496c57188a2ee585e0f1db071d75089a11e98aa86eb99d9d7618fc1edce/idna-3.18.tar.gz", hash = "sha256:ffb385a7e039654cef1ab9ef32c6fafe283c0c0467bba1d9029738ce4a14a848", size = 196711, upload-time = "2026-06-02T14:34:07.794Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1e/5e/d4e9f1a599fb8e573b7b87160658329fbf28d19eac2718f51fc3def3aa5a/idna-3.18-py3-none-any.whl", hash = "sha256:7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2", size = 65455, upload-time = "2026-06-02T14:34:06.319Z" },
+]
+
+[[package]]
+name = "iniconfig"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/34/14ca021ce8e5dfedc35312d08ba8bf51fdd999c576889fc2c24cb97f4f10/iniconfig-2.3.0.tar.gz", hash = "sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730", size = 20503, upload-time = "2025-10-18T21:55:43.219Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl", hash = "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12", size = 7484, upload-time = "2025-10-18T21:55:41.639Z" },
 ]
 
 [[package]]
@@ -1447,6 +1479,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pluggy"
+version = "1.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
 name = "primp"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1741,6 +1782,22 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0f/06/810d31380f66c75e1c0779a408d3b16117b1b368b57894f6aa66bef21686/pyrefly-1.2.0-py3-none-win32.whl", hash = "sha256:8c90751de8506d938e8f802659c74cf35bd7a0036510ee6c634a38eebb280bfa", size = 13229447, upload-time = "2026-08-01T02:56:20.921Z" },
     { url = "https://files.pythonhosted.org/packages/ed/98/4dafa3c7a1caed2dc8cc708dde09ba27963c7736508f55b626fff3024113/pyrefly-1.2.0-py3-none-win_amd64.whl", hash = "sha256:8a8964c224ccc4882730130955815de21ff443c1ac3f0b90685b19bf63848170", size = 14087387, upload-time = "2026-08-01T02:56:23.188Z" },
     { url = "https://files.pythonhosted.org/packages/1b/1c/df3cb0a2e5591660ded7a1836cd2f29dc48c91adb1c0a3a700a96f6d09e1/pyrefly-1.2.0-py3-none-win_arm64.whl", hash = "sha256:3a90bb8df39dfbac74b1f3b2e9d7c526b8f80568884c3944d955023a73ebf61e", size = 13430873, upload-time = "2026-08-01T02:56:25.425Z" },
+]
+
+[[package]]
+name = "pytest"
+version = "9.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "iniconfig" },
+    { name = "packaging" },
+    { name = "pluggy" },
+    { name = "pygments" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e4/47/b9efed96c114afcfa3c9d3fe98a76a1d14c74a9e266d397cf6eb64be5e01/pytest-9.1.1.tar.gz", hash = "sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313", size = 1636369, upload-time = "2026-06-19T10:58:32.857Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/25/1de2678b631f5a49215c6c96fff41ba892b0a34df68d6d80292b1b48aa7f/pytest-9.1.1-py3-none-any.whl", hash = "sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c", size = 386536, upload-time = "2026-06-19T10:58:31.347Z" },
 ]
 
 [[package]]

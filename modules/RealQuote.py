@@ -1,14 +1,13 @@
 import httpx
-from hyperot.common import Message
-from hyperot.events import MessageEvent
-from hyperot.segments import Text
+from hyperot.v2 import Message, Text
+from hyperot.v2.events import MessageReceivedEvent
 from typing_extensions import override
 
 from ModuleClass import Module, ModuleInfo, ModuleRegister
 
 
-@ModuleRegister.register(MessageEvent)
-class Quote(Module[MessageEvent]):
+@ModuleRegister.register(MessageReceivedEvent)
+class Quote(Module[MessageReceivedEvent]):
     @override
     @staticmethod
     def info() -> ModuleInfo:
@@ -27,6 +26,4 @@ class Quote(Module[MessageEvent]):
                 txt = f"{response.json()['hitokoto']} —— {response.json()['from_who']}, {response.json()['from']}"
             except Exception:
                 txt = "请求失败"
-            await self.actions.send_msg(
-                group_id=self.event.group_id, user_id=self.event.user_id, message=Message(Text(txt))
-            )
+            await self.api.scene(self.event.scene_type, self.event.scene_id).send(Message(Text(text=txt)))

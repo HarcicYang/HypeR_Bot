@@ -15,16 +15,14 @@ from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
 import openai
-from hyperot import configurator, hyperogger, segments
-from hyperot.events import *
-from hyperot.listener import Actions
+from hyperot import configurator, hyperogger
 from hyperot.protocol.builder import OneBotEventBuilder, OneBotJsonMessageBuilder
+from hyperot.v2 import ClientAPI
 
 import ModuleClass
 from modules.AgentRuntime.api_profiles import ApiProfileManager, ApiRuntime
 from modules.AgentRuntime.capture import CaptureActions as _CaptureActions
 from modules.AgentRuntime.dsml import parse_embedded_tool_calls as _parse_embedded_tool_calls
-from modules.AgentRuntime.event_text import event_text as _event_text
 from modules.AgentRuntime.models import (
     HISTORY_PATH,
     REPORT_TIMEOUT,
@@ -60,6 +58,9 @@ config = configurator.BotConfig.get("hyper-bot")
 logger = hyperogger.Logger()
 logger.set_level(config.log_level)
 
+# 缓冲条目是 pydantic repr（如 OneBotImage(source='...', ...)），多模态通道按此提取图片来源。
+_REPR_IMAGE_RE = re.compile(r"(?:OneBot)?Image\(source='([^']+)'")
+
 _concurrency_limit: int = int(config.others.get("agent_max_concurrency") or 0)
 _semaphore: asyncio.Semaphore | None = None
 
@@ -87,22 +88,8 @@ def _clip_rag_query(text: str, limit: int = _RAG_QUERY_LIMIT) -> str:
     return text[:head] + "\n...\n" + text[-(limit - head - 5) :]
 
 
-def _segment_rag_text(segment: Any) -> str:
-    if not isinstance(segment, dict):
-        return ""
-    segment_type = segment.get("type")
-    data = segment.get("data")
-    if segment_type == "text":
-        if isinstance(data, dict):
-            return str(data.get("text") or "").strip()
-        return str(data or "").strip()
-    if segment_type in {"image", "video", "file", "record", "forward"}:
-        return f"[{segment_type}]"
-    return ""
-
-
 def _rag_text_from_value(value: Any) -> str:
-    """Extract human-facing message text from OneBot batches or compressed buffers."""
+    """从缓冲条目（pydantic repr 字符串）/ 压缩摘要中提取面向检索与时间线的文本。"""
     if isinstance(value, list):
         parts = [_rag_text_from_value(item) for item in value]
         return "\n".join(part for part in parts if part)
@@ -111,24 +98,6 @@ def _rag_text_from_value(value: Any) -> str:
 
     if value.get("compressed") and isinstance(value.get("summary"), str):
         return value["summary"].strip()
-
-    if value.get("post_type") == "notice":
-        return _event_text(value).strip()
-
-    message = value.get("message")
-    if isinstance(message, list):
-        parts = [_segment_rag_text(segment) for segment in message]
-        text = "".join(part for part in parts if part)
-        if text.strip():
-            return text.strip()
-
-    summary = value.get("summary")
-    if isinstance(summary, str) and summary.strip():
-        return summary.strip()
-
-    raw_message = value.get("raw_message")
-    if isinstance(raw_message, str) and raw_message.strip():
-        return re.sub(r"\[CQ:[^\]]+\]", " ", raw_message).strip()
 
     payload = value.get("payload")
     if payload is not value:
@@ -151,7 +120,7 @@ def _build_rag_query(event: Any) -> str:
         except json.JSONDecodeError:
             return _clip_rag_query(event)
         return _clip_rag_query(_rag_text_from_value(parsed))
-    return _clip_rag_query(_rag_text_from_value(getattr(event, "data", event)))
+    return _clip_rag_query(_rag_text_from_value(event))
 
 
 def _acquire_semaphore() -> asyncio.Semaphore | None:
@@ -191,20 +160,20 @@ async def sleep_or_stop(seconds: float, stop_ev: asyncio.Event) -> bool:
 
 class AgentCore:
     def __init__(
-            self,
-            bot_api: Actions,
-            api_manager: ApiProfileManager,
-            system_prompt: str | None = None,
-            name: str = "main",
-            history_path: str = HISTORY_PATH,
-            tasks_path: str = TASKS_PATH,
-            memory_path: str = "./temps/agent_memory",
-            notify_main: Any = None,
-            sub_manager: Any = None,
-            role: Literal["main", "sub", "system"] | None = None,
-            session_key: SessionKey | None = None,
-            session_manager: Any = None,
-            shared_memory: Any = None,
+        self,
+        bot_api: ClientAPI,
+        api_manager: ApiProfileManager,
+        system_prompt: str | None = None,
+        name: str = "main",
+        history_path: str = HISTORY_PATH,
+        tasks_path: str = TASKS_PATH,
+        memory_path: str = "./temps/agent_memory",
+        notify_main: Any = None,
+        sub_manager: Any = None,
+        role: Literal["main", "sub", "system"] | None = None,
+        session_key: SessionKey | None = None,
+        session_manager: Any = None,
+        shared_memory: Any = None,
     ) -> None:
         self.bot_api = bot_api
         self.api_manager = api_manager
@@ -225,7 +194,7 @@ class AgentCore:
         self.sub_manager = sub_manager
 
         self.extra = {
-            'extra_body': {
+            "extra_body": {
                 # "google": {
                 #     "thinking_config": {
                 #         "include_thoughts": True
@@ -254,10 +223,10 @@ class AgentCore:
             # 会导致 history[0] 不是 system:切换人设被 guard 跳过、且提示词会被当作
             # user 消息发给模型,让模型沿用旧人设。这里识别并清掉,再保证第一条是 system。
             while (
-                    data
-                    and isinstance(data[0], dict)
-                    and data[0].get("role") != "system"
-                    and str(data[0].get("content", "")).startswith("# 角色")
+                data
+                and isinstance(data[0], dict)
+                and data[0].get("role") != "system"
+                and str(data[0].get("content", "")).startswith("# 角色")
             ):
                 data.pop(0)
             if not data or not isinstance(data[0], dict) or data[0].get("role") != "system":
@@ -379,9 +348,7 @@ class AgentCore:
 
     def _has_substantive_history(self) -> bool:
         return any(
-            isinstance(message, dict)
-            and message.get("role") != "system"
-            and str(message.get("content") or "").strip()
+            isinstance(message, dict) and message.get("role") != "system" and str(message.get("content") or "").strip()
             for message in self.history
         )
 
@@ -393,9 +360,7 @@ class AgentCore:
             "SYSTEM -- 先前消息的所有总结 --",
         }
         messages = [
-            dict(message)
-            for message in self.history
-            if isinstance(message, dict) and message.get("role") != "system"
+            dict(message) for message in self.history if isinstance(message, dict) and message.get("role") != "system"
         ]
         if (
             len(messages) >= 2
@@ -821,14 +786,14 @@ class AgentCore:
         return await self.session_manager.context_status(target)
 
     async def context_read(
-            self, target: str, count: int = 5, anchor: int | None = None, direction: str = "backward"
+        self, target: str, count: int = 5, anchor: int | None = None, direction: str = "backward"
     ) -> str:
         if self.session_manager is None:
             return "上下文管理器不可用"
         return await self.session_manager.read_context(target, count, anchor, direction)
 
     async def context_send(
-            self, target: str, content: str, kind: str = "message", request_id: str | None = None
+        self, target: str, content: str, kind: str = "message", request_id: str | None = None
     ) -> str:
         if self.session_manager is None or self.session_key is None:
             return "当前 Core 不支持上下文通信"
@@ -917,7 +882,11 @@ class AgentCore:
         else:
             builder.as_private_message(message=msg_json, message_id="0")
             builder.private_sender(nickname="Agent", sex="unknown", age=0)
-        event = em.new(builder.build())
+        import hyperot.events as v1_events  # v1 命名空间仍提供 em.new（保留的合成链路）
+
+        v1_events.init()  # 幂等：v1 事件管理器需要 init() 填充 logger/config
+
+        event = v1_events.em.new(builder.build())
         cap = _CaptureActions(self.bot_api)
         try:
             await cast(Any, cls)(cap, event).handle()
@@ -949,24 +918,21 @@ class AgentCore:
         return f"模块「{module}」源码:\n{src}"
 
     async def resolve_forward(self, forward_id: str) -> str:
-        """解析合并转发消息:每条 node 的昵称 + 内容段 JSON(参考 TestMarkDown 的 forward_solve)。"""
+        """解析合并转发消息:每条 node 的昵称 + 内容段 JSON（经 OneBot get_forward_msg）。"""
         try:
-            ret = await self.bot_api.get_forward_msg(forward_id)
+            result = await self.bot_api.raw("get_forward_msg", {"id": forward_id})
         except Exception as e:
             return f"解析转发失败: {repr(e)}"
-        nodes: Any = ret.data if hasattr(ret, "data") else ret
+        nodes: Any = result.data if hasattr(result, "data") else result
         lines: list[str] = []
-        for node in nodes:
-            if not isinstance(node, segments.Node):
+        for node in nodes or []:
+            if not isinstance(node, dict):
                 continue
-            content: Any = node.content
-            segs: list[Any] = []
-            try:
-                if content is not None:
-                    segs = cast(Any, content).get_sync()
-            except Exception:
-                segs = [{"type": "text", "data": {"text": str(content)}}]
-            lines.append(f"{node.nickname}({node.user_id}): {json.dumps(segs, ensure_ascii=False)}")
+            node_data = node.get("data") if isinstance(node.get("data"), dict) else node
+            content: Any = node_data.get("content")
+            lines.append(
+                f"{node_data.get('nickname')}({node_data.get('user_id')}): {json.dumps(content, ensure_ascii=False)}"
+            )
         if not lines:
             return "转发消息为空或无法解析"
         return f"转发消息 ({len(lines)} 条):\n" + "\n".join(f"{i + 1}. {line}" for i, line in enumerate(lines))
@@ -974,7 +940,7 @@ class AgentCore:
     # -- SubAgent 管理(仅主 Agent core 可用;SubAgent 调用返回错误) --
 
     async def sub_create(
-            self, name: str, prompt: str, scene_id: int, scene_type: str, perm_group: PermGroup = "member"
+        self, name: str, prompt: str, scene_id: int, scene_type: str, perm_group: PermGroup = "member"
     ) -> str:
         if self.sub_manager is None:
             return "调用不合法：SubAgent 不能创建 SubAgent"
@@ -1129,8 +1095,7 @@ class AgentCore:
                 result = any(m in host for m in _GOOGLE_HOST_MARKERS)
 
                 if not result:
-                    model = str(getattr(self, "model", None)
-                                or getattr(self, "_model", "")).lower()
+                    model = str(getattr(self, "model", None) or getattr(self, "_model", "")).lower()
                     result = model.startswith("gemini") or "gemini-" in model
         except Exception:
             result = False
@@ -1400,7 +1365,7 @@ class AgentCore:
             try:
                 owners = list(dict.fromkeys(int(uid) for uid in config.owner if str(uid).strip()))
                 for owner_id in owners:
-                    await self.bot_api.send_msg(message=message, user_id=owner_id)
+                    await self.bot_api.user(str(owner_id)).send(message)
             except Exception:
                 logger.error("发送 System Context owner 通知失败：\n" + traceback.format_exc())
             return
@@ -1409,9 +1374,9 @@ class AgentCore:
         message = f"Agent Mod 不能解决的异常：{error}"
         try:
             if ev_type == "group":
-                await self.bot_api.send_msg(message=message, group_id=scene_id)
+                await self.bot_api.group(str(scene_id)).send(message)
             else:
-                await self.bot_api.send_msg(message=message, user_id=scene_id)
+                await self.bot_api.user(str(scene_id)).send(message)
         except Exception:
             logger.error("发送 Agent 异常通知失败：\n" + traceback.format_exc())
 
@@ -1424,14 +1389,14 @@ class AgentCore:
                     return
 
     async def event_handler(
-            self,
-            event: Any,
-            ev_type: EvType,
-            scene_id: int,
-            perm_group: PermGroup = "member",
-            principal_id: int | None = None,
-            self_id: int | None = None,
-            tool_choice: str = "auto",
+        self,
+        event: Any,
+        ev_type: EvType,
+        scene_id: int,
+        perm_group: PermGroup = "member",
+        principal_id: int | None = None,
+        self_id: int | None = None,
+        tool_choice: str = "auto",
     ) -> None:
         await self._acquire_processing_slot()
         try:
@@ -1454,14 +1419,14 @@ class AgentCore:
             await self._release_processing_slot()
 
     async def _event_handler_with_slot(
-            self,
-            event: Any,
-            ev_type: EvType,
-            scene_id: int,
-            perm_group: PermGroup = "member",
-            principal_id: int | None = None,
-            self_id: int | None = None,
-            tool_choice: str = "auto",
+        self,
+        event: Any,
+        ev_type: EvType,
+        scene_id: int,
+        perm_group: PermGroup = "member",
+        principal_id: int | None = None,
+        self_id: int | None = None,
+        tool_choice: str = "auto",
     ) -> None:
         sem = _acquire_semaphore()
         if sem is not None:
@@ -1495,7 +1460,7 @@ class AgentCore:
                 type="message_batch",
                 scene_type=ev_type,
                 scene_id=scene_id,
-                payload=event if isinstance(event, str) else event.data,
+                payload=event if isinstance(event, str) else json.dumps(event, ensure_ascii=False, default=str),
                 source=self.name,
             )
             ev_data = json.dumps(
@@ -1620,12 +1585,12 @@ class AgentCore:
             self._maybe_schedule_auto_summary()
 
     async def _event_handler(
-            self,
-            data: str | None,
-            ev_type: EvType,
-            scene_id: int,
-            ctx: ToolContext,
-            tool_choice: str = "auto",
+        self,
+        data: str | None,
+        ev_type: EvType,
+        scene_id: int,
+        ctx: ToolContext,
+        tool_choice: str = "auto",
     ) -> None:
         try:
             self._refresh_tools()
@@ -1715,26 +1680,22 @@ class AgentCore:
 
         return await load_or_download(url)
 
-    async def _image_url_from_seg(self, seg: dict[str, Any]) -> str | None:
-        """OneBot 图片段 → OpenAI image_url 可接受的 data URI。
+    async def _image_source_to_url(self, source: str) -> str | None:
+        """图片来源（URL / base64 / file:// / 本地路径）→ data URI。
 
         QQ 等渠道的图片 URL 对第三方模型通常不可直接下载,统一由 bot 本地下载后
         以 data URI 交给模型;base64/本地文件直接转换。
         """
-        raw_data = seg.get("data")
-        if not isinstance(raw_data, dict):
-            return None
-        data = raw_data
-        url = str(data.get("url") or "")
+        url = source
         if url.startswith(("http://", "https://")):
             return await self._download_image_data_uri(url)
 
-        file = str(data.get("file") or "")
+        file = source
         if file.startswith(("http://", "https://")):
             return await self._download_image_data_uri(file)
 
         if file.startswith("base64://"):
-            raw = file[len("base64://"):]
+            raw = file[len("base64://") :]
             try:
                 import filetype
 
@@ -1792,42 +1753,21 @@ class AgentCore:
         image_count = 0
         has_text = False
         for ev in batch:
-            if not isinstance(ev, dict):
+            if not isinstance(ev, str):
                 continue
-            uid = str(ev.get("user_id") or "")
-            message = ev.get("message")
-            if not isinstance(message, list):
-                text = _event_text(ev).strip()
-                if text:
-                    parts.append(("text", text))
-                    has_text = True
-                continue
-            texts: list[str] = []
-            image_urls: list[str] = []
-            for seg in message:
-                if not isinstance(seg, dict):
-                    continue
-                seg_type = seg.get("type")
-                if seg_type == "text":
-                    text = str((seg.get("data") or {}).get("text", "") or "")
-                    if text.strip():
-                        texts.append(text)
-                elif seg_type == "image" and image_count < 4:
-                    image_url = await self._image_url_from_seg(seg)
-                    if image_url:
-                        image_urls.append(image_url)
-                        image_count += 1
-                    else:
-                        texts.append("[图片下载失败]")
-                elif seg_type not in ("image",):
-                    texts.append(f"[{seg_type}]")
-
-            text = " ".join(texts).strip()
+            text = ev.strip()
             if text:
-                parts.append(("text", f"{uid}: {text}" if uid else text))
+                parts.append(("text", text))
                 has_text = True
-            for image_url in image_urls:
-                parts.append(("image", image_url))
+            for source in _REPR_IMAGE_RE.findall(ev):
+                if image_count >= 4:
+                    break
+                image_url = await self._image_source_to_url(source)
+                if image_url:
+                    parts.append(("image", image_url))
+                    image_count += 1
+                else:
+                    parts.append(("text", "[图片下载失败]"))
 
         if image_count == 0:
             return None
@@ -1906,9 +1846,7 @@ class AgentCore:
                 tool_calls = m.get("tool_calls")
                 if isinstance(tool_calls, list) and tool_calls:
                     item["tool_calls"] = [
-                        self._build_tool_call_dict(call)
-                        for call in tool_calls
-                        if isinstance(call, dict)
+                        self._build_tool_call_dict(call) for call in tool_calls if isinstance(call, dict)
                     ]
                 out.append(item)
             elif role == "tool":
@@ -1960,7 +1898,7 @@ class AgentCore:
             tool_choice=tool_choice_n,
             reasoning_effort=cast(Any, self.reasoning_effort),
             response_format=cast(Any, {"type": "json_object"}),
-            extra_body=self.extra
+            extra_body=self.extra,
         )
 
     async def _history_to_items(self) -> list[dict[str, Any]]:

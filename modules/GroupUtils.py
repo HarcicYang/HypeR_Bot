@@ -1,12 +1,12 @@
-from hyperot.events import GroupMessageEvent, GroupMuteEvent
-from hyperot.segments import Reply
+from hyperot.v2 import MemberRole, Quote
+from hyperot.v2.events import MemberMuteChangedEvent, MessageReceivedEvent
 from typing_extensions import override
 
-from ModuleClass import Module, ModuleInfo, ModuleRegister
+from ModuleClass import Module, ModuleInfo, ModuleRegister, is_owner
 
 
-@ModuleRegister.register(GroupMessageEvent, GroupMuteEvent)
-class GroupUtils(Module[GroupMessageEvent | GroupMuteEvent]):
+@ModuleRegister.register(MessageReceivedEvent, MemberMuteChangedEvent)
+class GroupUtils(Module[MessageReceivedEvent | MemberMuteChangedEvent]):
     @override
     @staticmethod
     def info() -> ModuleInfo:
@@ -26,27 +26,23 @@ class GroupUtils(Module[GroupMessageEvent | GroupMuteEvent]):
     @override
     async def handle(self):
         if (
-            isinstance(self.event, GroupMessageEvent)
+            isinstance(self.event, MessageReceivedEvent)
             and (
-                self.event.is_owner
-                or self.event.sender.role
-                in [
-                    "admin",
-                    "owner",
-                ]
+                is_owner(self.event)
+                or (self.event.sender is not None and self.event.sender.role in (MemberRole.ADMIN, MemberRole.OWNER))
             )
             and len(self.event.message) >= 1
-            and isinstance(self.event.message[0], Reply)
+            and isinstance(self.event.message[0], Quote)
         ):
-            msg_id = self.event.message[0].id
+            msg_id = self.event.message[0].message_id
             if ".ess" in str(self.event.message):
-                await self.actions.set_essence_msg(int(msg_id))
+                await self.api.message(str(msg_id)).set_essence()
             elif ".resend" in str(self.event.message):
-                msg = (await self.actions.get_msg(int(msg_id))).data.message
-                await self.actions.send_msg(group_id=self.event.group_id, user_id=self.event.user_id, message=msg)
+                msg = await self.api.message(str(msg_id)).fetch()
+                await self.api.scene(self.event.scene_type, self.event.scene_id).send(msg)
             elif ".recall" in str(self.event.message) or ".del" in str(self.event.message):
-                await self.actions.del_msg(int(msg_id))
-        # elif isinstance(self.event, GroupMuteEvent):
+                await self.api.message(str(msg_id)).recall()
+        # elif isinstance(self.event, MemberMuteChangedEvent):
         #     if int(self.event.operator_id) in [2705264881] and int(self.event.user_id) in [2488529467]:
         #         await self.actions.set_group_ban(self.event.group_id, self.event.user_id, 0)
         # await self.actions.set_group_ban(self.event.group_id, 2101596336, self.event.duration)

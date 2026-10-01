@@ -1,8 +1,7 @@
 from collections.abc import Callable
 
-from hyperot.common import Message
-from hyperot.events import *
-from hyperot.segments import *
+from hyperot.v2 import Message, Text
+from hyperot.v2.events import *
 from typing_extensions import override
 
 from ModuleClass import InnerHandler, Module, ModuleInfo, ModuleRegister
@@ -12,8 +11,8 @@ def searcher(checker: Callable[[InnerHandler], bool], iter_obj: list[InnerHandle
     return list(filter(checker, iter_obj))
 
 
-@ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
-class Helper(Module[GroupMessageEvent | PrivateMessageEvent]):
+@ModuleRegister.register(MessageReceivedEvent)
+class Helper(Module[MessageReceivedEvent]):
     @override
     @staticmethod
     def info() -> ModuleInfo:
@@ -49,8 +48,4 @@ class Helper(Module[GroupMessageEvent | PrivateMessageEvent]):
                 res = searcher(check, ModuleRegister.get_registered())
                 help_info = f"--- {name} 帮助 ---\n{res[0].module.info().helps}" if len(res) != 0 else "未找到这个模块"
 
-            await self.actions.send_msg(
-                group_id=self.event.group_id,
-                user_id=self.event.user_id,
-                message=Message(Text(help_info)),
-            )
+            await self.api.scene(self.event.scene_type, self.event.scene_id).send(Message(Text(text=help_info)))

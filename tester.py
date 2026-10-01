@@ -17,12 +17,10 @@ class A:
 
     @dec
     def a(self, n: int) -> int:
-        print(n ** n)
+        print(n**n)
         print(self.b)
         return n * n
 
 
 ca = A(114514)
 print(ca.a(2))
-
-

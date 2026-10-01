@@ -9,9 +9,7 @@ from collections.abc import Callable
 from typing import Any, Literal, Protocol
 
 from hyperot import configurator, hyperogger
-from hyperot.events import Event
 
-from modules.AgentRuntime.event_text import event_actor_id, event_text
 from modules.AgentRuntime.models import EvType, PermGroup
 
 config = configurator.BotConfig.get("hyper-bot")
@@ -67,9 +65,7 @@ class Collector:
         self.stype = stype
         self._resolve_core = resolve_core
         self.max_buffer = _config_int("agent_collector_max_buffer", DEFAULT_MAX_BUFFER)
-        self.keep_after_compress = _config_int(
-            "agent_collector_keep_after_compress", DEFAULT_KEEP_AFTER_COMPRESS
-        )
+        self.keep_after_compress = _config_int("agent_collector_keep_after_compress", DEFAULT_KEEP_AFTER_COMPRESS)
         self.max_summary_chars = _config_int("agent_collector_max_summary_chars", DEFAULT_MAX_SUMMARY_CHARS)
         if self.keep_after_compress >= self.max_buffer:
             # 保留量不小于触发线会让折叠永不发生(缓冲将无上限增长),直接回退整套默认值。
@@ -80,7 +76,7 @@ class Collector:
             )
             self.max_buffer = DEFAULT_MAX_BUFFER
             self.keep_after_compress = DEFAULT_KEEP_AFTER_COMPRESS
-        self.buffer: list[dict[str, Any]] = []
+        self.buffer: list[Any] = []
         self.delay = 8.0
         self.doing_task: asyncio.Task[Any] | None = None
         self.last_receive = 0.0
@@ -94,12 +90,12 @@ class Collector:
         """把事件渲染为时间线文本;已折叠的摘要条目直接取其摘要正文。"""
         lines: list[str] = []
         for event in events:
-            if event.get("compressed"):
+            if isinstance(event, dict) and event.get("compressed"):
                 summary = event.get("summary")
                 if isinstance(summary, str) and summary.strip():
                     lines.append(summary.strip())
                 continue
-            lines.append(f"[{event.get('time')}] {event_actor_id(event)}: {event_text(event)}")
+            lines.append(event if isinstance(event, str) else repr(event))
         return "\n".join(lines)
 
     def _compress(self) -> None:
@@ -139,8 +135,7 @@ class Collector:
         before = len(self.buffer)
         self._compress()
         logger.info(
-            f"{self.stype} {self.sid}: 缓存达 {before} 条,"
-            f"已把最早的 {before - len(self.buffer)} 条折叠为压缩摘要"
+            f"{self.stype} {self.sid}: 缓存达 {before} 条,已把最早的 {before - len(self.buffer)} 条折叠为压缩摘要"
         )
 
     def _update_delay(self, last: float, length: int) -> None:
@@ -149,22 +144,23 @@ class Collector:
         self.delay = (2 / 3) * (1 - math.cos(math.pi * rate)) + (2 / 3) * weight + 2.5
         self.delay = max(min(self.delay, 16), 5)
 
-    async def append(self, event: Event) -> None:
-        await self.append_batch([event.data])
+    async def append(self, event: Any) -> None:
+        await self.append_batch([repr(event)])
 
-    async def append_passive(self, event_data: dict[str, Any]) -> None:
+    async def append_passive(self, event_data: Any) -> None:
         """只把事件放进 buffer,不更新节奏、不重置收集窗口(供通知与非白名单消息使用)。"""
         self.buffer.append(event_data)
         self._maybe_compress()
 
-    async def append_batch(self, events: list[dict[str, Any]]) -> None:
+    async def append_batch(self, events: list[Any]) -> None:
         if not events:
             return
         had_pending = bool(self.buffer)
         self.buffer.extend(events)
         self._maybe_compress()
         now = time.time()
-        length = len(event_text(events[-1]))
+        latest = events[-1]
+        length = len(latest) if isinstance(latest, str) else len(repr(latest))
         if had_pending:
             self._update_delay(now - self.last_receive, length)
         else:

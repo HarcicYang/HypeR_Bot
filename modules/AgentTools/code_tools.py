@@ -136,6 +136,7 @@ def _run_direct(code: str, env: dict[str, str], workdir_abs: str) -> str:
     def _limits() -> None:
         try:
             import resource
+
             resource.setrlimit(resource.RLIMIT_AS, (_MEM_LIMIT, _MEM_LIMIT))
             resource.setrlimit(resource.RLIMIT_CPU, (10, 10))
             resource.setrlimit(resource.RLIMIT_FSIZE, (_FSIZE_LIMIT, _FSIZE_LIMIT))

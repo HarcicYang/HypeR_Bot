@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import datetime
 import json
 import os
 import re
@@ -12,7 +13,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlparse
 
-from hyperot import common, configurator
+from hyperot import configurator
 from hyperot.network import httpx_get
 
 from modules.AgentRuntime.document_reader import (
@@ -43,16 +44,6 @@ def _extract_data(result: Any) -> dict[str, Any]:
         return {}
     data = result.get("data")
     return data if isinstance(data, dict) else result
-
-
-async def _custom_result(action: Any, **kwargs: Any) -> dict[str, Any]:
-    result = await action(**kwargs)
-    if isinstance(result, dict):
-        return _extract_data(result)
-    if isinstance(result, str):
-        response = await common.Ret.fetch(result)
-        return _extract_data(response.raw)
-    return {}
 
 
 def _decode_data_uri(value: str) -> bytes | None:
@@ -129,7 +120,8 @@ async def _get_uploaded_payload(
     last_error: Exception | None = None
     for attempt in attempts:
         try:
-            payload = await _custom_result(ctx.actions.custom.get_file, **attempt)
+            result = await ctx.actions.raw("get_file", attempt)
+            payload = _extract_data(getattr(result, "data", None))
             if payload:
                 break
         except Exception as exc:
@@ -142,18 +134,70 @@ async def _get_uploaded_payload(
     return payload, data, resolved_name
 
 
+# 缓冲条目是 pydantic repr；文件信息按确定性字段顺序提取。
+_REPR_SCENE_RE = re.compile(r"scene_type=<SceneType\.(\w+): '[^']+'>.*?scene_id='(\d+)'", re.DOTALL)
+_REPR_USER_RE = re.compile(r"user_id='(\d+)'")
+_REPR_TS_RE = re.compile(r"timestamp=datetime\.datetime\((\d+), (\d+), (\d+), (\d+), (\d+), (\d+)")
+_REPR_UPLOAD_RE = re.compile(r"FileInfo\(file_id='([^']*)', name='([^']*)', size=(\d+)")
+_REPR_FILE_SEG_RE = re.compile(r"(?:OneBot)?File\(source='[^']*', name='([^']*)', size=(\d+), file_id='([^']*)'")
+
+
+def _uploads_from_repr(text: str) -> list[dict[str, Any]]:
+    """从单条 pydantic repr 中提取文件上传 / 文件段信息。"""
+    scene = _REPR_SCENE_RE.search(text)
+    group_id = int(scene.group(2)) if scene is not None and scene.group(1) == "GROUP" else 0
+    user_match = _REPR_USER_RE.search(text)
+    user_id = int(user_match.group(1)) if user_match else 0
+    ts_match = _REPR_TS_RE.search(text)
+    if ts_match is not None:
+        upload_time = int(
+            datetime.datetime(*(int(part) for part in ts_match.groups()), tzinfo=datetime.UTC).timestamp()
+        )
+    else:
+        upload_time = 0
+    found: list[dict[str, Any]] = []
+    for file_id, name, size in _REPR_UPLOAD_RE.findall(text):
+        found.append(
+            {
+                "file_id": file_id,
+                "file_name": name,
+                "size": int(size),
+                "busid": 0,
+                "group_id": group_id,
+                "user_id": user_id,
+                "time": upload_time,
+                "notice_type": "group_upload" if group_id else "friend_upload",
+            }
+        )
+    for name, size, file_id in _REPR_FILE_SEG_RE.findall(text):
+        found.append(
+            {
+                "file_id": file_id,
+                "file_name": name,
+                "size": int(size),
+                "busid": 0,
+                "group_id": group_id,
+                "user_id": user_id,
+                "time": upload_time,
+                "notice_type": "message_file",
+            }
+        )
+    return found
+
+
 def _walk_uploads(value: Any, depth: int = 0) -> list[dict[str, Any]]:
     if depth > 10:
         return []
     if isinstance(value, str):
         text = value.strip()
-        if not text.startswith(("{", "[")) or len(text) > 2_000_000:
+        if not text or len(text) > 2_000_000:
             return []
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
-            return []
-        return _walk_uploads(parsed, depth + 1)
+        if text.startswith(("{", "[")):
+            try:
+                return _walk_uploads(json.loads(text), depth + 1)
+            except json.JSONDecodeError:
+                return []
+        return _uploads_from_repr(text)
     if isinstance(value, list):
         result: list[dict[str, Any]] = []
         for item in value:
@@ -161,48 +205,8 @@ def _walk_uploads(value: Any, depth: int = 0) -> list[dict[str, Any]]:
         return result
     if not isinstance(value, dict):
         return []
-
-    result: list[dict[str, Any]] = []
-    notice_type = value.get("notice_type")
-    file_data = value.get("file")
-    if notice_type in {"group_upload", "friend_upload"} and isinstance(file_data, dict):
-        result.append(
-            {
-                "file_id": str(file_data.get("id") or file_data.get("file_id") or file_data.get("file") or ""),
-                "file_name": str(file_data.get("name") or file_data.get("file_name") or file_data.get("file") or ""),
-                "size": file_data.get("size") or file_data.get("file_size") or 0,
-                "busid": file_data.get("busid") or 0,
-                "group_id": value.get("group_id") or 0,
-                "user_id": value.get("user_id") or 0,
-                "time": value.get("time") or 0,
-                "notice_type": notice_type,
-            }
-        )
-    message = value.get("message")
-    if isinstance(message, list):
-        for segment in message:
-            if not isinstance(segment, dict) or segment.get("type") != "file":
-                continue
-            segment_data = segment.get("data")
-            if not isinstance(segment_data, dict):
-                continue
-            result.append(
-                {
-                    "file_id": str(
-                        segment_data.get("file_id")
-                        or segment_data.get("id")
-                        or segment_data.get("file")
-                        or ""
-                    ),
-                    "file_name": str(segment_data.get("file_name") or segment_data.get("name") or ""),
-                    "size": segment_data.get("file_size") or segment_data.get("size") or 0,
-                    "busid": segment_data.get("busid") or 0,
-                    "group_id": value.get("group_id") or 0,
-                    "user_id": value.get("user_id") or 0,
-                    "time": value.get("time") or 0,
-                    "notice_type": "message_file",
-                }
-            )
+    # 历史压缩摘要 dict：摘要正文里含较早事件的 repr 片段，继续递归提取
+    result = []
     for item in value.values():
         result.extend(_walk_uploads(item, depth + 1))
     return result

@@ -8,10 +8,13 @@ import re
 from collections.abc import Callable
 from typing import Any, Generic, TypeVar, Union
 
-from hyperot import configurator, events, hyperogger, listener
+from hyperot import configurator, hyperogger
+from hyperot.v2 import Client, ClientAPI
+from hyperot.v2.common import SceneType
+from hyperot.v2.events import Event, MessageReceivedEvent
 from typing_extensions import override
 
-EventT = TypeVar("EventT", bound=events.Event | events.HyperNotify)
+EventT = TypeVar("EventT", bound=Event)
 
 
 class Char(str):
@@ -161,6 +164,67 @@ logger = hyperogger.Logger()
 logger.set_level(config.log_level)
 
 
+def _as_int(value: object) -> int | None:
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def event_user_id(event: object) -> int | None:
+    return _as_int(getattr(event, "user_id", None))
+
+
+def event_group_id(event: object) -> int | None:
+    """v2 场景事件的群号：scene_type 为 group 时取 scene_id，否则为 None。"""
+    if getattr(event, "scene_type", None) == SceneType.GROUP:
+        return _as_int(getattr(event, "scene_id", None))
+    return None
+
+
+def is_owner(event: object) -> bool:
+    uid = event_user_id(event)
+    return uid is not None and uid in config.owner
+
+
+def group_message(event: object) -> bool:
+    """仅群消息事件，替代 v1 只注册 GroupMessageEvent 的语义。"""
+    return isinstance(event, MessageReceivedEvent) and event.scene_type == SceneType.GROUP
+
+
+def private_message(event: object) -> bool:
+    """仅私聊消息事件，替代 v1 只注册 PrivateMessageEvent 的语义。"""
+    return isinstance(event, MessageReceivedEvent) and event.scene_type == SceneType.USER
+
+
+def gate(event: object) -> bool:
+    """中央门控：黑名单与静言列表，语义对齐 v1 的 event.blocked / event.is_silent。"""
+    uid = event_user_id(event)
+    gid = event_group_id(event)
+    blocked = uid in config.black_list or gid in config.black_list
+    silent = uid in config.silents or gid in config.silents or 0 in config.silents
+    return not (blocked or silent)
+
+
+class BotContext:
+    """进程级机器人上下文（当前仅 self_id，供无自带 self_id 的事件路径使用）。"""
+
+    self_id: int = 0
+
+    @classmethod
+    def set_self_id(cls, value: int) -> None:
+        cls.self_id = value
+
+
+def self_id_of(event: object) -> int:
+    """优先取事件自带的 self_id（OneBot 消息事件携带），否则回退 BotContext。"""
+    raw = getattr(event, "self_id", None)
+    as_int = _as_int(raw) if raw is not None else None
+    if as_int:
+        return as_int
+    return BotContext.self_id
+
+
 @dataclasses.dataclass
 class ModuleInfo:
     is_hidden: bool = True
@@ -174,8 +238,9 @@ class ModuleInfo:
 class Module(Generic[EventT]):
     config = config
 
-    def __init__(self, actions: listener.Actions, event: EventT) -> None:
-        self.actions: listener.Actions = actions
+    def __init__(self, client: Client[ClientAPI], event: EventT) -> None:
+        self.client: Client[ClientAPI] = client
+        self.api: ClientAPI = client.api
         self.event: EventT = event
 
     async def handle(self) -> None:
@@ -277,7 +342,7 @@ def command(chain: list[str], mapping: dict[int | str, str]) -> Callable[[Callab
     return decorator
 
 
-class CommandHandler(Module[events.MessageEvent]):
+class CommandHandler(Module[MessageReceivedEvent]):
     handlers: list[CommandRegistration] = []
 
     @override
@@ -288,9 +353,7 @@ class CommandHandler(Module[events.MessageEvent]):
                 try:
                     await i(self, cmds)
                 except Exception as e:
-                    await self.actions.send_msg(
-                        group_id=self.event.group_id, user_id=self.event.user_id, message=repr(e)
-                    )
+                    await self.api.scene(self.event.scene_type, self.event.scene_id).send(repr(e))
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         cls.handlers = []
@@ -312,10 +375,11 @@ class ModuleRegister:
     @staticmethod
     def register(*args: Any) -> Callable[[type[Module[Any]]], type[Module[Any]]]:
         def decorator(cls: type[Module[Any]]) -> type[Module[Any]]:
-            allowed = [events.Event] if len(args) < 1 else list(args)
+            allowed = [Event] if len(args) < 1 else list(args)
 
-            def init(self: Module[Any], actions: listener.Actions, event: Any) -> None:
-                self.actions = actions
+            def init(self: Module[Any], client: Client[ClientAPI], event: Any) -> None:
+                self.client = client
+                self.api = client.api
                 self.event = event
 
             cls.__init__ = init  # type: ignore[assignment]

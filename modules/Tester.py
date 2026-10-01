@@ -1,14 +1,13 @@
 import datetime
 
 import hyperot
-from hyperot import common, segments
-from hyperot.events import *
+from hyperot.v2.events import *
 from typing_extensions import override
 
 import ModuleClass
 
 
-@ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
+@ModuleClass.ModuleRegister.register(MessageReceivedEvent)
 class TesterCommand(ModuleClass.CommandHandler):
     @staticmethod
     @override
@@ -23,9 +22,9 @@ class TesterCommand(ModuleClass.CommandHandler):
 
     @ModuleClass.command([".infot"], mapping={1: "usr_code"})
     async def handle_info(self, usr_code: str = "NotMentioned"):
-        version = await self.actions.get_version_info()
-        name = version.data.app_name
-        code = version.data.app_version
+        version = await self.api.bot.version()
+        name = version.app_name
+        code = version.app_version
         message = (
             f"HypeR Bot v{hyperot.HYPER_BOT_VERSION} - TEST\n"
             "https://github.com/HarcicYang/HypeR_Bot\n"
@@ -34,6 +33,4 @@ class TesterCommand(ModuleClass.CommandHandler):
             f"协议库实现：{name} {code}\n"
             f"code = {usr_code}"
         )
-        await self.actions.send_msg(
-            group_id=self.event.group_id, user_id=self.event.user_id, message=common.Message(segments.Text(message))
-        )
+        await self.api.scene(self.event.scene_type, self.event.scene_id).send(message)

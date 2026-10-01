@@ -1,14 +1,24 @@
 """消息类工具:发消息、撤回、查消息、合并转发长文本。"""
 
 import asyncio
+import dataclasses
 import difflib
 import json
 import math
 from typing import Any
 
-from hyperot import common, segments
+from hyperot.v2 import Message, UnknownSegment
+from hyperot_adapter_onebot.segments import OneBotSegmentCodec
 
 from modules.AgentTools.registry import AgentToolBase, SegmentsArg, ToolContext, tool
+
+_codec = OneBotSegmentCodec()
+
+
+def _unknown(payload: dict[str, Any]) -> UnknownSegment:
+    """OneBot 原始段（{type, data}）→ v2 自定义消息段，wire 上原样透传。"""
+    return UnknownSegment(wire_type=str(payload.get("type", "unknown")), data=payload.get("data") or {})
+
 
 # 普通发送的最大序列化长度;超过则拒绝,强制使用 collected_send
 MAX_TEXT_LEN = 120
@@ -88,7 +98,7 @@ def _positive_int_error(name: str, value: Any) -> str | None:
     return None
 
 
-async def _build_message(ctx: ToolContext, raw_message: Any) -> tuple[common.Message | None, str | None]:
+async def _build_message(ctx: ToolContext, raw_message: Any) -> tuple[Message | None, str | None]:
     if err := _validate_message(raw_message):
         return None, err
     try:
@@ -100,45 +110,11 @@ async def _build_message(ctx: ToolContext, raw_message: Any) -> tuple[common.Mes
     return message, None
 
 
-def _check_len(msg: common.Message) -> str | None:
+def _check_len(msg: Message) -> str | None:
     """消息序列化后 str() 长度超过 MAX_TEXT_LEN 时返回错误信息(强制改用合并转发)。"""
     if len(str(msg)) > MAX_TEXT_LEN:
         return f"消息过长(序列化后 {len(str(msg))} 字符,上限 {MAX_TEXT_LEN})，请改用 collected_send 以合并转发形式发送"
     return None
-
-
-def _ret_succeeded(ret: common.Ret[Any]) -> bool:
-    return ret.status == "ok" or (ret.status is None and ret.ret_code in (None, 0))
-
-
-def _ret_failure(action: str, ret: common.Ret[Any]) -> str:
-    details: list[str] = []
-    if ret.status is not None:
-        details.append(f"status={ret.status}")
-    if ret.ret_code is not None:
-        details.append(f"retcode={ret.ret_code}")
-    reason = ret.raw.get("message") or ret.raw.get("wording")
-    if reason:
-        details.append(f"原因={reason}")
-    detail_text = "，".join(details) if details else "协议端未返回详情"
-    return f"{action}失败：{detail_text}"
-
-
-def _send_result(action: str, target: str, ret: common.Ret[Any]) -> str:
-    if not _ret_succeeded(ret):
-        return _ret_failure(action, ret)
-    message_id = getattr(ret.data, "message_id", None)
-    if message_id is None:
-        return f"{action}请求已发送：{target}，但协议端未返回 message_id"
-    return f"{action}成功：{target}，message_id={message_id}"
-
-
-async def _custom_ret(echo: Any) -> common.Ret[Any]:
-    if isinstance(echo, str):
-        return await common.Ret.fetch(echo)
-    if isinstance(echo, dict) and ("status" in echo or "retcode" in echo):
-        return common.Ret(echo)
-    return common.Ret({"status": "ok", "retcode": 0, "data": echo})
 
 
 class MessageTools(AgentToolBase):
@@ -163,8 +139,8 @@ class MessageTools(AgentToolBase):
         if err := _check_len(new_mess):
             return err
         await asyncio.sleep(math.log(len(str(new_mess)) + 3))
-        ret = await ctx.actions.send_msg(message=new_mess, group_id=group_id)
-        return _send_result("群消息发送", f"group_id={group_id}", ret)
+        result = await ctx.actions.group(str(group_id)).send(new_mess)
+        return f"群消息发送成功：group_id={group_id}，message_id={result.message_id}"
 
     @tool(group="qq", sub_visible=False)
     async def send_private_msg(self, ctx: ToolContext, user_id: int, message: SegmentsArg) -> Any:
@@ -186,8 +162,8 @@ class MessageTools(AgentToolBase):
         assert new_mess is not None
         if err := _check_len(new_mess):
             return err
-        ret = await ctx.actions.send_msg(message=new_mess, user_id=user_id)
-        return _send_result("私聊消息发送", f"user_id={user_id}", ret)
+        result = await ctx.actions.user(str(user_id)).send(new_mess)
+        return f"私聊消息发送成功：user_id={user_id}，message_id={result.message_id}"
 
     @tool(group="qq", sub_visible=False)
     async def poke(self, ctx: ToolContext, user_id: int, group_id: int | None = None) -> str:
@@ -204,12 +180,10 @@ class MessageTools(AgentToolBase):
             return err
         if group_id is not None and (err := _positive_int_error("group_id", group_id)):
             return err
-        echo = await ctx.actions.custom.send_poke(user_id=user_id, group_id=group_id or 0)
-        ret = await _custom_ret(echo)
-        if not _ret_succeeded(ret):
-            return _ret_failure("戳一戳", ret)
         if group_id is None:
+            await ctx.actions.user(str(user_id)).poke(user_id)
             return f"戳一戳请求已发送：user_id={user_id}"
+        await ctx.actions.group(str(group_id)).poke(user_id)
         return f"戳一戳请求已发送：group_id={group_id}，user_id={user_id}"
 
     @tool(group="qq", sub_visible=False)
@@ -236,18 +210,21 @@ class MessageTools(AgentToolBase):
         if err:
             return err
         assert new_mess is not None
-        nodes = [
-            segments.CustomNode(
-                user_id=str(ctx.self_id or ctx.principal_id or 0), nickname="", content=new_mess
-            ).to_json()
-        ]
-        fwd = common.Message(segments.Forward(content=nodes))
+        node = {
+            "type": "node",
+            "data": {
+                "user_id": str(ctx.self_id or ctx.principal_id or 0),
+                "nickname": "",
+                "content": _codec.encode_segments(new_mess),
+            },
+        }
+        fwd = Message(_unknown({"type": "forward", "data": {"content": [node]}}))
         if group_id is not None:
-            ret = await ctx.actions.send_msg(message=fwd, group_id=group_id)
-            return _send_result("合并转发发送", f"group_id={group_id}", ret)
+            result = await ctx.actions.group(str(group_id)).send(fwd)
+            return f"合并转发发送成功：group_id={group_id}，message_id={result.message_id}"
         assert user_id is not None
-        ret = await ctx.actions.send_msg(message=fwd, user_id=user_id)
-        return _send_result("合并转发发送", f"user_id={user_id}", ret)
+        result = await ctx.actions.user(str(user_id)).send(fwd)
+        return f"合并转发发送成功：user_id={user_id}，message_id={result.message_id}"
 
     @tool(group="qq", sub_visible=False)
     async def set_group_reaction(
@@ -284,12 +261,9 @@ class MessageTools(AgentToolBase):
             params["code"] = code
         else:
             params["emoji"] = emoji
-        echo = await ctx.actions.custom.group_reaction(**params)
+        await ctx.actions.raw("group_reaction", params)
         action = "设置" if is_add else "移除"
         target = f"code={code}" if code is not None else f"emoji={emoji}"
-        ret = await _custom_ret(echo)
-        if not _ret_succeeded(ret):
-            return _ret_failure(f"表情回应{action}", ret)
         return f"表情回应{action}请求已发送：group_id={group_id}，message_id={message_id}，{target}"
 
     @tool(group="qq", sub_visible=False)
@@ -301,7 +275,7 @@ class MessageTools(AgentToolBase):
         返回值：
         - 返回“撤回请求已发送”；协议接口不提供成功确认
         """
-        await ctx.actions.del_msg(message_id)
+        await ctx.actions.message(str(message_id)).recall()
         return f"撤回请求已发送：message_id={message_id}"
 
     @tool(group="qq", sub_visible=False, preserve=True)
@@ -314,10 +288,8 @@ class MessageTools(AgentToolBase):
         - 成功时返回“获取消息成功”和协议端返回的消息详情
         - 上游明确失败时返回失败原因
         """
-        ret = await ctx.actions.get_msg(message_id)
-        if not _ret_succeeded(ret):
-            return _ret_failure("获取消息", ret)
-        detail = json.dumps(ret.raw.get("data"), ensure_ascii=False, default=str)
+        message = await ctx.actions.message(str(message_id)).fetch()
+        detail = json.dumps([dataclasses.asdict(seg) for seg in message], ensure_ascii=False, default=str)
         return f"获取消息成功：message_id={message_id}，详情={detail}"
 
     @tool(group="qq", sub_visible=False, preserve=True)
@@ -347,9 +319,6 @@ class MessageTools(AgentToolBase):
 
         if err := _positive_int_error("user_id", user_id):
             return err
-        echo = await ctx.actions.custom.send_like(user_id=user_id, times=times)
-        ret = await _custom_ret(echo)
-        if not _ret_succeeded(ret):
-            return _ret_failure("点赞", ret)
+        await ctx.actions.raw("send_like", {"user_id": user_id, "times": times})
 
         return f"点赞请求已发送：user_id={user_id}，times={times}"

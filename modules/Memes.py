@@ -3,8 +3,8 @@ from io import BytesIO
 
 import httpx
 import meme_generator
-from hyperot import common, segments
-from hyperot.events import *
+from hyperot.v2 import Image, Message, Quote, Text
+from hyperot.v2.events import MessageReceivedEvent
 from meme_generator import exception
 from typing_extensions import override
 
@@ -21,18 +21,17 @@ def _count_mismatch_text(kind: str, min_: int, max_: int, actual: int) -> str:
 
 
 def get_meme(key: str) -> meme_generator.Meme:
-    # 官方 .pyi 过时：运行时 keywords 是 Meme 的直接属性（.pyi 误写为 info.keywords）。
     def f(x: meme_generator.Meme, key_word: str) -> bool:
-        return key_word in x.keywords  # pyrefly: ignore[missing-attribute]
+        return key_word in x.keywords
 
     memes: list[meme_generator.Meme] = meme_generator.get_memes()
-    res = filter(lambda x: f(x, key), memes)  # pyrefly: ignore[implicit-any-lambda]
+    res = [m for m in memes if f(m, key)]
 
-    return list(res)[0]
+    return res[0]
 
 
-@ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
-class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
+@ModuleClass.ModuleRegister.register(MessageReceivedEvent)
+class Module(ModuleClass.Module[MessageReceivedEvent]):
     @override
     @staticmethod
     def info() -> ModuleInfo:
@@ -53,8 +52,6 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
 
     @override
     async def handle(self) -> None:
-        if self.event.blocked:
-            return
         try:
             message = str(self.event.message)
         except AttributeError:
@@ -67,41 +64,32 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
             meme = get_meme(keyword)
         except Exception as e:
             if isinstance(e, exception.NoSuchMeme):
-                await self.actions.send_msg(
-                    user_id=self.event.user_id,
-                    group_id=self.event.group_id,
-                    message=common.Message(
-                        segments.Reply(self.event.message_id),
-                        segments.Text(
-                            f"找不到{message.split()[1].replace('[图片]', '')}这一模板，详见：\n"
-                            f"https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html"
-                        ),
-                    ),
+                text = (
+                    f"找不到{message.split()[1].replace('[图片]', '')}这一模板，详见：\n"
+                    "https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html"
                 )
             else:
-                await self.actions.send_msg(
-                    user_id=self.event.user_id,
-                    group_id=self.event.group_id,
-                    message=common.Message(
-                        segments.Reply(self.event.message_id),
-                        segments.Text("https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html"),
-                    ),
-                )
+                text = "https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html"
+            await self.api.scene(self.event.scene_type, self.event.scene_id).send(
+                Message(Quote(message_id=str(self.event.message_id)), Text(text=text))
+            )
             return
 
         texts: list[str] = []
         images: list[bytes] = []
         args: dict[str, bool | str | int | float] = {}
-        n_msg = common.Message()
+        n_msg = Message()
         for i in self.event.message:
-            if type(i) is segments.Text:
-                n_msg.add(i)
-            elif type(i) is segments.Image:
-                file = i.file if i.file.startswith("http") else i.url
-                if file is None:
-                    continue
-                response = httpx.get(file.replace("https://", "http://"), verify=False)
-                images.append(response.content)
+            if isinstance(i, Text):
+                n_msg = n_msg.add(i)
+            elif isinstance(i, Image):
+                source = i.source
+                if source.startswith("http"):
+                    response = httpx.get(source.replace("https://", "http://"), verify=False)
+                    images.append(response.content)
+                elif source.startswith("file://"):
+                    with open(source[len("file://") :], "rb") as f:
+                        images.append(f.read())
 
         for i in String(str(n_msg).replace(f".meme {keyword}", "")).cmdl_parse():
             if isinstance(i, String):
@@ -117,7 +105,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         # meme_generator 0.1.x：Meme 为可调用对象，成功返回 BytesIO，失败抛出 exception 子类异常。
         # 官方 .pyi 过时（描述为新版 generate API），故此处与 get_meme 均需忽略类型误报。
         try:
-            result: BytesIO = meme(images=images, texts=texts, args=args)  # pyrefly: ignore[not-callable]
+            result: BytesIO = meme(images=images, texts=texts, args=args)
         except exception.ImageNumberMismatch as e:
             text = _count_mismatch_text("图片", e.min_images, e.max_images, len(images))
         except exception.TextNumberMismatch as e:
@@ -131,23 +119,20 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         except exception.MemeGeneratorException as e:
             text = f"生成失败: {e}"
         else:
-            with open(f"./temps/meme_{self.event.user_id}.png", "wb") as f:
+            meme_path = f"./temps/meme_{self.event.user_id}.png"
+            with open(meme_path, "wb") as f:
                 f.write(result.getvalue())
-            content_text = f"file://{os.path.abspath(f'./temps/meme_{self.event.user_id}.png')}".replace("\\", "/")
-            await self.actions.send_msg(
-                user_id=self.event.user_id,
-                group_id=self.event.group_id,
-                message=common.Message(segments.Reply(self.event.message_id), segments.Image(content_text)),
+            content_text = f"file://{os.path.abspath(meme_path)}".replace("\\", "/")
+            await self.api.scene(self.event.scene_type, self.event.scene_id).send(
+                Message(Quote(message_id=str(self.event.message_id)), Image(source=content_text))
             )
-            os.remove(f"./temps/meme_{self.event.user_id}.png")
+            os.remove(meme_path)
             return
 
-        await self.actions.send_msg(
-            user_id=self.event.user_id,
-            group_id=self.event.group_id,
-            message=common.Message(
-                segments.Reply(self.event.message_id),
-                segments.Text(text),
-                segments.Text("\n详见: https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html"),
-            ),
+        await self.api.scene(self.event.scene_type, self.event.scene_id).send(
+            Message(
+                Quote(message_id=str(self.event.message_id)),
+                Text(text=text),
+                Text(text="\n详见: https://harcicyang.github.io/hyper-bot/usage/qq_usage/memes_g/list.html"),
+            )
         )

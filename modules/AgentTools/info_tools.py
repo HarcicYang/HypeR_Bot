@@ -3,7 +3,7 @@
 import asyncio
 from typing import Any, cast
 
-from hyperot import common, configurator
+from hyperot import configurator
 
 from modules.AgentTools.registry import AgentToolBase, ToolContext, tool
 
@@ -20,7 +20,7 @@ class InfoTools(AgentToolBase):
 
         - group_id: 目标群号
         """
-        return (await ctx.actions.get_group_info(group_id)).raw
+        return (await ctx.actions.group(str(group_id)).profile()).model_dump(mode="json")
 
     @tool(group="info")
     async def get_stranger_info(self, ctx: ToolContext, user_id: int) -> Any:
@@ -28,7 +28,7 @@ class InfoTools(AgentToolBase):
 
         - user_id: 目标用户 QQ 号
         """
-        return (await ctx.actions.get_stranger_info(user_id)).raw
+        return (await ctx.actions.user(str(user_id)).profile()).model_dump(mode="json")
 
     @tool(group="info")
     async def get_group_member_info(self, ctx: ToolContext, group_id: int, user_id: int) -> Any:
@@ -37,7 +37,7 @@ class InfoTools(AgentToolBase):
         - group_id: 目标群号
         - user_id: 目标用户 QQ 号
         """
-        return (await ctx.actions.get_group_member_info(group_id=group_id, user_id=user_id)).raw
+        return (await ctx.actions.group(str(group_id)).member(str(user_id)).profile()).model_dump(mode="json")
 
     @tool(group="info", preserve=True)
     async def get_group_member_list(self, ctx: ToolContext, group_id: int) -> Any:
@@ -45,20 +45,17 @@ class InfoTools(AgentToolBase):
 
         - group_id: 目标群号
         """
-        echo = await ctx.actions.custom.get_group_member_list(group_id=group_id)
-        return (await common.Ret.fetch(echo)).raw
+        return [member.model_dump(mode="json") for member in await ctx.actions.group(str(group_id)).members()]
 
     @tool(group="info", preserve=True)
     async def get_group_list(self, ctx: ToolContext) -> Any:
         """获取 Bot 加入的群列表。"""
-        echo = await ctx.actions.custom.get_group_list()
-        return (await common.Ret.fetch(echo)).raw
+        return (await ctx.actions.raw("get_group_list")).data
 
     @tool(group="info", preserve=True)
     async def get_friend_list(self, ctx: ToolContext) -> Any:
         """获取 Bot 的好友列表。"""
-        echo = await ctx.actions.custom.get_friend_list()
-        return (await common.Ret.fetch(echo)).raw
+        return (await ctx.actions.raw("get_friend_list")).data
 
     @tool(group="info")
     async def time(self, ctx: ToolContext) -> str:

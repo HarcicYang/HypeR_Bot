@@ -3,8 +3,14 @@ import os
 import random
 import traceback
 
-from hyperot import common, hyperogger, segments
-from hyperot.events import *
+from hyperot import hyperogger
+from hyperot.v2 import Mention, Message, Quote, Text
+from hyperot.v2.events import (
+    GroupJoinRequestedEvent,
+    MemberJoinedEvent,
+    MemberLeftEvent,
+    MessageReceivedEvent,
+)
 from typing_extensions import override
 
 import ModuleClass
@@ -46,12 +52,8 @@ def _save_cache(cache: dict[str, list[str | None]]) -> None:
     os.replace(tmp, _cache_path())
 
 
-@ModuleClass.ModuleRegister.register(
-    GroupAddInviteEvent, GroupMemberDecreaseEvent, GroupMemberIncreaseEvent, GroupMessageEvent
-)
-class Module(
-    ModuleClass.Module[GroupAddInviteEvent | GroupMemberDecreaseEvent | GroupMemberIncreaseEvent | GroupMessageEvent]
-):
+@ModuleClass.ModuleRegister.register(GroupJoinRequestedEvent, MemberJoinedEvent, MemberLeftEvent, MessageReceivedEvent)
+class Module(ModuleClass.Module[GroupJoinRequestedEvent | MemberJoinedEvent | MemberLeftEvent | MessageReceivedEvent]):
     @override
     @staticmethod
     def info() -> ModuleClass.ModuleInfo:
@@ -64,71 +66,39 @@ class Module(
 
     @override
     async def handle(self):
-        if self.event.blocked or self.event.is_silent:
-            return
-        if self.event.user_id is None or self.event.group_id is None:
-            return
-        if isinstance(self.event, NoticeEvent):
-            if isinstance(self.event, GroupMemberIncreaseEvent):
-                text = str(random.choice(quicks["group_increase"])).split("<user>")
-                await self.actions.send_msg(
-                    group_id=self.event.group_id,
-                    message=common.Message(
-                        [segments.Text(text[0]), segments.At(str(self.event.user_id)), segments.Text(text[1])]
-                    ),
+        gid = str(self.event.scene_id)
+        if isinstance(self.event, MemberJoinedEvent):
+            text = str(random.choice(quicks["group_increase"])).split("<user>")
+            await self.api.group(gid).send(
+                Message(Text(text=text[0]), Mention(user_id=str(self.event.member_id)), Text(text=text[1]))
+            )
+        elif isinstance(self.event, MemberLeftEvent):
+            try:
+                user_info = await self.api.user(str(self.event.member_id)).profile()
+                sub_type = "kick" if self.event.kicked else "leave"
+                text = str(random.choice(quicks["group_decrease"][sub_type])).replace(
+                    "<user>", f"{user_info.display_name or '未知用户'}({self.event.member_id})"
                 )
-            elif isinstance(self.event, GroupMemberDecreaseEvent):
-                try:
-                    user_info = await self.actions.get_stranger_info(user_id=self.event.user_id)
-                    text = str(random.choice(quicks["group_decrease"][self.event.sub_type])).replace(
-                        "<user>", f"{user_info.data.nickname}({self.event.user_id})"
-                    )
-                    await self.actions.send_msg(
-                        group_id=self.event.group_id, message=common.Message([segments.Text(text)])
-                    )
-
-                except KeyError:
-                    return None
-            else:
+                await self.api.group(gid).send(Message(Text(text=text)))
+            except KeyError:
                 return None
-
-        elif isinstance(self.event, RequestEvent) and isinstance(self.event, GroupAddInviteEvent):
-            if self.event.sub_type == "add":
-                # await self.actions.set_group_add_request(flag=self.event.flag, sub_type=self.event.sub_type,
-                #                                          approve=True)
-                # await self.actions.send_msg(group_id=self.event.group_id, message=Comm.Message(
-                #     [
-                #         Segments.Text("同意用户"), Segments.At(self.event.user_id), Segments.Text("的加群请求。"),
-                #         Segments.Text("\n"),
-                #         Segments.Text(str(self.event.comment))
-                #     ]
-                # ))
-                uinfo = await self.actions.get_stranger_info(self.event.user_id)
-                msg = await self.actions.send_msg(
-                    group_id=self.event.group_id,
-                    message=common.Message(
-                        [
-                            segments.Text(
-                                f"有新的入群请求，来自用户 {uinfo.data.nickname}（QQ {self.event.user_id}），请尽快处理"
-                            )
-                        ]
-                    ),
+        elif isinstance(self.event, GroupJoinRequestedEvent):
+            uinfo = await self.api.user(str(self.event.user_id)).profile()
+            msg = await self.api.group(gid).send(
+                Message(
+                    Text(
+                        text=f"有新的入群请求，来自用户 {uinfo.display_name or '未知用户'}（QQ {self.event.user_id}），请尽快处理"
+                    )
                 )
-                cache = _load_cache()
-                cache[str(msg.data.message_id)] = [self.event.comment, self.event.flag]
-                _save_cache(cache)
-            # elif self.event.sub_type == "invite":
-            #     message = common.Message(
-            #         [
-            #             segments.Text(f"HypeR Bot 通过用户 QQ {self.event.user_id}的邀请加入群组")
-            #         ]
-            #     )
-            #     await self.actions.send_msg(group_id=self.event.group_id, message=message)
-        elif isinstance(self.event, GroupMessageEvent):
+            )
+            cache = _load_cache()
+            cache[str(msg.message_id)] = [self.event.comment, str(self.event.request_id)]
+            _save_cache(cache)
+        elif isinstance(self.event, MessageReceivedEvent):
             _id = None
             for i in self.event.message:
-                if isinstance(i, segments.Reply):
-                    _id = i.id
+                if isinstance(i, Quote):
+                    _id = str(i.message_id)
                     break
             if _id is not None:
                 cache = _load_cache()
@@ -140,15 +110,13 @@ class Module(
             if ".comment" in str(self.event.message):
                 if comment is None:
                     return
-                await self.actions.send_msg(
-                    group_id=self.event.group_id,
-                    user_id=self.event.user_id,
-                    message=common.Message(segments.Reply(self.event.message_id), segments.Text(comment)),
+                await self.api.scene(self.event.scene_type, self.event.scene_id).send(
+                    Message(Quote(message_id=str(self.event.message_id)), Text(text=comment))
                 )
             elif ".approve" in str(self.event.message):
                 if flag is None:
                     return
-                await self.actions.set_group_add_request(flag=flag, sub_type="add", approve=True)
+                await self.api.group_request(flag).approve()
                 cache = _load_cache()
                 del cache[_id]
                 _save_cache(cache)

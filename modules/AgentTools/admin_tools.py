@@ -9,17 +9,17 @@ class AdminTools(AgentToolBase):
     @tool(scenes=("group", "private", "system"), group="admin", sub_visible=False)
     async def get_status(self, ctx: ToolContext) -> Any:
         """查询 Bot 当前状态"""
-        return (await ctx.actions.get_status()).raw
+        return (await ctx.actions.bot.status()).model_dump(mode="json")
 
     @tool(scenes=("group", "private", "system"), group="admin", sub_visible=False)
     async def get_login_info(self, ctx: ToolContext) -> Any:
         """查询 Bot 登录账号信息"""
-        return (await ctx.actions.get_login_info()).raw
+        return (await ctx.actions.raw("get_login_info")).data
 
     @tool(scenes=("group", "private", "system"), group="admin", sub_visible=False)
     async def get_version_info(self, ctx: ToolContext) -> Any:
         """查询 Bot 版本与协议实现信息"""
-        return (await ctx.actions.get_version_info()).raw
+        return (await ctx.actions.bot.version()).model_dump(mode="json")
 
     @tool(perm="bot_owner", scenes=("group",), group="admin", sub_visible=False)
     async def set_group_card(self, ctx: ToolContext, group_id: int, user_id: int, card: str) -> str:
@@ -31,5 +31,5 @@ class AdminTools(AgentToolBase):
         """
         if len(card) > 32:
             return "群名片过长(最多 32 字符)"
-        echo = await ctx.actions.custom.set_group_card(group_id=group_id, user_id=user_id, card=card)
-        return f"已设置群 {group_id} 中用户 {user_id} 的名片(echo={echo})"
+        await ctx.actions.group(str(group_id)).member(str(user_id)).set_card(card)
+        return f"已设置群 {group_id} 中用户 {user_id} 的名片"

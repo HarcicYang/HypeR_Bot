@@ -1,8 +1,9 @@
 from datetime import date, datetime, time, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from chinese_calendar import is_holiday
-from hyperot.events import *
+from hyperot.v2.events import *
 from typing_extensions import override
 
 import ModuleClass
@@ -14,8 +15,13 @@ PEAK_PERIODS: tuple[tuple[time, time], ...] = (
 )
 
 
-@ModuleClass.ModuleRegister.register(GroupMessageEvent)
-class Module(ModuleClass.Module[GroupMessageEvent]):
+@ModuleClass.ModuleRegister.register(MessageReceivedEvent)
+class Module(ModuleClass.Module[MessageReceivedEvent]):
+    @override
+    @staticmethod
+    def filter(event: Any, allowed: list[Any]) -> bool:
+        return ModuleClass.group_message(event)
+
     @override
     @staticmethod
     def info() -> ModuleClass.ModuleInfo:
@@ -26,17 +32,15 @@ class Module(ModuleClass.Module[GroupMessageEvent]):
             helps="发送“梁文”或 .ds 即可",
         )
 
-    @staticmethod
-    def is_statutory_holiday(day: date) -> bool:
+    def is_statutory_holiday(self, day: date) -> bool:
         """中国法定节假日判断；节假日数据未覆盖该年份时回退为普通工作日规则。"""
         try:
             return is_holiday(day)
         except NotImplementedError:
             return False
 
-    @staticmethod
-    def is_peak_at(moment: datetime) -> bool:
-        if moment.weekday() >= 5 or Module.is_statutory_holiday(moment.date()):
+    def is_peak_at(self, moment: datetime) -> bool:
+        if moment.weekday() >= 5 or self.is_statutory_holiday(moment.date()):
             return False
         current_time = moment.time()
         return any(start <= current_time < end for start, end in PEAK_PERIODS)
@@ -44,11 +48,10 @@ class Module(ModuleClass.Module[GroupMessageEvent]):
     def is_peak(self) -> bool:
         return self.is_peak_at(datetime.now(BEIJING_TZ))
 
-    @staticmethod
-    def get_next_peak_start(now: datetime) -> datetime:
+    def get_next_peak_start(self, now: datetime) -> datetime:
         for days_ahead in range(370):
             candidate_date = now.date() + timedelta(days=days_ahead)
-            if candidate_date.weekday() >= 5 or Module.is_statutory_holiday(candidate_date):
+            if candidate_date.weekday() >= 5 or self.is_statutory_holiday(candidate_date):
                 continue
             for start, _ in PEAK_PERIODS:
                 candidate = datetime.combine(candidate_date, start).replace(tzinfo=now.tzinfo)
@@ -56,8 +59,7 @@ class Module(ModuleClass.Module[GroupMessageEvent]):
                     return candidate
         raise RuntimeError("无法计算下一个 DeepSeek 高峰时段")
 
-    @staticmethod
-    def format_duration(delta: timedelta) -> str:
+    def format_duration(self, delta: timedelta) -> str:
         total_minutes = max(0, int(delta.total_seconds() // 60))
         days, remaining_minutes = divmod(total_minutes, 24 * 60)
         hours, minutes = divmod(remaining_minutes, 60)
@@ -96,6 +98,4 @@ class Module(ModuleClass.Module[GroupMessageEvent]):
     @override
     async def handle(self):
         if str(self.event.message) == "梁文" or str(self.event.message) == ".ds":
-            await self.actions.send_msg(
-                user_id=self.event.user_id, group_id=self.event.group_id, message=self.build_msg()
-            )
+            await self.api.scene(self.event.scene_type, self.event.scene_id).send(self.build_msg())

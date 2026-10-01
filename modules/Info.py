@@ -5,8 +5,7 @@ from typing import Any
 
 import hyperot
 import psutil
-from hyperot import adapters, common, events, segments
-from hyperot.events import *
+from hyperot.v2.events import *
 from typing_extensions import override
 
 import ModuleClass
@@ -21,10 +20,12 @@ def bytes_to_human(num: float) -> str:
     return f"{num:.1f} EB"
 
 
-def adapter_name() -> str:
-    """当前协议库实现名称(适配器尚未就绪时回退为未知)。"""
-    current = adapters.registry.current
-    return current.name if current is not None else "未知"
+def adapter_name(client: Any) -> str:
+    """当前适配器实现名称与版本(适配器清单不可用时回退为未知)。"""
+    manifest = getattr(getattr(client, "adapter", None), "manifest", None)
+    if manifest is None:
+        return "未知"
+    return f"{manifest.name} {manifest.version}"
 
 
 def get_os_description() -> str:
@@ -56,8 +57,8 @@ def get_os_description() -> str:
     return f"{system} {platform.release()} ({machine})"
 
 
-@ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
-class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
+@ModuleClass.ModuleRegister.register(MessageReceivedEvent)
+class Module(ModuleClass.Module[MessageReceivedEvent]):
     @override
     @staticmethod
     def info() -> ModuleClass.ModuleInfo:
@@ -70,11 +71,8 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
 
     @override
     @staticmethod
-    def filter(event: events.Event, allowed: list[Any]) -> bool:
-        if isinstance(event, HyperNotify) or event.blocked:
-            return False
-
-        if not isinstance(event, GroupMessageEvent | PrivateMessageEvent):
+    def filter(event: Event, allowed: list[Any]) -> bool:
+        if not isinstance(event, MessageReceivedEvent):
             return False
 
         cmd = str(event.message).strip().lower()
@@ -87,20 +85,18 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         if cmd == ".info ext":
             message = await self._system_message()
         else:
-            version = await self.actions.get_version_info()
-            name = version.data.app_name
-            code = version.data.app_version
+            version = await self.api.bot.version()
+            name = version.app_name
+            code = version.app_version
             message = (
                 f"HypeR Bot v{hyperot.HYPER_BOT_VERSION}\n"
                 "https://github.com/HarcicYang/HypeR_Bot\n"
                 "------\n"
                 f"时间：{str(datetime.datetime.now())}\n"
-                f"协议库实现：{name} {code} ({adapter_name()})"
+                f"协议库实现：{name} {code} ({adapter_name(self.client)})"
             )
 
-        await self.actions.send_msg(
-            group_id=self.event.group_id, user_id=self.event.user_id, message=common.Message(segments.Text(message))
-        )
+        await self.api.scene(self.event.scene_type, self.event.scene_id).send(message)
 
     async def _system_message(self) -> str:
         # CPU 使用率（interval 提供短暂的采样以获得准确瞬时值）
@@ -120,16 +116,16 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
         uptime = datetime.datetime.now() - boot_time
         uptime_str = str(uptime).split(".")[0]
 
-        version = await self.actions.get_version_info()
-        name = version.data.app_name
-        code = version.data.app_version
+        version = await self.api.bot.version()
+        name = version.app_name
+        code = version.app_version
 
         return (
             f"HypeR Bot v{hyperot.HYPER_BOT_VERSION}\n"
             "https://github.com/HarcicYang/HypeR_Bot\n"
             "------\n"
             f"时间：{str(datetime.datetime.now())}\n"
-            f"协议库实现：{name} {code} ({adapter_name()})\n"
+            f"协议库实现：{name} {code} ({adapter_name(self.client)})\n"
             f"操作系统：{os_desc}\n"
             f"CPU ：{cpu_percent}%\n"
             "内存 (RAM)：\n"

@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Any, Literal, cast
 
 from hyperot import configurator, hyperogger
-from hyperot.listener import Actions
+from hyperot.v2 import ClientAPI
 
 from modules.AgentRuntime.models import AgentEvent, PermGroup, SessionKey
 
@@ -85,7 +85,7 @@ class SubAgentManager:
         sub_id = self._next_id
         self._next_id += 1
         core = self.core_factory(
-            bot_api=cast(Actions, self.owner.actions),
+            bot_api=cast(ClientAPI, self.owner.actions),
             api_manager=session_manager.api_manager,
             system_prompt=prompt,
             name=f"sub:{sub_id}",

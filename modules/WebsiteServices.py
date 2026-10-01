@@ -4,9 +4,11 @@ import re
 import threading
 import time
 
-from hyperot import common, segments
-from hyperot.events import *
 from hyperot.network import httpx_get
+from hyperot.v2 import Image as ImageSegment
+from hyperot.v2 import Message, SceneType
+from hyperot.v2.events import *
+from hyperot_adapter_onebot.segments import OneBotJson
 from PIL import Image
 from typing_extensions import override
 
@@ -223,8 +225,8 @@ class GitHubView:
         return img
 
 
-@ModuleClass.ModuleRegister.register(GroupMessageEvent, PrivateMessageEvent)
-class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
+@ModuleClass.ModuleRegister.register(MessageReceivedEvent)
+class Module(ModuleClass.Module[MessageReceivedEvent]):
     @override
     @staticmethod
     def info() -> ModuleClass.ModuleInfo:
@@ -237,20 +239,18 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
 
     @override
     async def handle(self):
-        if self.event.blocked or self.event.is_silent:
-            return
         _cleanup_stale_temps()
-        session = self.event.group_id if self.event.group_id is not None else self.event.user_id
+        session = int(self.event.scene_id) if self.event.scene_type == SceneType.GROUP else int(self.event.user_id or 0)
         try:
-            if len(self.event.message) != 0 and isinstance(self.event.message[0], segments.Json):
-                json_data = json.loads(str(self.event.message[0].data))
+            if len(self.event.message) != 0 and isinstance(self.event.message[0], OneBotJson):
+                json_data = json.loads(self.event.message[0].payload)
                 bv_id = await get_bv(text=str(json_data))
             else:
                 bv_id = await get_bv(text=str(self.event.message))
         except AttributeError:
             return
 
-        if bv_id and (self.event.group_id != 983497968 or self.event.user_id == 2488529467):
+        if bv_id and (session != 983497968 or int(self.event.user_id or 0) == 2488529467):
             for i in bv_id:
                 if _rate_limited(session, f"bili:{i}"):
                     continue
@@ -264,10 +264,8 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
                     path = f"./temps/bili_{i}.jpg"
                     with open(path, "wb") as f:
                         f.write(jpeg_bytes)
-                    await self.actions.send_msg(
-                        group_id=self.event.group_id,
-                        user_id=self.event.user_id,
-                        message=common.Message(segments.Image(file_url(path), summary=data.get("title", ""))),
+                    await self.api.scene(self.event.scene_type, self.event.scene_id).send(
+                        Message(ImageSegment(source=file_url(path), alt=data.get("title", "")))
                     )
                     _mark_parsed(session, f"bili:{i}")
                 except Exception as e:
@@ -287,22 +285,18 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
                     if _rate_limited(session, f"github:{ghv.full_name}"):
                         continue
                     if ghv.repo is not None:
-                        await self.actions.send_msg(
-                            group_id=self.event.group_id,
-                            user_id=self.event.user_id,
-                            message=common.Message(segments.Image(ghv.head_any(i), summary=ghv.full_name)),
+                        await self.api.scene(self.event.scene_type, self.event.scene_id).send(
+                            Message(ImageSegment(source=ghv.head_any(i), alt=ghv.full_name))
                         )
                     try:
                         (await ghv.auto(i)).save(f"./temps/github_{ghv.file_name}.png")
-                        await self.actions.send_msg(
-                            group_id=self.event.group_id,
-                            user_id=self.event.user_id,
-                            message=common.Message(
-                                segments.Image(
-                                    file_url(f"./temps/github_{ghv.file_name}.png"),
-                                    summary=ghv.full_name,
+                        await self.api.scene(self.event.scene_type, self.event.scene_id).send(
+                            Message(
+                                ImageSegment(
+                                    source=file_url(f"./temps/github_{ghv.file_name}.png"),
+                                    alt=ghv.full_name,
                                 )
-                            ),
+                            )
                         )
                         os.remove(f"./temps/github_{ghv.file_name}.png")
                         _mark_parsed(session, f"github:{ghv.full_name}")
