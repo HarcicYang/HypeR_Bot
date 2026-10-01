@@ -416,7 +416,7 @@ class TaskCxt:
         self.tasks.append(task)
 
     async def wait(self) -> None:
-        await asyncio.gather(*self.tasks)
+        await asyncio.gather(*self.tasks, return_exceptions=True)
 
     async def __aenter__(self) -> "TaskCxt":
         return self
