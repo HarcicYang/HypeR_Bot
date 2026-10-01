@@ -6,7 +6,7 @@ import math
 import time
 import traceback
 from collections.abc import Callable
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, TypeGuard
 
 from hyperot import configurator, hyperogger
 
@@ -22,6 +22,11 @@ DEFAULT_MAX_BUFFER = 80
 DEFAULT_KEEP_AFTER_COMPRESS = 60
 DEFAULT_MAX_SUMMARY_CHARS = 8000
 TRUNCATED_MARK = "（更早的压缩内容已按字符上限淘汰）"
+
+
+def _is_digest(item: Any) -> TypeGuard[dict[str, Any]]:
+    """buffer 是混存的:压缩摘要是 dict,原始事件是 repr(event) 字符串。"""
+    return isinstance(item, dict) and bool(item.get("compressed"))
 
 
 def _config_int(key: str, default: int) -> int:
@@ -86,11 +91,11 @@ class Collector:
         self.perm_group: PermGroup = "member"
         self.self_id: int | None = None
 
-    def _timeline(self, events: list[dict[str, Any]]) -> str:
+    def _timeline(self, events: list[str | dict[str, Any]]) -> str:
         """把事件渲染为时间线文本;已折叠的摘要条目直接取其摘要正文。"""
         lines: list[str] = []
         for event in events:
-            if isinstance(event, dict) and event.get("compressed"):
+            if _is_digest(event):
                 summary = event.get("summary")
                 if isinstance(summary, str) and summary.strip():
                     lines.append(summary.strip())
@@ -98,20 +103,21 @@ class Collector:
             lines.append(event if isinstance(event, str) else repr(event))
         return "\n".join(lines)
 
-    def _compress(self) -> None:
+    def _compress(self) -> int:
         """把最旧的事件折叠进缓冲头部的一条压缩摘要。
 
         字符上限只约束压缩摘要本身(超限时从最旧处截断),原始事件不做截断。
+        返回本次折叠的事件条数,未触发折叠时为 0。
         """
         overflow = len(self.buffer) - self.keep_after_compress
         if overflow <= 0:
-            return
+            return 0
         folded = self.buffer[:overflow]
         self.buffer = self.buffer[overflow:]
         text = self._timeline(folded)
-        old_digest = next((item for item in folded if item.get("compressed")), None)
+        old_digest = next((item for item in folded if _is_digest(item)), None)
         count = (int(old_digest.get("count") or 0) if old_digest else 0) + sum(
-            1 for item in folded if not item.get("compressed")
+            1 for item in folded if not _is_digest(item)
         )
         if len(text) > self.max_summary_chars:
             tail = text[-(self.max_summary_chars - len(TRUNCATED_MARK) - 1) :]
@@ -128,15 +134,14 @@ class Collector:
                 "summary": text,
             },
         )
+        return overflow
 
     def _maybe_compress(self) -> None:
         if len(self.buffer) < self.max_buffer:
             return
         before = len(self.buffer)
-        self._compress()
-        logger.info(
-            f"{self.stype} {self.sid}: 缓存达 {before} 条,已把最早的 {before - len(self.buffer)} 条折叠为压缩摘要"
-        )
+        folded = self._compress()
+        logger.info(f"{self.stype} {self.sid}: 缓存达 {before} 条,已把最早的 {folded} 条折叠为压缩摘要")
 
     def _update_delay(self, last: float, length: int) -> None:
         rate = last / self.delay
