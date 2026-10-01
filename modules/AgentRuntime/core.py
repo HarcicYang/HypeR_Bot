@@ -703,14 +703,14 @@ class AgentCore:
         return f"已记住 #{mem_id}"
 
     async def mem_query(self, content: str, top_k: int = 5) -> str:
-        """语义检索相关记忆,返回 #id: text (score) 列表。"""
+        """混合检索相关记忆,返回 #id: text (score) 列表。"""
         try:
-            rs = await asyncio.to_thread(self.memory.query, content, top_k)
+            rs = await asyncio.to_thread(self.memory.query_entries, content, top_k)
         except Exception as e:
             return f"检索失败: {repr(e)}"
         if not rs:
             return "没有相关记忆"
-        return "\n".join(f"#{self._mem_id_of(text)}: {text} ({score:.3f})" for text, score in rs)
+        return "\n".join(f"#{int(entry['id'])}: {entry['text']} ({score:.3f})" for entry, score in rs)
 
     async def mem_list(self, limit: int = 20) -> str:
         """列出最近的记忆条目。"""
@@ -724,24 +724,22 @@ class AgentCore:
         ok = await asyncio.to_thread(self.memory.delete, mem_id)
         return f"已删除记忆 #{mem_id}" if ok else f"记忆 #{mem_id} 不存在"
 
-    def _mem_id_of(self, text: str) -> int:
-        for e in self.memory.entries:
-            if e["text"] == text:
-                return int(e["id"])
-        return 0
-
     def mem_retrieve(self, query_text: str, top_k: int = 3) -> str:
         """同步检索相关记忆并格式化为注入段(供自动注入调用,阻塞)。"""
         query = _clip_rag_query(query_text)
         if not query:
             return ""
         try:
-            rs = self.memory.query(query, top_k)
+            rs = self.memory.query_entries(query, top_k)
         except Exception:
             return ""
         if not rs:
             return ""
-        lines = [f"- {text[:100]}" for text, _ in rs]
+        lines = []
+        for entry, _score in rs:
+            ts = int(entry.get("ts", 0))
+            stamp = time.strftime("%Y-%m-%d", time.localtime(ts)) if ts > 0 else "未知时间"
+            lines.append(f"- [{stamp}] {entry['text']}")
         return "# 相关记忆\n" + "\n".join(lines)
 
     async def task_add(self, content: str) -> str:

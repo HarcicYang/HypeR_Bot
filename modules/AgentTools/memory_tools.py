@@ -45,12 +45,12 @@ class MemoryTools(AgentToolBase):
 
     @tool(group="memory")
     async def mem_add(self, ctx: ToolContext, content: str) -> str:
-        """向长期记忆添加一条(如用户偏好、重要约定、值得记住的事实),自动向量化,重复内容自动去重。注意使用准确客观的语言"""
+        """向长期记忆添加一条(如用户偏好、重要约定、值得记住的事实),自动向量化,重复内容自动去重。注意使用准确客观的语言;一条一事,第三人称,保留专有名词,涉及时间写明日期"""
         return await ctx.runtime.mem_add(content)
 
     @tool(group="memory")
     async def mem_query(self, ctx: ToolContext, query: str, top_k: int = 5) -> str:
-        """语义检索长期记忆,返回相关条目(会忽略拼写差异,如问"饮料"能查到"奶茶")。注意使用准确客观的语言"""
+        """混合检索(语义+关键词+时间)长期记忆,返回相关条目(会忽略拼写差异,如问"饮料"能查到"奶茶";也可按时间提问,如"上周说过什么")。注意使用准确客观的语言"""
         return await ctx.runtime.mem_query(query, top_k)
 
     @tool(group="memory")
