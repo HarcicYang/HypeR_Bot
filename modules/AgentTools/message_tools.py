@@ -10,7 +10,7 @@ from typing import Any
 from hyperot.v2 import Message, UnknownSegment
 from hyperot_adapter_onebot.segments import OneBotSegmentCodec
 
-from modules.AgentTools.registry import AgentToolBase, SegmentsArg, ToolContext, tool
+from modules.AgentTools.registry import AgentToolBase, ForwardNodesArg, SegmentsArg, ToolContext, tool
 
 _codec = OneBotSegmentCodec()
 
@@ -22,6 +22,9 @@ def _unknown(payload: dict[str, Any]) -> UnknownSegment:
 
 # 普通发送的最大序列化长度;超过则拒绝,强制使用 collected_send
 MAX_TEXT_LEN = 120
+MAX_FORWARD_NODES = 100
+MAX_NICKNAME_CHARS = 64
+FORWARD_NODE_FIELDS = frozenset({"message", "nickname", "user_id"})
 SEGMENT_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "text": ("text",),
     "at": ("qq",),
@@ -117,6 +120,92 @@ def _check_len(msg: Message) -> str | None:
     return None
 
 
+def _strip_error_prefix(error: str) -> str:
+    for prefix in ("调用不合法：", "消息参数不合法："):
+        if error.startswith(prefix):
+            return error[len(prefix) :]
+    return error
+
+
+def _node_user_id(value: Any, default: str) -> tuple[str | None, str | None]:
+    if value is None or value == "":
+        return default, None
+    if isinstance(value, bool):
+        return None, "user_id 必须是正整数"
+    text = str(value).strip()
+    if not text.isdigit() or int(text) <= 0:
+        return None, f"user_id 必须是正整数，当前值为 {value!r}"
+    return text, None
+
+
+async def _build_forward_nodes(
+    ctx: ToolContext,
+    message: Any,
+    nodes: Any,
+) -> tuple[list[dict[str, Any]] | None, str | None]:
+    if (message is None) == (nodes is None):
+        return None, "调用不合法：message 与 nodes 必须且只能提供一个"
+    if message is not None:
+        built, error = await _build_message(ctx, message)
+        if error:
+            return None, error
+        assert built is not None
+        return [
+            {
+                "type": "node",
+                "data": {
+                    "user_id": str(ctx.self_id or ctx.principal_id or 0),
+                    "nickname": "",
+                    "content": _codec.encode_segments(built),
+                },
+            }
+        ], None
+
+    if not isinstance(nodes, list):
+        return None, "调用不合法：nodes 必须是节点数组"
+    if not nodes:
+        return None, "调用不合法：nodes 不能为空"
+    if len(nodes) > MAX_FORWARD_NODES:
+        return None, f"调用不合法：nodes 最多 {MAX_FORWARD_NODES} 个节点"
+
+    result: list[dict[str, Any]] = []
+    for index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            return None, f"调用不合法：nodes[{index}] 必须是对象"
+        unknown = sorted(set(node) - FORWARD_NODE_FIELDS)
+        if unknown:
+            return None, f"调用不合法：nodes[{index}] 含未知字段 {', '.join(unknown)}"
+        if "message" not in node:
+            return None, f"调用不合法：nodes[{index}].message 不能为空"
+        built, error = await _build_message(ctx, node.get("message"))
+        if error:
+            return None, f"调用不合法：nodes[{index}].message {_strip_error_prefix(error)}"
+
+        user_id, error = _node_user_id(node.get("user_id"), str(ctx.self_id or ctx.principal_id or 0))
+        if error:
+            return None, f"调用不合法：nodes[{index}].{error}"
+        nickname = node.get("nickname", "")
+        if nickname is None:
+            nickname = ""
+        if not isinstance(nickname, str):
+            return None, f"调用不合法：nodes[{index}].nickname 必须是字符串"
+        nickname = nickname.strip()
+        if len(nickname) > MAX_NICKNAME_CHARS:
+            return None, f"调用不合法：nodes[{index}].nickname 最多 {MAX_NICKNAME_CHARS} 个字符"
+        assert built is not None and user_id is not None
+        result.append(
+            {
+                "type": "node",
+                "data": {
+                    "user_id": user_id,
+                    "nickname": nickname,
+                    "content": _codec.encode_segments(built),
+                },
+            }
+        )
+    return result, None
+
+
 class MessageTools(AgentToolBase):
     @tool(group="qq", sub_visible=False)
     async def send_group_msg(self, ctx: ToolContext, group_id: int, message: SegmentsArg) -> Any:
@@ -188,11 +277,18 @@ class MessageTools(AgentToolBase):
 
     @tool(group="qq", sub_visible=False)
     async def collected_send(
-        self, ctx: ToolContext, message: SegmentsArg, group_id: int | None = None, user_id: int | None = None
+        self,
+        ctx: ToolContext,
+        message: SegmentsArg | None = None,
+        group_id: int | None = None,
+        user_id: int | None = None,
+        nodes: ForwardNodesArg | None = None,
     ) -> Any:
         """以合并转发（聊天记录卡片）形式发送消息，避免长文本刷屏。
 
-        - message: 消息段数组，整条消息作为一个节点（不拆分，保留 text/at/reply 等全部段）
+        - message: 单节点快捷方式，消息段数组（与 nodes 二选一）
+        - nodes: 多节点数组，每项格式为 {"user_id": "QQ号", "nickname": "昵称", "message": 消息段数组}；
+          user_id 和 nickname 可省略，user_id 省略时使用 Bot 自身 QQ；最多 100 个节点
         - group_id / user_id: 目标群号或用户 QQ 号，必须且只能提供一个
         - 消息文本较长（超过 120 字符）时使用本工具
 
@@ -206,19 +302,11 @@ class MessageTools(AgentToolBase):
             return err
         if user_id is not None and (err := _positive_int_error("user_id", user_id)):
             return err
-        new_mess, err = await _build_message(ctx, message)
+        node_payloads, err = await _build_forward_nodes(ctx, message, nodes)
         if err:
             return err
-        assert new_mess is not None
-        node = {
-            "type": "node",
-            "data": {
-                "user_id": str(ctx.self_id or ctx.principal_id or 0),
-                "nickname": "",
-                "content": _codec.encode_segments(new_mess),
-            },
-        }
-        fwd = Message(_unknown({"type": "forward", "data": {"content": [node]}}))
+        assert node_payloads is not None
+        fwd = Message(_unknown({"type": "forward", "data": {"content": node_payloads}}))
         if group_id is not None:
             result = await ctx.actions.group(str(group_id)).send(fwd)
             return f"合并转发发送成功：group_id={group_id}，message_id={result.message_id}"

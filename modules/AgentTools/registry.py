@@ -87,9 +87,36 @@ MESSAGE_SCHEMA: dict[str, Any] = {
     },
 }
 
+FORWARD_NODES_SCHEMA: dict[str, Any] = {
+    "type": "array",
+    "minItems": 1,
+    "maxItems": 100,
+    "description": "合并转发节点数组；每个节点可独立指定发送者 QQ、昵称和消息段",
+    "items": {
+        "type": "object",
+        "required": ["message"],
+        "additionalProperties": False,
+        "properties": {
+            "user_id": {
+                "type": "string",
+                "description": "节点发送者 QQ 号；省略时使用 Bot 自身 QQ",
+            },
+            "nickname": {
+                "type": "string",
+                "description": "节点发送者昵称；省略时为空",
+            },
+            "message": MESSAGE_SCHEMA,
+        },
+    },
+}
+
 
 class SegmentsArg:
     """标记参数为「消息段数组」类型(schema 用 MESSAGE_SCHEMA)。"""
+
+
+class ForwardNodesArg:
+    """标记参数为「合并转发节点数组」类型(schema 用 FORWARD_NODES_SCHEMA)。"""
 
 
 # --------------------------------------------------------------------------- #
@@ -115,6 +142,8 @@ def _unwrap_optional(anno: Any) -> Any:
 def annotation_to_schema(anno: Any) -> dict[str, Any]:
     if anno is SegmentsArg:
         return MESSAGE_SCHEMA
+    if anno is ForwardNodesArg:
+        return FORWARD_NODES_SCHEMA
     if anno is int:
         return {"type": "integer"}
     if anno is str:
