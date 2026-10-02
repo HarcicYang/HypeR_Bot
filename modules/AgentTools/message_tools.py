@@ -23,8 +23,7 @@ def _unknown(payload: dict[str, Any]) -> UnknownSegment:
 # 普通发送的最大序列化长度;超过则拒绝,强制使用 collected_send
 MAX_TEXT_LEN = 120
 MAX_FORWARD_NODES = 100
-MAX_NICKNAME_CHARS = 64
-FORWARD_NODE_FIELDS = frozenset({"message", "nickname", "user_id"})
+FORWARD_NODE_FIELDS = frozenset({"message", "user_id"})
 SEGMENT_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "text": ("text",),
     "at": ("qq",),
@@ -184,21 +183,13 @@ async def _build_forward_nodes(
         user_id, error = _node_user_id(node.get("user_id"), str(ctx.self_id or ctx.principal_id or 0))
         if error:
             return None, f"调用不合法：nodes[{index}].{error}"
-        nickname = node.get("nickname", "")
-        if nickname is None:
-            nickname = ""
-        if not isinstance(nickname, str):
-            return None, f"调用不合法：nodes[{index}].nickname 必须是字符串"
-        nickname = nickname.strip()
-        if len(nickname) > MAX_NICKNAME_CHARS:
-            return None, f"调用不合法：nodes[{index}].nickname 最多 {MAX_NICKNAME_CHARS} 个字符"
         assert built is not None and user_id is not None
         result.append(
             {
                 "type": "node",
                 "data": {
                     "user_id": user_id,
-                    "nickname": nickname,
+                    "nickname": "",
                     "content": _codec.encode_segments(built),
                 },
             }
@@ -287,8 +278,8 @@ class MessageTools(AgentToolBase):
         """以合并转发（聊天记录卡片）形式发送消息，避免长文本刷屏。
 
         - message: 单节点快捷方式，消息段数组（与 nodes 二选一）
-        - nodes: 多节点数组，每项格式为 {"user_id": "QQ号", "nickname": "昵称", "message": 消息段数组}；
-          user_id 和 nickname 可省略，user_id 省略时使用 Bot 自身 QQ；最多 100 个节点
+        - nodes: 多节点数组，每项格式为 {"user_id": "QQ号", "message": 消息段数组}；
+          user_id 可省略，省略时使用 Bot 自身 QQ；最多 100 个节点
         - group_id / user_id: 目标群号或用户 QQ 号，必须且只能提供一个
         - 消息文本较长（超过 120 字符）时使用本工具
 

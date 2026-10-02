@@ -100,7 +100,7 @@ class CollectedSendTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(nodes["type"], "array")
         self.assertEqual(nodes["items"]["properties"]["message"]["type"], "array")
         self.assertIn("user_id", nodes["items"]["properties"])
-        self.assertIn("nickname", nodes["items"]["properties"])
+        self.assertNotIn("nickname", nodes["items"]["properties"])
         self.assertNotIn("nodes", registration.required)
         self.assertNotIn("message", registration.required)
 
@@ -117,19 +117,17 @@ class CollectedSendTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(nodes[0]["data"]["nickname"], "")
         self.assertEqual(nodes[0]["data"]["content"][0]["data"]["text"], "旧调用")
 
-    async def test_multiple_nodes_can_specify_users_and_nicknames(self) -> None:
+    async def test_multiple_nodes_can_specify_users(self) -> None:
         result = await REGISTRY.ToolRegistry.dispatch(
             "collected_send",
             {
                 "nodes": [
                     {
                         "user_id": "10001",
-                        "nickname": "Alice",
                         "message": [{"seg": "text", "text": "第一条"}],
                     },
                     {
                         "user_id": 20002,
-                        "nickname": "Bob",
                         "message": [
                             {"seg": "text", "text": "第二条"},
                             {"seg": "at", "qq": "10001"},
@@ -144,7 +142,7 @@ class CollectedSendTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "合并转发发送成功：user_id=99999，message_id=777")
         nodes = self._nodes()
         self.assertEqual([node["data"]["user_id"] for node in nodes], ["10001", "20002", "30003"])
-        self.assertEqual([node["data"]["nickname"] for node in nodes], ["Alice", "Bob", ""])
+        self.assertEqual([node["data"]["nickname"] for node in nodes], ["", "", ""])
         self.assertEqual(nodes[0]["data"]["content"][0]["data"]["text"], "第一条")
         self.assertEqual(nodes[1]["data"]["content"][1]["type"], "at")
         self.assertEqual(nodes[1]["data"]["content"][1]["data"]["qq"], "10001")
@@ -159,9 +157,8 @@ class CollectedSendTests(unittest.IsolatedAsyncioTestCase):
             {"nodes": []},
             {"nodes": [{"message": [{"seg": "text", "text": str(index)}]} for index in range(101)]},
             {"nodes": [{"message": [{"seg": "text", "text": "x"}], "unknown": True}]},
-            {"nodes": [{"nickname": "no message"}]},
+            {"nodes": [{"nickname": "x", "message": [{"seg": "text", "text": "x"}]}]},
             {"nodes": [{"user_id": 0, "message": [{"seg": "text", "text": "x"}]}]},
-            {"nodes": [{"nickname": "x" * (MESSAGE.MAX_NICKNAME_CHARS + 1), "message": []}]},
         )
         for kwargs in cases:
             with self.subTest(kwargs=kwargs):

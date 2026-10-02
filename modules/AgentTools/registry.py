@@ -91,7 +91,7 @@ FORWARD_NODES_SCHEMA: dict[str, Any] = {
     "type": "array",
     "minItems": 1,
     "maxItems": 100,
-    "description": "合并转发节点数组；每个节点可独立指定发送者 QQ、昵称和消息段",
+    "description": "合并转发节点数组；每个节点可独立指定发送者 QQ 和消息段",
     "items": {
         "type": "object",
         "required": ["message"],
@@ -100,10 +100,6 @@ FORWARD_NODES_SCHEMA: dict[str, Any] = {
             "user_id": {
                 "type": "string",
                 "description": "节点发送者 QQ 号；省略时使用 Bot 自身 QQ",
-            },
-            "nickname": {
-                "type": "string",
-                "description": "节点发送者昵称；省略时为空",
             },
             "message": MESSAGE_SCHEMA,
         },
