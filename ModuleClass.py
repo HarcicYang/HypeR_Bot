@@ -5,7 +5,11 @@ import importlib
 import inspect
 import json
 import re
+import sys
+import time
+import traceback
 from collections.abc import Callable
+from types import ModuleType
 from typing import Any, Generic, TypeVar, Union
 
 from hyperot import configurator, hyperogger
@@ -371,6 +375,19 @@ class InnerHandler:
 register_modules: list[InnerHandler] = []
 
 
+@dataclasses.dataclass(frozen=True)
+class ReloadReport:
+    ok: bool
+    module_count: int
+    duration: float
+    errors: tuple[str, ...] = ()
+    error: str | None = None
+
+
+class ModuleReloadError(RuntimeError):
+    pass
+
+
 class ModuleRegister:
     @staticmethod
     def register(*args: Any) -> Callable[[type[Module[Any]]], type[Module[Any]]]:
@@ -395,17 +412,227 @@ class ModuleRegister:
         return register_modules
 
 
-imported = None
+imported: ModuleType | None = None
+last_reload_report: ReloadReport | None = None
+_reload_hooks: list[Callable[[], None]] = []
+_reload_task: asyncio.Task[ReloadReport] | None = None
+_restart_handler: Callable[[], bool] | None = None
+_maintenance = False
+_active_tasks: set[asyncio.Task[Any]] = set()
+_RELOAD_DRAIN_TIMEOUT = 10.0
 
 
-def load() -> None:
-    global imported, register_modules
-    register_modules = []
+def _module_key_owned(key: str, module: object) -> bool:
+    if key == "modules" or key.startswith("modules."):
+        return True
+    name = getattr(module, "__name__", "")
+    return isinstance(name, str) and name.startswith("modules.") and key != name
+
+
+def _owned_modules() -> dict[str, ModuleType]:
+    return {key: value for key, value in sys.modules.items() if _module_key_owned(key, value)}
+
+
+def _clear_owned_modules() -> None:
+    for key, value in list(sys.modules.items()):
+        if _module_key_owned(key, value):
+            del sys.modules[key]
+
+
+def _run_reload_hooks() -> tuple[str, ...]:
+    errors: list[str] = []
+    for hook in list(_reload_hooks):
+        try:
+            hook()
+        except Exception as exc:
+            errors.append(f"{getattr(hook, '__name__', hook)!r}: {exc!r}")
+            logger.error("模块重载钩子失败:\n" + traceback.format_exc())
+    return tuple(errors)
+
+
+def add_reload_hook(hook: Callable[[], None]) -> None:
+    if hook not in _reload_hooks:
+        _reload_hooks.append(hook)
+
+
+def get_imported() -> ModuleType | None:
+    return imported
+
+
+def get_last_reload_report() -> ReloadReport | None:
+    return last_reload_report
+
+
+def set_maintenance(value: bool) -> None:
+    global _maintenance
+    _maintenance = value
+
+
+def is_maintenance() -> bool:
+    return _maintenance
+
+
+def set_restart_handler(handler: Callable[[], bool] | None) -> None:
+    global _restart_handler
+    _restart_handler = handler
+
+
+def request_restart() -> bool:
+    if _restart_handler is None:
+        logger.error("重启处理器未初始化")
+        return False
+    try:
+        return _restart_handler()
+    except Exception:
+        logger.error("请求重启失败:\n" + traceback.format_exc())
+        return False
+
+
+def _track_active_task(task: asyncio.Task[Any]) -> None:
+    _active_tasks.add(task)
+    task.add_done_callback(_active_tasks.discard)
+
+
+def _import_modules_package() -> ModuleType:
+    importlib.invalidate_caches()
+    return importlib.import_module("modules")
+
+
+def _make_report(
+    *,
+    ok: bool,
+    module_count: int,
+    started: float,
+    errors: tuple[str, ...] = (),
+    error: str | None = None,
+) -> ReloadReport:
+    return ReloadReport(
+        ok=ok,
+        module_count=module_count,
+        duration=time.monotonic() - started,
+        errors=errors,
+        error=error,
+    )
+
+
+def load() -> ReloadReport:
+    global imported, register_modules, last_reload_report
+    started = time.monotonic()
     if imported is not None:
-        imported.load()
-        imported = importlib.reload(imported)
-    else:
-        imported = importlib.import_module("modules")
+        return reload_all()
+
+    old_registry = register_modules
+    staging: list[InnerHandler] = []
+    register_modules = staging
+    try:
+        new_imported = _import_modules_package()
+    except Exception as exc:
+        register_modules = old_registry
+        last_reload_report = _make_report(
+            ok=False,
+            module_count=0,
+            started=started,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        raise
+
+    imported = new_imported
+    errors = tuple(str(item) for item in getattr(new_imported, "import_errors", ()))
+    hook_errors = _run_reload_hooks()
+    last_reload_report = _make_report(
+        ok=not errors and not hook_errors,
+        module_count=len(staging),
+        started=started,
+        errors=errors + hook_errors,
+    )
+    return last_reload_report
+
+
+def reload_all() -> ReloadReport:
+    """全量重载 modules 包；失败时恢复旧注册表与旧 sys.modules 映射。"""
+    global imported, register_modules, last_reload_report
+    started = time.monotonic()
+    if imported is None:
+        return load()
+
+    old_imported = imported
+    old_registry = register_modules
+    old_modules = _owned_modules()
+    staging: list[InnerHandler] = []
+    register_modules = staging
+    try:
+        unload = getattr(old_imported, "unload", None)
+        if callable(unload):
+            unload()
+        else:
+            _clear_owned_modules()
+        new_imported = _import_modules_package()
+        import_errors = tuple(str(item) for item in getattr(new_imported, "import_errors", ()))
+        if import_errors:
+            raise ModuleReloadError("；".join(import_errors))
+    except Exception as exc:
+        _clear_owned_modules()
+        sys.modules.update(old_modules)
+        imported = old_imported
+        register_modules = old_registry
+        last_reload_report = _make_report(
+            ok=False,
+            module_count=len(old_registry),
+            started=started,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        logger.error("模块全量重载失败:\n" + traceback.format_exc())
+        return last_reload_report
+
+    imported = new_imported
+    hook_errors = _run_reload_hooks()
+    last_reload_report = _make_report(
+        ok=not hook_errors,
+        module_count=len(staging),
+        started=started,
+        errors=hook_errors,
+    )
+    logger.info(f"模块全量重载完成: {len(staging)} 个注册项，耗时 {last_reload_report.duration:.2f}s")
+    return last_reload_report
+
+
+async def _reload_after_current_turn() -> ReloadReport:
+    # 让触发命令的 handler 先返回，避免在它仍持有旧模块对象时开始卸载。
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _RELOAD_DRAIN_TIMEOUT
+    while True:
+        active = [task for task in _active_tasks if not task.done()]
+        if not active or loop.time() >= deadline:
+            break
+        await asyncio.sleep(0.05)
+    set_maintenance(True)
+    try:
+        return reload_all()
+    finally:
+        set_maintenance(False)
+
+
+def request_reload() -> bool:
+    """请求全量重载；由普通模块调用，实际重载在当前事件轮结束后执行。"""
+    global _reload_task
+    if _reload_task is not None and not _reload_task.done():
+        return False
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        set_maintenance(True)
+        try:
+            reload_all()
+        finally:
+            set_maintenance(False)
+        return True
+    set_maintenance(True)
+    try:
+        _reload_task = loop.create_task(_reload_after_current_turn())
+    except Exception:
+        set_maintenance(False)
+        raise
+    return True
 
 
 class TaskCxt:
@@ -414,6 +641,7 @@ class TaskCxt:
 
     def add(self, task: asyncio.Task[Any]) -> None:
         self.tasks.append(task)
+        _track_active_task(task)
 
     async def wait(self) -> None:
         await asyncio.gather(*self.tasks, return_exceptions=True)

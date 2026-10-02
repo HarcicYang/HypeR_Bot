@@ -77,8 +77,9 @@ def register_extra_segments(codec: Any) -> list[str]:
                 wire_type=segment_type.wire,
                 decode=_decoder(segment_type),
                 encode=_encoder,
+                replace=True,
             )
         except ValueError:
-            continue  # 已注册过（重复初始化时保持幂等）
+            continue  # 适配器不支持 replace 或注册参数不兼容时保持幂等
         registered.append(segment_type.wire)
     return registered

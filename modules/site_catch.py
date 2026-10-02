@@ -156,6 +156,16 @@ def _kill_browser_on_exit() -> None:
 atexit.register(_kill_browser_on_exit)
 
 
+def unload() -> None:
+    """全量重载前关闭共享浏览器；无法获取事件循环时回退到进程级清理。"""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        _kill_browser_on_exit()
+        return
+    loop.create_task(Catcher().quit())
+
+
 class Catcher:
     context: BrowserContext
 

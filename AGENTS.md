@@ -89,7 +89,7 @@ class Module(ModuleClass.Module[GroupMessageEvent | PrivateMessageEvent]):
 
 ### Reloading modules
 
-`ModuleClass.load()` clears all registered modules, then `importlib.reload()`s the `modules` package. No hot-reload at runtime.
+`ModuleClass.load()` 首次导入全部模块；`ModuleClass.reload_all()` 支持运行中全量重载，失败时恢复旧注册表。
 
 ### Command / DSL parsing
 

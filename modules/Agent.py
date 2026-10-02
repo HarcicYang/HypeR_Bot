@@ -452,6 +452,20 @@ class _Agent:
         self.heartbeat_task: asyncio.Task[Any] | None = None
         self.acted = 0
 
+    def shutdown(self) -> None:
+        """全量重载前取消后台任务，避免旧 Agent 实例继续持有事件循环资源。"""
+        if self.heartbeat_task is not None:
+            self.heartbeat_task.cancel()
+            self.heartbeat_task = None
+        for collector in self.collectors.values():
+            if collector.doing_task is not None:
+                collector.doing_task.cancel()
+                collector.doing_task = None
+        self.collectors.clear()
+        if self.session_manager is not None and self.session_manager._cleanup_task is not None:
+            self.session_manager._cleanup_task.cancel()
+            self.session_manager._cleanup_task = None
+
     # -- 白名单 --
 
     @staticmethod
@@ -1367,6 +1381,10 @@ class _Agent:
 
 
 _agent = _Agent()
+
+
+def unload() -> None:
+    _agent.shutdown()
 
 
 @ModuleClass.ModuleRegister.register(*_COLLECTED_EVENTS)

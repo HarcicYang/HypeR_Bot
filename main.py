@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 import traceback
 
@@ -26,23 +27,50 @@ from hyperot.protocol.builder import OneBotEventBuilder, OneBotJsonMessageBuilde
 import ModuleClass  # noqa: E402  # 需先加载 config.json（hyperogger 导入时读取）
 
 ModuleClass.load()
-handler_list = ModuleClass.ModuleRegister.get_registered()
 
 client: Client[ClientAPI] = Client.from_appconfig("appconfig.json")
 
 
-from modules.OneBotExtraSegments import register_extra_segments  # noqa: E402
+def _register_extra_segments() -> None:
+    from modules.OneBotExtraSegments import register_extra_segments  # noqa: E402
 
-register_extra_segments(client.adapter.segment_codec)
+    register_extra_segments(client.adapter.segment_codec)
+
+
+_register_extra_segments()
+ModuleClass.add_reload_hook(_register_extra_segments)
+
+
+_restart_requested = False
+
+
+def _request_restart() -> bool:
+    global _restart_requested
+    if _restart_requested:
+        return False
+    _restart_requested = True
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(client.stop())
+    except Exception:
+        _restart_requested = False
+        raise
+    ModuleClass.set_maintenance(True)
+    return True
+
+
+ModuleClass.set_restart_handler(_request_restart)
 
 
 async def dispatch(event: Event, client: Client[ClientAPI]) -> None:
+    if ModuleClass.is_maintenance():
+        return
     if not ModuleClass.gate(event):
         return
     try:
         # logger.debug(str(event.data))
         async with ModuleClass.TaskCxt() as tasks:
-            for i in handler_list:
+            for i in ModuleClass.ModuleRegister.get_registered():
                 if i.module.filter(event, i.allowed):
                     tasks.add(asyncio.create_task(i.module(client, event).handle()))
     except Exception:
@@ -63,3 +91,8 @@ client.subscribe(ClientStartedEvent, on_client_started)
 client.subscribe(OneBotMessageReceivedEvent, track_self_id)
 
 asyncio.run(client.run())
+
+if _restart_requested:
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.execv(sys.executable, [sys.executable, *sys.argv])
