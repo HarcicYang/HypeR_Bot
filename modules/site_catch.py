@@ -12,6 +12,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import urlparse
 
 from patchright.async_api import BrowserContext, Page, Playwright, async_playwright
 from patchright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -59,6 +60,16 @@ class RenderedPage:
     screenshot: bytes | None = None
 
 
+@dataclasses.dataclass(frozen=True)
+class RenderedHtml:
+    """Agent 提供的 HTML 渲染结果。"""
+
+    png: bytes
+    width: int
+    height: int
+    truncated: bool = False
+
+
 class CloudflareChallengeError(RuntimeError):
     """页面仍停留在 Cloudflare 自动挑战页。"""
 
@@ -71,6 +82,23 @@ def is_cloudflare_challenge(title: str, text: str) -> bool:
 
 def file_url(path: str) -> str:
     return "file://" + os.path.abspath(path).replace("\\", "/")
+
+
+async def _close_browser_object(target: Any) -> None:
+    with contextlib.suppress(Exception):
+        await target.close()
+
+
+def _schedule_close(target: Any) -> None:
+    asyncio.create_task(_close_browser_object(target))
+
+
+_CREDENTIAL_HEADERS = frozenset({"authorization", "cookie", "proxy-authorization"})
+_RENDER_SCHEMES = frozenset({"", "about", "blob", "data", "http", "https"})
+
+
+def _safe_request_headers(headers: dict[str, str]) -> dict[str, str]:
+    return {name: value for name, value in headers.items() if name.lower() not in _CREDENTIAL_HEADERS}
 
 
 def _capture_driver_proc(pw: Playwright) -> None:
@@ -269,6 +297,79 @@ class Catcher:
                         await page.close()
 
         return await asyncio.wait_for(_do(), timeout=LOAD_TIMEOUT + 15)
+
+    async def render_html(
+        self,
+        html: str,
+        *,
+        width: int = 1080,
+        height: int = 720,
+        full_page: bool = True,
+        wait_ms: int = 500,
+        request_guard: Callable[[str], Awaitable[None]] | None = None,
+    ) -> RenderedHtml:
+        """把 Agent 提供的 HTML 渲染为 PNG。
+
+        页面只允许公开 HTTP(S) 子资源与 data/blob/about 资源；请求会剥离浏览器
+        凭据、拒绝非只读方法、禁止二次导航与弹窗,避免共享持久化上下文泄漏登录态。
+        """
+        self.context = await self._get_context()
+
+        async def _do() -> RenderedHtml:
+            async with type(self)._read_semaphore:
+                page = await self.context.new_page()
+                try:
+                    page.on("popup", _schedule_close)
+                    page.on("websocket", _schedule_close)
+
+                    async def _route(route: Any) -> None:
+                        request = route.request
+                        try:
+                            if str(request.method).upper() not in {"GET", "HEAD"}:
+                                raise ValueError("HTML 渲染只允许只读请求")
+                            if request.is_navigation_request() and request.url != "about:blank":
+                                raise ValueError("HTML 渲染禁止二次导航")
+                            scheme = urlparse(request.url).scheme.lower()
+                            if scheme not in _RENDER_SCHEMES:
+                                raise ValueError("HTML 渲染不允许该协议")
+                            if scheme in {"http", "https"} and request_guard is None:
+                                raise ValueError("HTML 渲染未配置公网请求校验")
+                            if request_guard is not None:
+                                await request_guard(request.url)
+                        except Exception:
+                            await route.abort()
+                        else:
+                            await route.continue_(headers=_safe_request_headers(dict(request.headers)))
+
+                    await page.route("**/*", _route)
+                    await page.set_viewport_size({"width": width, "height": height})
+                    await page.set_content(html, wait_until="load", timeout=LOAD_TIMEOUT * 1000)
+                    with contextlib.suppress(Exception):
+                        await page.evaluate("() => document.fonts.ready")
+                    if wait_ms > 0:
+                        await asyncio.sleep(wait_ms / 1000)
+
+                    measured = await page.evaluate(
+                        """() => Math.max(
+                            document.documentElement ? document.documentElement.scrollHeight : 0,
+                            document.body ? document.body.scrollHeight : 0,
+                            window.innerHeight || 0
+                        )"""
+                    )
+                    content_height = int(measured) if isinstance(measured, (int, float)) else height
+                    truncated = full_page and content_height > SCREENSHOT_MAX_HEIGHT
+                    if full_page:
+                        screenshot_height = min(max(height, content_height), SCREENSHOT_MAX_HEIGHT)
+                        await page.set_viewport_size({"width": width, "height": screenshot_height})
+                    else:
+                        screenshot_height = height
+                    png = await page.screenshot(type="png", full_page=False)
+                    return RenderedHtml(png=png, width=width, height=screenshot_height, truncated=truncated)
+                finally:
+                    with contextlib.suppress(Exception):
+                        await page.close()
+
+        return await asyncio.wait_for(_do(), timeout=LOAD_TIMEOUT + wait_ms / 1000 + 10)
 
     @staticmethod
     async def _visible_text(page: Page) -> str:

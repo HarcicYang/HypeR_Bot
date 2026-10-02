@@ -12,9 +12,14 @@ import asyncio
 import contextlib
 import dataclasses
 import ipaddress
+import json
 import logging
+import os
 import re
 import socket
+import threading
+import time
+import uuid
 from html import unescape
 from html.parser import HTMLParser
 from typing import Any, cast
@@ -30,7 +35,7 @@ from typing_extensions import override
 
 from modules.AgentTools.info_tools import GEMINI_MODEL
 from modules.AgentTools.registry import AgentToolBase, ToolContext, tool
-from modules.site_catch import Catcher, RenderedPage, is_cloudflare_challenge
+from modules.site_catch import Catcher, RenderedHtml, RenderedPage, is_cloudflare_challenge
 
 config = configurator.BotConfig.get("hyper-bot")
 _logger = logging.getLogger(__name__)
@@ -42,6 +47,15 @@ MAX_HTML_BYTES = 4 * 1024 * 1024
 MAX_REDIRECTS = 5
 MAX_JINA_CHARS = 2_000_000
 MAX_GOAL_CHARS = 1_000
+MAX_RENDER_HTML_CHARS = 1_000_000
+MAX_RENDER_WIDTH = 1920
+MIN_RENDER_WIDTH = 320
+MAX_RENDER_HEIGHT = 12_000
+MIN_RENDER_HEIGHT = 240
+MAX_RENDER_WAIT_MS = 5_000
+RENDER_DIR = "./temps/agent_render"
+RENDER_TTL_SECONDS = 12 * 3600
+_render_cleanup_lock = threading.Lock()
 
 _HTML_CONTENT_TYPES = {
     "text/html",
@@ -58,6 +72,63 @@ _CONTENT_SIGNAL_PATTERNS = (
     re.compile(r"(?:套餐|价格|定价|方案|功能|规格|参数|\bfeatures?\b|\bpricing\b|\bplans?\b)", re.IGNORECASE),
     re.compile(r"\d[\d,.]*\s*(?:[万亿kKmM]|credits?|tokens?|元|美元|[$¥￥])", re.IGNORECASE),
 )
+
+
+def _render_int_error(name: str, value: Any, minimum: int, maximum: int) -> str | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return f"{name} 必须是整数"
+    if value < minimum or value > maximum:
+        return f"{name} 必须在 {minimum} 到 {maximum} 之间"
+    return None
+
+
+def _validate_render_args(html: str, width: int, height: int, full_page: bool, wait_ms: int) -> str | None:
+    if not isinstance(html, str) or not html.strip():
+        return "html 不能为空"
+    if len(html) > MAX_RENDER_HTML_CHARS:
+        return f"html 过长（{len(html)} 字符，上限 {MAX_RENDER_HTML_CHARS}）"
+    for name, value, minimum, maximum in (
+        ("width", width, MIN_RENDER_WIDTH, MAX_RENDER_WIDTH),
+        ("height", height, MIN_RENDER_HEIGHT, MAX_RENDER_HEIGHT),
+        ("wait_ms", wait_ms, 0, MAX_RENDER_WAIT_MS),
+    ):
+        if err := _render_int_error(name, value, minimum, maximum):
+            return err
+    if not isinstance(full_page, bool):
+        return "full_page 必须是布尔值"
+    return None
+
+
+def _cleanup_rendered_files() -> None:
+    if not _render_cleanup_lock.acquire(blocking=False):
+        return
+    try:
+        if not os.path.isdir(RENDER_DIR):
+            return
+        cutoff = time.time() - RENDER_TTL_SECONDS
+        for name in os.listdir(RENDER_DIR):
+            if not (name.startswith("render_") and name.endswith(".png")):
+                continue
+            path = os.path.join(RENDER_DIR, name)
+            try:
+                if os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+            except OSError:
+                continue
+    finally:
+        _render_cleanup_lock.release()
+
+
+def _write_render_file(path: str, data: bytes) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "wb") as file:
+            file.write(data)
+        os.replace(tmp, path)
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
 
 
 class _VisibleHTMLParser(HTMLParser):
@@ -336,6 +407,17 @@ async def _check_browser_request(request_url: str) -> None:
     await _check_public_url(normalized)
 
 
+async def _check_render_request(request_url: str) -> None:
+    """HTML 渲染只允许内联资源和公开 HTTP(S) 子资源。"""
+    scheme = urlparse(request_url).scheme.lower()
+    if scheme in {"", "about", "blob", "data"}:
+        return
+    if scheme not in {"http", "https"}:
+        raise ValueError("HTML 渲染不允许该协议")
+    normalized = _normalize_url(request_url)
+    await _check_public_url(normalized)
+
+
 async def _fetch_static(url: str) -> tuple[str, str] | None:
     """下载 HTML 文档，手动检查每一跳重定向后返回最终 URL 和正文。"""
     current = url
@@ -531,6 +613,56 @@ def _format_result(text: str, title: str, source: str) -> str:
 
 
 class WebpageTools(AgentToolBase):
+    @tool(group="render")
+    async def render_html(
+        self,
+        ctx: ToolContext,
+        html: str,
+        width: int = 1080,
+        height: int = 720,
+        full_page: bool = True,
+        wait_ms: int = 500,
+    ) -> str:
+        """把完整 HTML 渲染为 PNG，并返回本地图片路径。
+
+        - html: 完整 HTML 字符串（可包含内联 CSS/JS）
+        - width / height: 视口尺寸；height 仅在 full_page=false 时决定截图高度
+        - full_page: true 时截取完整页面，最多 12000px；false 时只截取视口
+        - wait_ms: load 与字体加载完成后的额外等待时间，用于异步渲染
+        - 只允许公开 HTTP(S) 图片/字体/CSS 和 data/blob 资源，不允许本机、内网或 file://
+
+        返回值：
+        - 成功返回 JSON，其中 file 是可直接放入 image 消息段 file 字段的本地路径
+        - 失败返回可读错误；不要猜测文件是否存在
+        """
+        del ctx
+        if err := _validate_render_args(html, width, height, full_page, wait_ms):
+            return f"调用不合法：{err}"
+        await asyncio.to_thread(_cleanup_rendered_files)
+        try:
+            catcher = await Catcher.init()
+            rendered: RenderedHtml = await catcher.render_html(
+                html,
+                width=width,
+                height=height,
+                full_page=full_page,
+                wait_ms=wait_ms,
+                request_guard=_check_render_request,
+            )
+            path = os.path.abspath(os.path.join(RENDER_DIR, f"render_{uuid.uuid4().hex}.png"))
+            await asyncio.to_thread(_write_render_file, path, rendered.png)
+        except Exception as exc:
+            return f"（HTML 渲染失败: {type(exc).__name__}: {exc}）"
+        return json.dumps(
+            {
+                "file": path,
+                "width": rendered.width,
+                "height": rendered.height,
+                "truncated": rendered.truncated,
+            },
+            ensure_ascii=False,
+        )
+
     @tool(group="info", preserve=True)
     async def read_webpage(self, ctx: ToolContext, url: str, goal: str = "提取页面主要内容") -> str:
         """阅读网页内容并返回文本结果。

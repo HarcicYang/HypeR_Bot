@@ -197,6 +197,16 @@ class ToolRegistration:
 def _coerce(anno: Any, value: Any, name: str) -> Any:
     """把模型给的参数值强制转换为注解声明的类型(带注解参数已保证 required/类型)。"""
     anno = _unwrap_optional(anno)
+    if anno is bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1"}:
+                return True
+            if normalized in {"false", "0"}:
+                return False
+        raise ToolParamError(f"{name} 必须是布尔值")
     if anno is int:
         if isinstance(value, bool):
             raise ToolParamError(f"{name} 必须是整数，不能使用布尔值")
