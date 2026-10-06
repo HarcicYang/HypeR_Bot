@@ -3,12 +3,12 @@ import os.path
 import time
 from typing import Any
 
-from hyperot.v2 import Mention, Message, Text
 from hyperot.v2.events import *
 from typing_extensions import override
 
 import ModuleClass
-from modules import WordSafety
+
+# from modules import WordSafety
 
 
 class UserInfo:
@@ -302,15 +302,15 @@ class Module(ModuleClass.Module[MessageReceivedEvent]):
             await self.api.group(str(gid)).member(str(uid)).mute(int(120 * user.violation_level))
             user.punish(int(120 * user.violation_level))
 
-        safety = WordSafety.check(text=str(self.event.message))
-        if not safety.result:
-            await self.api.message(str(self.event.message_id)).recall()
-            user.inc_unsafe_times()
-            if user.need_mute:
-                await self.api.group(str(gid)).member(str(uid)).mute(int(120 * user.violation_level))
-                await self.api.scene(self.event.scene_type, self.event.scene_id).send(
-                    Message(Mention(user_id=str(uid)), Text(text="请勿发送违禁词"))
-                )
-                user.clr_unsafe_times()
+        # safety = WordSafety.check(text=str(self.event.message))
+        # if not safety.result:
+        #     await self.api.message(str(self.event.message_id)).recall()
+        #     user.inc_unsafe_times()
+        #     if user.need_mute:
+        #         await self.api.group(str(gid)).member(str(uid)).mute(int(120 * user.violation_level))
+        #         await self.api.scene(self.event.scene_type, self.event.scene_id).send(
+        #             Message(Mention(user_id=str(uid)), Text(text="请勿发送违禁词"))
+        #         )
+        #         user.clr_unsafe_times()
 
         # data.dump_to("group.json")

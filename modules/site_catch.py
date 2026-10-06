@@ -35,6 +35,9 @@ CHALLENGE_TIMEOUT = 20
 SCREENSHOT_MAX_HEIGHT = 12_000
 # Agent 网页阅读需要把渲染后的 DOM 交给正文提取器；避免极端页面占满内存。
 MAX_RENDERED_HTML_CHARS = 8_000_000
+# 共享浏览器空闲超时（秒）；没有活动页面时关闭，下一次使用再启动。
+IDLE_TIMEOUT = 600.0
+IDLE_CHECK_INTERVAL = 30.0
 
 _CHALLENGE_MARKERS = (
     "just a moment",
@@ -172,7 +175,41 @@ class Catcher:
     _context: BrowserContext | None = None
     _playwright: Playwright | None = None
     _lock = asyncio.Lock()
-    _read_semaphore = asyncio.Semaphore(3)
+    _read_semaphore = asyncio.Semaphore(1)
+    _last_used: float = 0.0
+    _active_uses: int = 0
+    _idle_task: asyncio.Task[None] | None = None
+
+    @classmethod
+    def _touch(cls) -> None:
+        cls._last_used = time.monotonic()
+        if cls._idle_task is None or cls._idle_task.done():
+            cls._idle_task = asyncio.create_task(cls._idle_watchdog())
+
+    @classmethod
+    async def _idle_watchdog(cls) -> None:
+        try:
+            while cls._context is not None:
+                await asyncio.sleep(IDLE_CHECK_INTERVAL)
+                if cls._active_uses > 0:
+                    continue
+                if time.monotonic() - cls._last_used < IDLE_TIMEOUT:
+                    continue
+                _logger.info("浏览器空闲超过 %.0f 秒，关闭共享上下文", IDLE_TIMEOUT)
+                await cls().quit()
+                return
+        except Exception:
+            _logger.exception("浏览器空闲清理失败")
+
+    @classmethod
+    def _begin_use(cls) -> None:
+        cls._active_uses += 1
+        cls._touch()
+
+    @classmethod
+    def _end_use(cls) -> None:
+        cls._active_uses = max(0, cls._active_uses - 1)
+        cls._last_used = time.monotonic()
 
     @classmethod
     async def init(cls, headless: bool = True) -> Catcher:
@@ -182,11 +219,13 @@ class Catcher:
 
     @classmethod
     async def _get_context(cls, headless: bool = True) -> BrowserContext:
+        cls._touch()
         context = cls._context
         if context is not None:
             try:
                 browser = context.browser
                 if browser is None or browser.is_connected():
+                    cls._touch()
                     return context
             except Exception:
                 pass
@@ -200,6 +239,7 @@ class Catcher:
                 try:
                     browser = cls._context.browser
                     if browser is None or browser.is_connected():
+                        cls._touch()
                         return cls._context
                 except Exception:
                     pass
@@ -222,11 +262,16 @@ class Catcher:
                 handle_sighup=False,
             )
             _capture_driver_proc(pw)
+            cls._touch()
             return cls._context
 
     async def catch(self, url: str, size: tuple[int, int] = (0, 0)) -> str:
         self.context = await self._get_context()
-        return await asyncio.wait_for(self._catch(url, size), timeout=LOAD_TIMEOUT + 15)
+        self._begin_use()
+        try:
+            return await asyncio.wait_for(self._catch(url, size), timeout=LOAD_TIMEOUT + 15)
+        finally:
+            self._end_use()
 
     async def catch_text(self, url: str) -> tuple[str, str]:
         """真实渲染后提取网页正文文本,返回 (标题, 正文)。
@@ -235,6 +280,7 @@ class Catcher:
         兜底 document.body.innerText,完整交给上层内容仓库处理。
         """
         self.context = await self._get_context()
+        self._begin_use()
 
         async def _do() -> tuple[str, str]:
             page = await self.context.new_page()
@@ -253,7 +299,10 @@ class Catcher:
                 with contextlib.suppress(Exception):
                     await page.close()
 
-        return await asyncio.wait_for(_do(), timeout=LOAD_TIMEOUT + 15)
+        try:
+            return await asyncio.wait_for(_do(), timeout=LOAD_TIMEOUT + 15)
+        finally:
+            self._end_use()
 
     async def read_page(
         self,
@@ -269,6 +318,7 @@ class Catcher:
         额外消耗截图时间；调用方可以用同一次导航结果完成文本提取和视觉兜底。
         """
         self.context = await self._get_context()
+        self._begin_use()
 
         async def _do() -> RenderedPage:
             async with type(self)._read_semaphore:
@@ -306,7 +356,10 @@ class Catcher:
                     with contextlib.suppress(Exception):
                         await page.close()
 
-        return await asyncio.wait_for(_do(), timeout=LOAD_TIMEOUT + 15)
+        try:
+            return await asyncio.wait_for(_do(), timeout=LOAD_TIMEOUT + 15)
+        finally:
+            self._end_use()
 
     async def render_html(
         self,
@@ -324,6 +377,7 @@ class Catcher:
         凭据、拒绝非只读方法、禁止二次导航与弹窗,避免共享持久化上下文泄漏登录态。
         """
         self.context = await self._get_context()
+        self._begin_use()
 
         async def _do() -> RenderedHtml:
             async with type(self)._read_semaphore:
@@ -379,7 +433,10 @@ class Catcher:
                     with contextlib.suppress(Exception):
                         await page.close()
 
-        return await asyncio.wait_for(_do(), timeout=LOAD_TIMEOUT + wait_ms / 1000 + 10)
+        try:
+            return await asyncio.wait_for(_do(), timeout=LOAD_TIMEOUT + wait_ms / 1000 + 10)
+        finally:
+            self._end_use()
 
     @staticmethod
     async def _visible_text(page: Page) -> str:
@@ -512,9 +569,15 @@ class Catcher:
                 await page.close()
 
     async def quit(self) -> None:
+        task = type(self)._idle_task
+        type(self)._idle_task = None
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
         if self._context is not None:
             await self._context.close()
             type(self)._context = None
         if self._playwright is not None:
             await self._playwright.stop()
             type(self)._playwright = None
+        type(self)._last_used = 0.0
+        type(self)._active_uses = 0

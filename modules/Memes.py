@@ -1,15 +1,19 @@
+from __future__ import annotations
+
 import os.path
 from io import BytesIO
+from typing import TYPE_CHECKING
 
 import httpx
-import meme_generator
 from hyperot.v2 import Image, Message, Quote, Text
 from hyperot.v2.events import MessageReceivedEvent
-from meme_generator import exception
 from typing_extensions import override
 
 import ModuleClass
 from ModuleClass import ModuleInfo, String
+
+if TYPE_CHECKING:
+    import meme_generator
 
 cmd = ".meme"
 
@@ -21,6 +25,8 @@ def _count_mismatch_text(kind: str, min_: int, max_: int, actual: int) -> str:
 
 
 def get_meme(key: str) -> meme_generator.Meme:
+    import meme_generator
+
     def f(x: meme_generator.Meme, key_word: str) -> bool:
         return key_word in x.keywords
 
@@ -58,6 +64,8 @@ class Module(ModuleClass.Module[MessageReceivedEvent]):
             return
         if not message.startswith(cmd):
             return
+
+        from meme_generator import exception
 
         try:
             keyword = message.split()[1].replace("[图片]", "")
