@@ -250,7 +250,7 @@ class Module(ModuleClass.Module[MessageReceivedEvent]):
         except AttributeError:
             return
 
-        if bv_id and (session != 983497968 or int(self.event.user_id or 0) == 2488529467):
+        if bv_id:
             for i in bv_id:
                 if _rate_limited(session, f"bili:{i}"):
                     continue
