@@ -55,6 +55,7 @@ import ModuleClass
 from modules.AgentRuntime.api_profiles import ApiProfile, ApiProfileError, ApiProfileManager
 from modules.AgentRuntime.api_wizard import ApiProfileWizard as _ApiProfileWizard
 from modules.AgentRuntime.collector import Collector as _Collector
+from modules.AgentRuntime.collector import event_repr as _event_repr
 from modules.AgentRuntime.core import AgentCore as _AgentCore
 from modules.AgentRuntime.models import PermGroup, SessionKey
 from modules.AgentRuntime.profiles import AgentProfile as _AgentProfile
@@ -652,7 +653,7 @@ class _Agent:
         if event.is_mentioned:
             await self._immediate(event)
             return
-        await col.append_passive(repr(event))
+        await col.append_passive(_event_repr(event))
         if event.user_id not in self._group_white(gid):
             # 非白名单成员只进入 Collector buffer(不重置收集窗口),由白名单成员的
             # 下一条消息或被 @ 时的 _immediate 一并消费。
@@ -689,7 +690,7 @@ class _Agent:
         if uid in config.owner:
             # 主人私聊:不走收集,立即处理
             await self._immediate_event(
-                repr(event),
+                _event_repr(event),
                 "private",
                 uid,
                 self._perm_of(uid, None),
@@ -732,7 +733,7 @@ class _Agent:
         actor = self._notice_actor(event)
         if self._notice_triggers(event):
             await self._immediate_event(
-                repr(event),
+                _event_repr(event),
                 "group",
                 gid,
                 self._perm_of(actor, gid),
@@ -740,7 +741,7 @@ class _Agent:
                 ModuleClass.self_id_of(event),
             )
             return
-        await col.append_passive(repr(event))
+        await col.append_passive(_event_repr(event))
 
     async def _on_private_notice(self, event: SceneEvent) -> None:
         uid = int(event.scene_id)
@@ -749,7 +750,7 @@ class _Agent:
         actor = self._notice_actor(event)
         if self._notice_triggers(event):
             await self._immediate_event(
-                repr(event),
+                _event_repr(event),
                 "private",
                 uid,
                 self._perm_of(actor, None),
@@ -757,14 +758,14 @@ class _Agent:
                 ModuleClass.self_id_of(event),
             )
             return
-        await col.append_passive(repr(event))
+        await col.append_passive(_event_repr(event))
 
     # -- 立即处理(被 @ / 主人私聊 / 高信号通知) --
 
     async def _immediate(self, event: MessageReceivedEvent) -> None:
         gid = int(event.scene_id)
         await self._immediate_event(
-            repr(event),
+            _event_repr(event),
             "group",
             gid,
             self._perm_of(_uid_of(event), gid, _role_of(event)),

@@ -6,6 +6,7 @@ import math
 import time
 import traceback
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any, Literal, Protocol, TypeGuard
 
 from hyperot import configurator, hyperogger
@@ -37,6 +38,15 @@ def _config_int(key: str, default: int) -> int:
         logger.warning(f"配置 {key} 非法,使用默认值 {default}")
         return default
     return value if value > 0 else default
+
+
+def event_repr(event: Any) -> str:
+    """Serialize an event for Agent history with its timestamp shown in local time."""
+    timestamp = getattr(event, "timestamp", None)
+    model_copy = getattr(event, "model_copy", None)
+    if isinstance(timestamp, datetime) and timestamp.tzinfo is not None and callable(model_copy):
+        event = model_copy(update={"timestamp": timestamp.astimezone()})
+    return repr(event)
 
 
 class EventHandlerCore(Protocol):
@@ -100,7 +110,7 @@ class Collector:
                 if isinstance(summary, str) and summary.strip():
                     lines.append(summary.strip())
                 continue
-            lines.append(event if isinstance(event, str) else repr(event))
+            lines.append(event if isinstance(event, str) else event_repr(event))
         return "\n".join(lines)
 
     def _compress(self) -> int:
@@ -150,7 +160,7 @@ class Collector:
         self.delay = max(min(self.delay, 16), 5)
 
     async def append(self, event: Any) -> None:
-        await self.append_batch([repr(event)])
+        await self.append_batch([event_repr(event)])
 
     async def append_passive(self, event_data: Any) -> None:
         """只把事件放进 buffer,不更新节奏、不重置收集窗口(供通知与非白名单消息使用)。"""

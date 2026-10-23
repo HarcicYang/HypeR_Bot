@@ -138,8 +138,26 @@ async def _get_uploaded_payload(
 _REPR_SCENE_RE = re.compile(r"scene_type=<SceneType\.(\w+): '[^']+'>.*?scene_id='(\d+)'", re.DOTALL)
 _REPR_USER_RE = re.compile(r"user_id='(\d+)'")
 _REPR_TS_RE = re.compile(r"timestamp=datetime\.datetime\((\d+), (\d+), (\d+), (\d+), (\d+), (\d+)")
+_REPR_TZ_OFFSET_RE = re.compile(r"tzinfo=datetime\.timezone\(datetime\.timedelta\(([^)]*)\)")
 _REPR_UPLOAD_RE = re.compile(r"FileInfo\(file_id='([^']*)', name='([^']*)', size=(\d+)")
 _REPR_FILE_SEG_RE = re.compile(r"(?:OneBot)?File\(source='[^']*', name='([^']*)', size=(\d+), file_id='([^']*)'")
+
+
+def _repr_timestamp(text: str, match: re.Match[str]) -> int:
+    """Parse an event repr timestamp, preserving UTC and local-offset representations."""
+    year, month, day, hour, minute, second = (int(part) for part in match.groups())
+    value = datetime.datetime(year, month, day, hour, minute, second)
+    suffix = text[match.end() : match.end() + 180]
+    if "tzinfo=datetime.timezone.utc" in suffix:
+        value = value.replace(tzinfo=datetime.UTC)
+    elif (offset_match := _REPR_TZ_OFFSET_RE.search(suffix)) is not None:
+        parts = {
+            key: int(number)
+            for key, number in re.findall(r"(days|seconds|microseconds)=(-?\d+)", offset_match.group(1))
+        }
+        value = value.replace(tzinfo=datetime.timezone(datetime.timedelta(**parts)))
+    # Naive legacy reprs are interpreted in the process local timezone.
+    return int(value.timestamp())
 
 
 def _uploads_from_repr(text: str) -> list[dict[str, Any]]:
@@ -149,12 +167,7 @@ def _uploads_from_repr(text: str) -> list[dict[str, Any]]:
     user_match = _REPR_USER_RE.search(text)
     user_id = int(user_match.group(1)) if user_match else 0
     ts_match = _REPR_TS_RE.search(text)
-    if ts_match is not None:
-        upload_time = int(
-            datetime.datetime(*(int(part) for part in ts_match.groups()), tzinfo=datetime.UTC).timestamp()
-        )
-    else:
-        upload_time = 0
+    upload_time = _repr_timestamp(text, ts_match) if ts_match is not None else 0
     found: list[dict[str, Any]] = []
     for file_id, name, size in _REPR_UPLOAD_RE.findall(text):
         found.append(
