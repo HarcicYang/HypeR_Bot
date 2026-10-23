@@ -382,8 +382,8 @@ class ToolRegistry:
 
     @classmethod
     def schema(cls, role: str = "main") -> list[dict[str, Any]]:
-        """按角色返回可见工具的 OpenAI schema(禁用工具仍提供,由提示词标注可用性,dispatch 拦截调用)。"""
-        return [t.serialize_openai() for t in cls._tools.values() if t.visible_for(role)]
+        """按角色返回可见工具的 OpenAI schema,并按分组和名称确定性排序。"""
+        return [t.serialize_openai() for t in cls.registrations() if t.visible_for(role)]
 
     @classmethod
     async def dispatch(cls, name: str, params: dict[str, Any], ctx: "ToolContext") -> Any:

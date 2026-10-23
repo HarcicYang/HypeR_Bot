@@ -256,7 +256,6 @@ class AgentCore:
         self.memory = shared_memory or MemoryStore(
             self.memory_path, limit=int(config.others.get("agent_memory_limit") or 500)
         )
-        self._injected_memory = ""  # 本次事件自动注入的相关记忆(请求时附加到 system,不落盘)
         self.working = False
         self.pending_notices: list[AgentEvent] = []
         self.report_waiters: dict[str, asyncio.Future[Any]] = {}
@@ -1445,8 +1444,8 @@ class AgentCore:
         task: asyncio.Task[Any] | None = None
         timed_out = False
         stopped = False
+        ev_envelope: dict[str, Any] | None = None
         if event is None:
-            ev_data: str | None = None
             query_text = ""
         else:
             if isinstance(event, str):
@@ -1461,18 +1460,19 @@ class AgentCore:
                 payload=event if isinstance(event, str) else json.dumps(event, ensure_ascii=False, default=str),
                 source=self.name,
             )
-            ev_data = json.dumps(
-                {"event": ev.to_dict(), "system_message": sys_msg},
-                ensure_ascii=False,
-            )
-        # RAG 自动注入:用本次事件文本检索相关记忆,附加到本次请求的 system 消息
-        self._injected_memory = ""
+            ev_envelope = {"event": ev.to_dict(), "system_message": sys_msg}
+        # RAG 自动注入:检索结果作为本轮 user 事件的一部分,保持在稳定历史前缀之后。
+        rag_context = ""
         if query_text.strip():
             try:
-                self._injected_memory = await asyncio.to_thread(self.mem_retrieve, query_text, 7)
-                logger.debug(self._injected_memory)
+                rag_context = await asyncio.to_thread(self.mem_retrieve, query_text, 7)
+                logger.debug(f"注入 RAG 记忆 {len(rag_context)} 字符")
             except Exception:
-                self._injected_memory = ""
+                rag_context = ""
+        if ev_envelope is not None and rag_context:
+            # 不截断检索结果;完整内容随 user 消息一起进入并持久化到 history。
+            ev_envelope["retrieved_memory"] = rag_context
+        ev_data = json.dumps(ev_envelope, ensure_ascii=False) if ev_envelope is not None else None
         try:
             while not timer_ev.is_set() and not stop_ev.is_set():
                 try:
@@ -1861,27 +1861,11 @@ class AgentCore:
                 out.append({"role": "system", "content": m.get("content", "")})
         return out
 
-    def _with_injected_memory(self, messages: list[Any]) -> list[Any]:
-        """把自动检索到的相关记忆附加到第一条 system 消息(深拷贝,不污染 history)。
-
-        聊天历史里可能带有本地用于日志展示的 reasoning/reasoning_content;
-        这些字段只作日志/排查用,发送给第三方 Chat API 前剥离,避免提供方不识别。
-        """
-        out = [dict(m) for m in messages]
-        for m in out:
-            # reasoning 列表是 Responses 内部结构,不能发给 Chat API;
-            # reasoning_content 字符串在 _history_to_chat_messages 中已经按需保留。
-            m.pop("reasoning", None)
-            if m.get("role") == "system" and isinstance(m.get("content"), str):
-                m["content"] = m["content"] + "\n\n" + self._injected_memory
-                break
-        return out
-
     async def _llm_create(self, tool_choice_n: Any) -> Any:
         if self.api_mode == "responses":
             return await self._oai.responses.create(  # pyrefly: ignore[no-matching-overload]
                 model=self.model,
-                input=self._with_injected_memory(await self._history_to_items()),
+                input=await self._history_to_items(),
                 tools=self._tools_for_responses(),
                 tool_choice=tool_choice_n,
                 # 保持服务端默认的并行工具调用能力;本层会等当前 assistant 的
@@ -1891,7 +1875,7 @@ class AgentCore:
             )
         return await self._oai.chat.completions.create(
             model=self.model,
-            messages=self._with_injected_memory(await self._history_to_chat_messages()),
+            messages=cast(Any, await self._history_to_chat_messages()),
             tools=self.tools,
             tool_choice=tool_choice_n,
             reasoning_effort=cast(Any, self.reasoning_effort),

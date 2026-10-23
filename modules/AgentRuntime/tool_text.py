@@ -25,14 +25,7 @@ def build_tools_section(role: str = "main") -> str:
         name = function["name"]
         params = function.get("parameters", {}).get("properties", {})
         args = ", ".join(params.keys())
-        until = ToolRegistry.disabled_until(name)
-        if until is None:
-            mark = ""
-        elif until == ToolRegistry.PERMANENT:
-            mark = "[禁用中,待手动启用] "
-        else:
-            mark = f"[禁用中,剩{format_remain(until - time.time())}] "
-        lines.append(f"- {mark}`{name}({args})` {function['description']}")
+        lines.append(f"- `{name}({args})` {function['description']}")
     return "\n".join(lines)
 
 
