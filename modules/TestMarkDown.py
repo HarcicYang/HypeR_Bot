@@ -107,7 +107,9 @@ class Test(ModuleClass.Module[MessageReceivedEvent]):
                 data = payload if isinstance(payload, dict) else dict[str, Any]()
                 for node in data.get("message") or []:
                     node_data = node.get("data", node) if isinstance(node, dict) else dict[str, Any]()
-                    print(f"{node_data.get('nickname')}({node_data.get('user_id')}) {node_data.get('content')}")
+                    ModuleClass.logger.info(
+                        f"{node_data.get('nickname')}({node_data.get('user_id')}) {node_data.get('content')}"
+                    )
                 break
 
         if not ModuleClass.is_owner(self.event):
@@ -140,7 +142,7 @@ class Test(ModuleClass.Module[MessageReceivedEvent]):
 
         elif text == ".test3":
             profile = await self.api.user("2488529467").profile()
-            print(profile.user_id, profile.display_name)
+            ModuleClass.logger.info(f"{profile.user_id} {profile.display_name}")
             await scene.send(
                 Message(
                     Quote(message_id=str(self.event.message_id)),
@@ -183,7 +185,7 @@ class Test(ModuleClass.Module[MessageReceivedEvent]):
 
         elif text == ".test6":
             cookies = await self.api.raw("get_cookies", {"domain": "qun.qq.com"})
-            print(cookies.data)
+            ModuleClass.logger.info(str(cookies.data))
 
         elif text == ".test9":
             await scene.send(

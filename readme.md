@@ -129,6 +129,8 @@ Agent 的 `web_search` 与 `read_webpage` 默认使用 DeepSeek 官方
 未配置 key、网络失败、限流或服务端不可用时，`web_search` 回退到原来的多引擎搜索；
 `read_webpage` 回退到 HTTP + Trafilatura、Patchright、Gemini 视觉和 Jina 链路。
 DeepSeek Search 成功但没有结果时直接返回空结果，不会触发回退。
+DeepSeek Fetch 返回 HTTP 404 时，日志会附带目标 URL、官方错误信息和响应中的 `trace_id`，便于区分
+目标页不可提取与 API 路由/账号权限问题。
 
 LLM 连接配置保存在 `api_profiles.json`，支持多个 OpenAI 兼容服务商和精确模型名：
 

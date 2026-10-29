@@ -1,3 +1,4 @@
+import logging
 from collections import deque
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,6 +16,7 @@ except (ImportError, AttributeError):
     NUMBA_AVAILABLE = False
 
 my_lib = lib_zh.by_length(2)
+logger = logging.getLogger(__name__)
 
 
 class WordFound(Exception):
@@ -102,11 +104,12 @@ def trans_batch(
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     # 单任务
     for j in trans("温暖", "审批", my_lib.relatives2):  # ci bian
-        print(j.word)
+        logger.info(j.word)
     # 批量并发任务示例
     # batch_tasks = [("温暖", "审批"), ("海洋", "策略")]
     # batch_results = trans_batch(batch_tasks, my_lib.relatives2)
     # for (from_word, to_word), path in batch_results.items():
-    #     print(f"{from_word}->{to_word}: {[w.word for w in path]}")
+    #     logger.info(f"{from_word}->{to_word}: {[w.word for w in path]}")

@@ -1,6 +1,9 @@
+import logging
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 
 def dec(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -17,10 +20,11 @@ class A:
 
     @dec
     def a(self, n: int) -> int:
-        print(n**n)
-        print(self.b)
+        _logger.info(n**n)
+        _logger.info(self.b)
         return n * n
 
 
 ca = A(114514)
-print(ca.a(2))
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+_logger.info(ca.a(2))

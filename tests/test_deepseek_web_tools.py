@@ -131,6 +131,23 @@ class DeepSeekWebToolTests(unittest.IsolatedAsyncioTestCase):
             deepseek_web.DEEPSEEK_FETCH_TIMEOUT,
         )
 
+    async def test_deepseek_fetch_404_preserves_trace_id(self) -> None:
+        failure = deepseek_web.DeepSeekRequestFailed("HTTP 404: fetch failed", 404, "trace-404")
+        with (
+            patch.object(deepseek_web, "_post", AsyncMock(side_effect=failure)) as post,
+            self.assertRaises(deepseek_web.DeepSeekFetchTargetUnavailable) as raised,
+        ):
+            await deepseek_web.fetch(self.ctx, "https://example.com/article")
+
+        self.assertEqual(raised.exception.trace_id, "trace-404")
+        self.assertIn("https://example.com/article", str(raised.exception))
+        post.assert_awaited_once_with(
+            self.ctx,
+            deepseek_web.DEEPSEEK_FETCH_PATH,
+            {"url": "https://example.com/article"},
+            deepseek_web.DEEPSEEK_FETCH_TIMEOUT,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

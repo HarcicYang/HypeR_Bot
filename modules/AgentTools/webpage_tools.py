@@ -14,7 +14,6 @@ import contextlib
 import dataclasses
 import ipaddress
 import json
-import logging
 import os
 import re
 import socket
@@ -29,7 +28,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from google import genai
 from google.genai import types as genai_types
-from hyperot import configurator
+from hyperot import configurator, hyperogger
 from hyperot.network import httpx_get
 from trafilatura import bare_extraction, extract
 from typing_extensions import override
@@ -40,7 +39,8 @@ from modules.AgentTools.registry import AgentToolBase, ToolContext, tool
 from modules.site_catch import Catcher, RenderedHtml, RenderedPage, is_cloudflare_challenge
 
 config = configurator.BotConfig.get("hyper-bot")
-_logger = logging.getLogger(__name__)
+_logger = hyperogger.Logger()
+_logger.set_level(config.log_level)
 
 VISION_THRESHOLD = 200  # 正文去空白后低于该长度则触发视觉兜底
 DIRECT_TIMEOUT = 15.0
@@ -295,7 +295,7 @@ def _visible_html_text_sync(html: str) -> str:
         parser.feed(html)
         parser.close()
     except Exception as exc:
-        _logger.debug("HTML 可见文本提取失败: %s", type(exc).__name__)
+        _logger.debug(f"HTML 可见文本提取失败: {type(exc).__name__}")
     return _clean_text("".join(parser._parts))
 
 
@@ -466,7 +466,7 @@ async def _fetch_static(url: str) -> tuple[str, str] | None:
                         html = raw.decode("utf-8", errors="replace")
                     return current, html
     except (httpx.HTTPError, OSError, ValueError) as exc:
-        _logger.debug("静态网页抓取失败: %s", type(exc).__name__)
+        _logger.debug(f"静态网页抓取失败: {type(exc).__name__}")
         return None
     return None
 
@@ -495,7 +495,7 @@ def _extract_html_sync(html: str, url: str, *, favor_recall: bool = False) -> tu
             title = str(getattr(document, "title", None) or "")
             text = str(getattr(document, "text", None) or "")
     except Exception as exc:
-        _logger.debug("Trafilatura 正文提取失败: %s", type(exc).__name__)
+        _logger.debug(f"Trafilatura 正文提取失败: {type(exc).__name__}")
     if not text:
         try:
             text = (
@@ -511,7 +511,7 @@ def _extract_html_sync(html: str, url: str, *, favor_recall: bool = False) -> tu
                 or ""
             )
         except Exception as exc:
-            _logger.debug("Trafilatura fallback 提取失败: %s", type(exc).__name__)
+            _logger.debug(f"Trafilatura fallback 提取失败: {type(exc).__name__}")
     return _clean_text(title or _title_from_html(html)), _clean_text(text)
 
 
@@ -581,7 +581,7 @@ async def _vision_read(screenshot: bytes, goal: str) -> str | None:
         )
         return _clean_text(response.text or "") or None
     except Exception as exc:
-        _logger.warning("网页视觉兜底失败: %s", type(exc).__name__)
+        _logger.warning(f"网页视觉兜底失败: {type(exc).__name__}")
         return None
     finally:
         if async_client is not None:
@@ -603,7 +603,7 @@ async def _jina_read(url: str) -> str | None:
             return None
         return _clean_text(text) or None
     except Exception as exc:
-        _logger.debug("jina 网页转写失败: %s", type(exc).__name__)
+        _logger.debug(f"jina 网页转写失败: {type(exc).__name__}")
         return None
 
 
@@ -682,12 +682,14 @@ class WebpageTools(AgentToolBase):
             return f"（网页阅读失败: {exc}）"
 
         # DeepSeek Fetch 是默认路径；只有请求失败、服务不可用或正文为空时才进入本地链路。
+        deepseek_failure = ""
         try:
             title, content = await deepseek_web.fetch(ctx, normalized_url)
         except deepseek_web.DeepSeekWebUnavailable as exc:
             deepseek_web.log_unavailable("read_webpage", exc)
+            deepseek_failure = f"{type(exc).__name__}: {exc}"
         else:
-            _logger.debug("网页阅读成功: source=deepseek url=%s", normalized_url)
+            _logger.debug(f"网页阅读成功: source=deepseek url={normalized_url}")
             return _format_result(content, title, "DeepSeek Fetch")
 
         # 1) 静态 HTML 路径。除了精确正文，也准备高召回和 DOM 结果，
@@ -712,7 +714,7 @@ class WebpageTools(AgentToolBase):
                 and _is_useful_text(extraction.precision_text)
                 and not is_cloudflare_challenge(title, extraction.precision_text)
             ):
-                _logger.debug("网页阅读成功: source=http url=%s", normalized_url)
+                _logger.debug(f"网页阅读成功: source=http url={normalized_url}")
                 return _format_result(extraction.precision_text, title, "HTTP + Trafilatura")
 
         # 2) 浏览器单次渲染；静态内容疑似不完整时也进入此路径，
@@ -741,10 +743,10 @@ class WebpageTools(AgentToolBase):
             title = _clean_text(title or rendered.title)
             text = _clean_text(text)
             if not is_cloudflare_challenge(title, text) and _is_useful_text(text):
-                _logger.debug("网页阅读成功: source=browser url=%s", normalized_url)
+                _logger.debug(f"网页阅读成功: source=browser url={normalized_url}")
                 return _format_result(text, title, "Patchright + Trafilatura")
         except Exception as exc:
-            _logger.warning("浏览器网页阅读失败: %s", type(exc).__name__)
+            _logger.warning(f"浏览器网页阅读失败: {type(exc).__name__}")
 
         # 3) 同一次浏览器导航得到的截图交给视觉模型
         if rendered is not None and rendered.screenshot is not None:
@@ -761,4 +763,5 @@ class WebpageTools(AgentToolBase):
         jina = await _jina_read(normalized_url)
         if jina:
             return _format_result(jina, "", "Jina Reader")
-        return "（网页阅读失败：HTTP、浏览器、视觉模型与 jina 均未能提取到内容）"
+        detail = f"DeepSeek Fetch: {deepseek_failure}；" if deepseek_failure else ""
+        return f"（网页阅读失败：{detail}HTTP、浏览器、视觉模型与 jina 均未能提取到内容）"

@@ -5,6 +5,9 @@ from typing import Any
 
 import httpx
 from httpx import Timeout
+from hyperot import hyperogger
+
+_logger = hyperogger.Logger()
 
 
 @dataclass
@@ -110,7 +113,7 @@ class Session:
                     else:
                         res.append(json.loads(i.replace("data: ", "")))
             else:
-                print(f"请求失败，状态码: {response.status_code}")
+                _logger.warning(f"DeepSeek 请求失败，状态码: {response.status_code}")
         return res
 
     def chat(self, prompt: str, search: bool = False, thinking: bool = False, timeout: float = 5.0) -> Response:
@@ -139,7 +142,7 @@ class Session:
             self.api.delete_session, headers={"authorization": self.auth}, json={"chat_session_id": self.session_id}
         )
         if response.json()["code"] != 0:
-            print(response.text)
+            _logger.error(response.text)
             raise Exception()
 
     def __del__(self) -> None:

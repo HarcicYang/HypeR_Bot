@@ -1,11 +1,12 @@
 import argparse
+import logging
 import subprocess
 import sys
-import traceback
 
 from git import Repo
 
 VERSION = "0.0.2"
+_logger = logging.getLogger(__name__)
 
 hyparser = argparse.ArgumentParser(description=f"HypeR Bot Utils 版本 {VERSION}")
 
@@ -22,19 +23,22 @@ def clone(path: str):
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = hyparser.parse_args()
     if args.install:
         if args.path:
-            print(f"将安装 HypeR Bot 到 {args.path}")
-            print(f"正在克隆 HypeR Bot 到 {args.path}...")
+            _logger.info(f"将安装 HypeR Bot 到 {args.path}")
+            _logger.info(f"正在克隆 HypeR Bot 到 {args.path}...")
             try:
                 clone(args.path)
-            except Exception:
-                traceback.print_exc()
-                exit(1)
-            print("安装额外依赖...")
+            except Exception as exc:
+                _logger.exception("克隆 HypeR Bot 失败")
+                raise SystemExit(1) from exc
+            _logger.info("安装额外依赖...")
             subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements_optional.txt"])
-            print("完成，请前往目标目录运行 main.py 以继续设置。请注意，pip若产生报错，则 HypeR Bot 功能可能受到影响。")
+            _logger.info(
+                "完成，请前往目标目录运行 main.py 以继续设置。请注意，pip若产生报错，则 HypeR Bot 功能可能受到影响。"
+            )
         else:
             hyparser.error("您没有为 install 指定操作路径")
     else:

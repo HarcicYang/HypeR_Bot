@@ -9,18 +9,18 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
-from hyperot import configurator
+from hyperot import configurator, hyperogger
 
 from modules.AgentTools.registry import ToolContext
 
 config = configurator.BotConfig.get("hyper-bot")
-_logger = logging.getLogger(__name__)
+_logger = hyperogger.Logger()
+_logger.set_level(config.log_level)
 
 DEEPSEEK_API_BASE = "https://api.deepseek.com"
 DEEPSEEK_SEARCH_PATH = "/v1/tools/search"
@@ -39,6 +39,19 @@ class DeepSeekWebUnavailable(RuntimeError):
 
 class DeepSeekNotConfigured(DeepSeekWebUnavailable):
     """未配置可用的 DeepSeek API key。"""
+
+
+class DeepSeekRequestFailed(DeepSeekWebUnavailable):
+    """DeepSeek API 返回非成功状态。"""
+
+    def __init__(self, message: str, status_code: int, trace_id: str = "") -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.trace_id = trace_id
+
+
+class DeepSeekFetchTargetUnavailable(DeepSeekRequestFailed):
+    """目标页面无法被 DeepSeek Fetch 提取。"""
 
 
 def _clean_api_key(value: Any) -> str:
@@ -90,6 +103,26 @@ def _error_message(response: httpx.Response) -> str:
     return message[:300]
 
 
+def _trace_id(response: httpx.Response) -> str:
+    return (response.headers.get("x-ds-trace-id") or "").strip()
+
+
+def _failure_message(response: httpx.Response) -> tuple[str, str]:
+    trace_id = _trace_id(response)
+    detail = _error_message(response)
+    message = f"HTTP {response.status_code}" + (f": {detail}" if detail else "")
+    if trace_id:
+        message += f" (trace_id={trace_id})"
+    return message, trace_id
+
+
+def _safe_target(url: str) -> str:
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    path = parsed.path or "/"
+    return f"{parsed.scheme}://{host}{path}"
+
+
 def _retry_delay(response: httpx.Response | None, attempt: int) -> float:
     if response is not None:
         raw = response.headers.get("retry-after", "").strip()
@@ -130,10 +163,9 @@ async def _post(ctx: ToolContext, path: str, payload: dict[str, Any], timeout: f
                     raise DeepSeekWebUnavailable("DeepSeek 返回了非对象 JSON")
                 return data
 
-            detail = _error_message(response)
-            last_error = f"HTTP {response.status_code}" + (f": {detail}" if detail else "")
+            last_error, trace_id = _failure_message(response)
             if response.status_code not in _RETRYABLE_STATUS or attempt + 1 >= DEEPSEEK_MAX_ATTEMPTS:
-                raise DeepSeekWebUnavailable(last_error)
+                raise DeepSeekRequestFailed(last_error, response.status_code, trace_id)
         except httpx.HTTPError as exc:
             last_error = f"{type(exc).__name__}: {exc}"
             if attempt + 1 >= DEEPSEEK_MAX_ATTEMPTS:
@@ -173,7 +205,16 @@ async def search(ctx: ToolContext, query: str, count: int) -> list[dict[str, Any
 
 async def fetch(ctx: ToolContext, url: str) -> tuple[str, str]:
     """调用 DeepSeek Fetch API，返回 (标题, Markdown 正文)。"""
-    data = await _post(ctx, DEEPSEEK_FETCH_PATH, {"url": url}, DEEPSEEK_FETCH_TIMEOUT)
+    try:
+        data = await _post(ctx, DEEPSEEK_FETCH_PATH, {"url": url}, DEEPSEEK_FETCH_TIMEOUT)
+    except DeepSeekRequestFailed as exc:
+        if exc.status_code != 404:
+            raise
+        raise DeepSeekFetchTargetUnavailable(
+            f"DeepSeek Fetch 无法读取 {_safe_target(url)}: {exc}",
+            exc.status_code,
+            exc.trace_id,
+        ) from exc
     raw_title = data.get("title")
     raw_content = data.get("content")
     title = raw_title.strip() if isinstance(raw_title, str) else ""
@@ -184,6 +225,9 @@ async def fetch(ctx: ToolContext, url: str) -> tuple[str, str]:
 
 
 def log_unavailable(tool: str, exc: Exception) -> None:
-    """记录默认链路不可用；缺少配置属于预期降级，不刷 warning。"""
-    level = logging.DEBUG if isinstance(exc, DeepSeekNotConfigured) else logging.WARNING
-    _logger.log(level, "%s 的 DeepSeek 默认链路不可用，执行本地回退: %s", tool, exc)
+    """记录默认链路不可用；缺少配置属于预期降级。"""
+    message = f"{tool} 的 DeepSeek 默认链路不可用，执行本地回退: {exc}"
+    if isinstance(exc, DeepSeekNotConfigured):
+        _logger.debug(message)
+    else:
+        _logger.warning(message)

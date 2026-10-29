@@ -234,7 +234,7 @@ class Module(ModuleClass.Module[MessageReceivedEvent]):
         now_ts = int(self.event.timestamp.timestamp())
         if ModuleClass.is_owner(self.event):
             if str(self.event.message) == ".dump":
-                print(data.dump())
+                ModuleClass.logger.info(str(data.dump()))
             else:
                 return
 

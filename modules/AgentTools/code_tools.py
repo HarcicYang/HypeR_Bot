@@ -56,7 +56,7 @@ try:
 except SystemExit:
     pass
 except BaseException:
-    _tb.print_exc()
+    sys.stderr.write(_tb.format_exc())
 """
 
 

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import sys
 import traceback
@@ -9,13 +10,15 @@ from hyperot.v2 import Client, ClientAPI
 from hyperot.v2.events import ClientStartedEvent, Event
 from hyperot_adapter_onebot.events import OneBotMessageReceivedEvent
 
+_logger = logging.getLogger(__name__)
+
 
 def _load_config() -> configurator.BotConfig:
     try:
         configurator.BotConfig.load_from("config.json", Serializers.JSON, "hyper-bot")
     except FileNotFoundError:
         configurator.BotConfig.create_and_write("config.json", Serializers.JSON)
-        print("没有找到配置文件，已自动创建，请填写后重启")
+        _logger.error("没有找到配置文件，已自动创建，请填写后重启")
         sys.exit(-1)
     return configurator.BotConfig.get("hyper-bot")
 
