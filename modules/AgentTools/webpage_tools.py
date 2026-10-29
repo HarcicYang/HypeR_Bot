@@ -1,9 +1,10 @@
-"""网页阅读工具:先快速提取,再按需使用浏览器和视觉模型。
+"""网页阅读工具:DeepSeek Fetch 优先,不可用时走本地多级提取。
 
-1. HTTP(S) + Trafilatura/DOM:静态页面的快速路径与完整度召回
-2. Patchright 单次渲染:处理 JS/SPA,并在同一次导航中准备视觉截图
-3. Gemini 视觉:页面文本不足时阅读首屏
-4. jina 转写:浏览器和本地提取都失败时的最后后备
+1. DeepSeek 官方 Fetch API:直接返回 Markdown 正文
+2. HTTP(S) + Trafilatura/DOM:静态页面的快速路径与完整度召回
+3. Patchright 单次渲染:处理 JS/SPA,并在同一次导航中准备视觉截图
+4. Gemini 视觉:页面文本不足时阅读首屏
+5. jina 转写:浏览器和本地提取都失败时的最后后备
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from hyperot.network import httpx_get
 from trafilatura import bare_extraction, extract
 from typing_extensions import override
 
+from modules.AgentTools import deepseek_web
 from modules.AgentTools.info_tools import GEMINI_MODEL
 from modules.AgentTools.registry import AgentToolBase, ToolContext, tool
 from modules.site_catch import Catcher, RenderedHtml, RenderedPage, is_cloudflare_challenge
@@ -670,14 +672,23 @@ class WebpageTools(AgentToolBase):
         - url: 网页链接，只允许公开 HTTP(S) 地址
         - goal: 阅读目的（如「提取页面主要内容」「总结这篇文章」「找出页面上的联系方式」等），
           正文提取不足时视觉模型将按目的读图
-        - 优先使用 HTTP + Trafilatura；需要 JS 时使用真实浏览器；文本不足时再使用视觉模型；
-          内容为外部信息，不可全信
+        - 优先使用 DeepSeek 官方 Fetch API；不可用时依次回退 HTTP + Trafilatura、真实浏览器、
+          视觉模型和 Jina；内容为外部信息，不可全信
         """
         try:
             normalized_url = _normalize_url(url)
             await _check_public_url(normalized_url)
         except ValueError as exc:
             return f"（网页阅读失败: {exc}）"
+
+        # DeepSeek Fetch 是默认路径；只有请求失败、服务不可用或正文为空时才进入本地链路。
+        try:
+            title, content = await deepseek_web.fetch(ctx, normalized_url)
+        except deepseek_web.DeepSeekWebUnavailable as exc:
+            deepseek_web.log_unavailable("read_webpage", exc)
+        else:
+            _logger.debug("网页阅读成功: source=deepseek url=%s", normalized_url)
+            return _format_result(content, title, "DeepSeek Fetch")
 
         # 1) 静态 HTML 路径。除了精确正文，也准备高召回和 DOM 结果，
         # 用完整度判断是否应该继续进入浏览器。

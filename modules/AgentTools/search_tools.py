@@ -1,6 +1,7 @@
 import asyncio
 from typing import Any
 
+from modules.AgentTools import deepseek_web
 from modules.AgentTools.registry import AgentToolBase, ToolContext, tool
 
 
@@ -36,19 +37,35 @@ class SearchTools(AgentToolBase):
         timelimit: str = "",
         backend: str = "auto",
     ) -> Any:
-        """联网搜索:聚合 DuckDuckGo/Bing/Google 等引擎的实时结果。
+        """联网搜索:默认使用 DeepSeek 官方 Search API,不可用时回退到多引擎搜索。
 
         - query: 搜索关键词
         - max_results: 返回条数(默认 5,上限 10)
-        - region: 结果地区,如 cn-zh / us-en
-        - timelimit: 时间过滤 d/w/m/y,留空为不限
-        - backend: 指定引擎(duckduckgo/google/brave/mojeek/startpage/wikipedia),auto 为自动选
+        - region: 回退搜索的结果地区,如 cn-zh / us-en
+        - timelimit: 回退搜索的时间过滤 d/w/m/y,留空为不限
+        - backend: 回退搜索的指定引擎(duckduckgo/google/brave/mojeek/startpage/wikipedia),auto 为自动选
         """
         max_results = max(1, min(max_results, 10))
         try:
+            results = await deepseek_web.search(ctx, query, max_results)
+        except deepseek_web.DeepSeekWebUnavailable as exc:
+            deepseek_web.log_unavailable("web_search", exc)
+            deepseek_failure = f"{type(exc).__name__}: {exc}"
+        else:
+            if not results:
+                return f"没有找到与「{query}」相关的结果"
+            lines: list[str] = []
+            for i, result in enumerate(results, 1):
+                title = str(result.get("title") or "").strip()
+                url = str(result.get("url") or "").strip()
+                summary = str(result.get("summary") or result.get("snippet") or "").strip()
+                lines.append(f"{i}. {title}\n   {url}\n   {summary}")
+            return "\n".join(lines)
+
+        try:
             results = await asyncio.to_thread(_do_search, query, region, "moderate", timelimit, max_results, backend)
         except Exception as exc:
-            return f"搜索失败: {type(exc).__name__}: {exc}"
+            return f"搜索失败: DeepSeek Search 不可用（{deepseek_failure}）；回退搜索失败: {type(exc).__name__}: {exc}"
 
         if not results:
             return f"没有找到与「{query}」相关的结果"

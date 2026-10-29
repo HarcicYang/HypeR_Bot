@@ -114,9 +114,21 @@ AI 聊天模块（`.chat`）需要在 `others` 中配置后端：
     "agent_white": {},
     "agent_profile": "cat",
     "agent_memory_limit": 500,
-    "agent_module_deny": []
+    "agent_module_deny": [],
+    "deepseek_api_key": ""
 }
 ```
+
+Agent 的 `web_search` 与 `read_webpage` 默认使用 DeepSeek 官方
+[Search / Fetch API](https://api-docs.deepseek.com/guides/search)。DeepSeek API key 按以下顺序查找：
+
+1. `config.others.deepseek_api_key`
+2. 环境变量 `DEEPSEEK_API_KEY`
+3. 当前 `api_profiles.json` profile 的 `base_url` 为 `https://api.deepseek.com` 时，复用该 profile 的 `api_key`
+
+未配置 key、网络失败、限流或服务端不可用时，`web_search` 回退到原来的多引擎搜索；
+`read_webpage` 回退到 HTTP + Trafilatura、Patchright、Gemini 视觉和 Jina 链路。
+DeepSeek Search 成功但没有结果时直接返回空结果，不会触发回退。
 
 LLM 连接配置保存在 `api_profiles.json`，支持多个 OpenAI 兼容服务商和精确模型名：
 
