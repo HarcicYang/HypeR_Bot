@@ -10,7 +10,6 @@ import os
 import re
 import time
 import traceback
-import uuid
 from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
@@ -1863,16 +1862,21 @@ class AgentCore:
 
     async def _llm_create(self, tool_choice_n: Any) -> Any:
         if self.api_mode == "responses":
-            return await self._oai.responses.create(  # pyrefly: ignore[no-matching-overload]
-                model=self.model,
-                input=await self._history_to_items(),
-                tools=self._tools_for_responses(),
-                tool_choice=tool_choice_n,
+            request: dict[str, Any] = {
+                "model": self.model,
+                "input": await self._history_to_items(),
+                "tools": self._tools_for_responses(),
+                "tool_choice": tool_choice_n,
                 # 保持服务端默认的并行工具调用能力;本层会等当前 assistant 的
                 # 全部 function_call 都补完 output 后才发起下一次请求。
-                reasoning=cast(Any, {"effort": self.reasoning_effort}),
-                text=cast(Any, {"format": {"type": "json_object"}}),
-            )
+                "reasoning": {"effort": self.reasoning_effort},
+                "text": {"format": {"type": "json_object"}},
+            }
+            if self._uses_muse_encrypted_reasoning():
+                # Muse 无法重放裸 rs_ ID;无状态加密 reasoning 需要显式请求。
+                request["store"] = False
+                request["include"] = ["reasoning.encrypted_content"]
+            return await self._oai.responses.create(**request)
         return await self._oai.chat.completions.create(
             model=self.model,
             messages=cast(Any, await self._history_to_chat_messages()),
@@ -1886,14 +1890,10 @@ class AgentCore:
     async def _history_to_items(self) -> list[dict[str, Any]]:
         """内部 chat 格式 history → Responses API 输入 items。
 
-        顺序约定(关键,来自 DeepSeek 文档「输入 Items」兼容性):
-        - function_call 会「归并到相邻 assistant 消息」,reasoning 明文 content 同样
-          「归并到相邻 assistant 消息」:服务端按原始顺序重建 assistant 轮次,每一轮
-          (web_search / function_call)都必须配有自己的 reasoning,否则报
-          "The `reasoning_text` in the thinking mode must be passed back to the API."
-        - web_search_call「原样回传即可,服务端自动恢复搜索结果」。
-        因此必须按 _parse_output 记录的顺序(order)严格重建,不能把 reasoning 全提
-        前、web_search_call 推后 —— 那会让 function_call 轮次失去配对的 reasoning。
+        Responses 会把 reasoning / function_call 按输入顺序归并到 assistant 轮次,
+        因此必须按 _parse_output 记录的 order 重建。服务端签发的 reasoning(尤其是
+        Muse 的 encrypted_content)原样回传;旧 Chat 历史生成的伪 reasoning 无法跨
+        服务商重放,直接丢弃,只损失该轮思考链,不影响 message / tool 配对。
         """
         items: list[dict[str, Any]] = []
         # tool 消息不单独输出:其内容作为对应 function_call 的 output 紧跟输出
@@ -1920,46 +1920,39 @@ class AgentCore:
 
     def _assistant_items(self, m: dict[str, Any], tool_out: dict[str, str]) -> list[dict[str, Any]]:
         """把一条内部 assistant 消息按原始顺序还原为 Responses items。"""
-        reasoning = list(m.get("reasoning") or [])
+        raw_reasoning = m.get("reasoning")
+        reasoning: list[dict[str, Any] | None] = [
+            self._reasoning_item_for_replay(item) for item in (raw_reasoning if isinstance(raw_reasoning, list) else [])
+        ]
         ws = list(m.get("web_search_call") or [])
         fcs = list(m.get("tool_calls") or [])
         order = m.get("order")
         out: list[dict[str, Any]] = []
         if order:
             ri = wi = fi = 0
-            last_reasoning: dict[str, Any] | None = None
-            last_was_reasoning = False
 
             def ensure_reasoning_for_call() -> None:
-                nonlocal ri, last_reasoning, last_was_reasoning
-                if last_reasoning is None and ri < len(reasoning):
+                nonlocal ri
+                if ri < len(reasoning):
                     # order 与 reasoning 列表不一致时,先把未消费的 reasoning 补到调用前。
-                    last_reasoning = reasoning[ri]
-                    out.append(last_reasoning)
-                    ri += 1
-                    last_was_reasoning = True
+                    take_reasoning()
+
+            def take_reasoning() -> None:
+                nonlocal ri
+                if ri >= len(reasoning):
                     return
-                if last_was_reasoning or last_reasoning is None:
-                    return
-                # DeepSeek 要求每个 function_call / web_search_call 都有配对的
-                # reasoning_text;原生响应可能一个 reasoning 后跟多个 tool call,
-                # 这里复制最近一条 reasoning 补齐,否则下一个请求 400。
-                dup = copy.deepcopy(last_reasoning)
-                dup["id"] = f"{last_reasoning.get('id', 'reasoning')}_dup_{uuid.uuid4().hex}"
-                out.append(dup)
-                last_was_reasoning = True
+                item = reasoning[ri]
+                ri += 1
+                if item is not None:
+                    out.append(item)
 
             for typ in order:
-                if typ == "reasoning" and ri < len(reasoning):
-                    last_reasoning = reasoning[ri]
-                    out.append(last_reasoning)
-                    ri += 1
-                    last_was_reasoning = True
+                if typ == "reasoning":
+                    take_reasoning()
                 elif typ == "web_search_call" and wi < len(ws):
                     ensure_reasoning_for_call()
                     out.append(ws[wi])
                     wi += 1
-                    last_was_reasoning = False
                 elif typ == "function_call" and fi < len(fcs):
                     ensure_reasoning_for_call()
                     fc = fcs[fi]
@@ -1974,16 +1967,17 @@ class AgentCore:
                         }
                     )
                     out.append({"type": "function_call_output", "call_id": cid, "output": tool_out.get(cid, "")})
-                    last_was_reasoning = False
                 elif typ == "message":
                     out.append({"type": "message", "role": "assistant", "content": m.get("content", "")})
-                    last_was_reasoning = False
             return out
 
         # 旧历史兼容(无 order):reasoning 与 ws / fc 依次配对,尽力贴近真实顺序
         def _take_reasoning() -> None:
-            if reasoning:
-                out.append(reasoning.pop(0))
+            while reasoning:
+                item = reasoning.pop(0)
+                if item is not None:
+                    out.append(item)
+                    return
 
         for w in ws:
             _take_reasoning()
@@ -2001,10 +1995,41 @@ class AgentCore:
             )
             out.append({"type": "function_call_output", "call_id": cid, "output": tool_out.get(cid, "")})
         for r in reasoning:
-            out.append(r)
+            if r is not None:
+                out.append(r)
         if m.get("content"):
             out.append({"type": "message", "role": "assistant", "content": m["content"]})
         return out
+
+    def _uses_muse_encrypted_reasoning(self) -> bool:
+        model = self.model.lower()
+        model_name = re.split(r"[/:]", model)[-1]
+        return model_name.startswith("muse-")
+
+    def _reasoning_item_for_replay(self, item: Any) -> dict[str, Any] | None:
+        """Return a replayable reasoning item, or None when its provenance is unavailable."""
+        if not isinstance(item, dict) or item.get("type") != "reasoning":
+            return None
+        replay = copy.deepcopy(item)
+        encrypted = replay.get("encrypted_content")
+        if isinstance(encrypted, str) and encrypted.strip():
+            # Encrypted reasoning is self-contained. The issuer-bound ID can be
+            # rejected after a restart/profile switch, so send the portable form.
+            replay.pop("id", None)
+            if not isinstance(replay.get("summary"), list):
+                replay["summary"] = cast(list[Any], [])
+            return replay
+
+        item_id = replay.get("id")
+        synthetic = (
+            not isinstance(item_id, str)
+            or not item_id.strip()
+            or item_id.startswith("chat_reasoning_")
+            or re.fullmatch(r".+_dup_[0-9a-f]{32}", item_id) is not None
+        )
+        if synthetic or self._uses_muse_encrypted_reasoning():
+            return None
+        return replay
 
     @staticmethod
     def _short_json(value: Any, limit: int = 240) -> str:
