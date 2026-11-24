@@ -1892,8 +1892,8 @@ class AgentCore:
 
         Responses 会把 reasoning / function_call 按输入顺序归并到 assistant 轮次,
         因此必须按 _parse_output 记录的 order 重建。服务端签发的 reasoning(尤其是
-        Muse 的 encrypted_content)原样回传;旧 Chat 历史生成的伪 reasoning 无法跨
-        服务商重放,直接丢弃,只损失该轮思考链,不影响 message / tool 配对。
+        Muse 的 encrypted_content)原样回传。DeepSeek 只接受明文 reasoning_text;
+        外来的 encrypted-only reasoning 无法转换成明文,工具回合降级为普通文本。
         """
         items: list[dict[str, Any]] = []
         # tool 消息不单独输出:其内容作为对应 function_call 的 output 紧跟输出
@@ -1926,6 +1926,12 @@ class AgentCore:
         ]
         ws = list(m.get("web_search_call") or [])
         fcs = list(m.get("tool_calls") or [])
+        foreign_reasoning = any(
+            self._is_foreign_reasoning(item) and replay is None
+            for item, replay in zip(raw_reasoning if isinstance(raw_reasoning, list) else [], reasoning, strict=True)
+        )
+        if self._uses_deepseek_plain_reasoning() and fcs and foreign_reasoning:
+            return self._assistant_tool_turn_as_text(m, tool_out, fcs)
         order = m.get("order")
         out: list[dict[str, Any]] = []
         if order:
@@ -2001,16 +2007,89 @@ class AgentCore:
             out.append({"type": "message", "role": "assistant", "content": m["content"]})
         return out
 
+    def _assistant_tool_turn_as_text(
+        self, m: dict[str, Any], tool_out: dict[str, str], fcs: list[Any]
+    ) -> list[dict[str, Any]]:
+        """把无法按原生工具协议重放的历史回合保留为普通文本。"""
+        text = m.get("content") if isinstance(m.get("content"), str) else ""
+        call_lines: list[str] = []
+        for call in fcs:
+            if not isinstance(call, dict):
+                continue
+            function = call.get("function")
+            if not isinstance(function, dict):
+                continue
+            call_id = str(call.get("id") or "")
+            name = str(function.get("name") or "?")
+            arguments = function.get("arguments") or "{}"
+            call_lines.append(f"- {name} {arguments} (call_id={call_id})")
+        if call_lines:
+            block = "[历史工具调用]\n" + "\n".join(call_lines)
+            text = f"{text}\n\n{block}" if text else block
+
+        out = [{"type": "message", "role": "assistant", "content": text}]
+        result_lines: list[str] = []
+        for call in fcs:
+            if not isinstance(call, dict):
+                continue
+            call_id = str(call.get("id") or "")
+            result = tool_out.get(call_id)
+            if result is not None:
+                result_lines.append(f"[{call_id}] {result}")
+        if result_lines:
+            out.append({"type": "message", "role": "user", "content": "[历史工具结果]\n" + "\n".join(result_lines)})
+        return out
+
     def _uses_muse_encrypted_reasoning(self) -> bool:
         model = self.model.lower()
         model_name = re.split(r"[/:]", model)[-1]
         return model_name.startswith("muse-")
+
+    def _uses_deepseek_plain_reasoning(self) -> bool:
+        model = self.model.lower()
+        model_name = re.split(r"[/:]", model)[-1]
+        return model_name.startswith("deepseek-")
+
+    @staticmethod
+    def _is_foreign_reasoning(item: Any) -> bool:
+        return isinstance(item, dict) and str(item.get("id") or "").startswith("rs_")
+
+    @staticmethod
+    def _reasoning_text_parts(item: dict[str, Any]) -> list[dict[str, Any]]:
+        content = item.get("content")
+        if isinstance(content, str):
+            return [{"type": "reasoning_text", "text": content}] if content.strip() else []
+        if not isinstance(content, list):
+            return []
+        parts: list[dict[str, Any]] = []
+        for part in content:
+            if not isinstance(part, dict) or part.get("type") != "reasoning_text":
+                continue
+            text = part.get("text")
+            if isinstance(text, str) and text.strip():
+                parts.append({"type": "reasoning_text", "text": text})
+        return parts
 
     def _reasoning_item_for_replay(self, item: Any) -> dict[str, Any] | None:
         """Return a replayable reasoning item, or None when its provenance is unavailable."""
         if not isinstance(item, dict) or item.get("type") != "reasoning":
             return None
         replay = copy.deepcopy(item)
+        if self._uses_deepseek_plain_reasoning():
+            parts = self._reasoning_text_parts(replay)
+            if parts:
+                return {"type": "reasoning", "content": parts}
+            if self._is_foreign_reasoning(replay):
+                return None
+            return {
+                "type": "reasoning",
+                "content": [
+                    {
+                        "type": "reasoning_text",
+                        "text": "The original reasoning text is unavailable; continue from the tool call and its result.",
+                    }
+                ],
+            }
         encrypted = replay.get("encrypted_content")
         if isinstance(encrypted, str) and encrypted.strip():
             # Encrypted reasoning is self-contained. The issuer-bound ID can be
