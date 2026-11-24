@@ -1936,21 +1936,28 @@ class AgentCore:
         out: list[dict[str, Any]] = []
         if order:
             ri = wi = fi = 0
+            last_reasoning: dict[str, Any] | None = None
+            last_was_reasoning = False
 
             def ensure_reasoning_for_call() -> None:
-                nonlocal ri
-                if ri < len(reasoning):
+                nonlocal ri, last_was_reasoning
+                if last_reasoning is None and ri < len(reasoning):
                     # order 与 reasoning 列表不一致时,先把未消费的 reasoning 补到调用前。
                     take_reasoning()
+                if self._uses_deepseek_plain_reasoning() and last_reasoning is not None and not last_was_reasoning:
+                    out.append(copy.deepcopy(last_reasoning))
+                    last_was_reasoning = True
 
             def take_reasoning() -> None:
-                nonlocal ri
+                nonlocal ri, last_reasoning, last_was_reasoning
                 if ri >= len(reasoning):
                     return
                 item = reasoning[ri]
                 ri += 1
                 if item is not None:
+                    last_reasoning = item
                     out.append(item)
+                    last_was_reasoning = True
 
             for typ in order:
                 if typ == "reasoning":
@@ -1959,6 +1966,7 @@ class AgentCore:
                     ensure_reasoning_for_call()
                     out.append(ws[wi])
                     wi += 1
+                    last_was_reasoning = False
                 elif typ == "function_call" and fi < len(fcs):
                     ensure_reasoning_for_call()
                     fc = fcs[fi]
@@ -1973,23 +1981,40 @@ class AgentCore:
                         }
                     )
                     out.append({"type": "function_call_output", "call_id": cid, "output": tool_out.get(cid, "")})
+                    last_was_reasoning = False
                 elif typ == "message":
                     out.append({"type": "message", "role": "assistant", "content": m.get("content", "")})
+                    last_was_reasoning = False
             return out
 
         # 旧历史兼容(无 order):reasoning 与 ws / fc 依次配对,尽力贴近真实顺序
+        last_reasoning: dict[str, Any] | None = None
+        last_was_reasoning = False
+
         def _take_reasoning() -> None:
+            nonlocal last_reasoning, last_was_reasoning
             while reasoning:
                 item = reasoning.pop(0)
                 if item is not None:
+                    last_reasoning = item
                     out.append(item)
+                    last_was_reasoning = True
                     return
+
+        def _ensure_reasoning_for_call() -> None:
+            nonlocal last_was_reasoning
+            if self._uses_deepseek_plain_reasoning() and last_reasoning is not None and not last_was_reasoning:
+                out.append(copy.deepcopy(last_reasoning))
+                last_was_reasoning = True
 
         for w in ws:
             _take_reasoning()
+            _ensure_reasoning_for_call()
             out.append(w)
+            last_was_reasoning = False
         for fc in fcs:
             _take_reasoning()
+            _ensure_reasoning_for_call()
             cid = fc.get("id", "")
             out.append(
                 {
@@ -2000,6 +2025,7 @@ class AgentCore:
                 }
             )
             out.append({"type": "function_call_output", "call_id": cid, "output": tool_out.get(cid, "")})
+            last_was_reasoning = False
         for r in reasoning:
             if r is not None:
                 out.append(r)
