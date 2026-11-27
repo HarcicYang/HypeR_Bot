@@ -12,7 +12,7 @@ from hyperot.v2.events import MessageReceivedEvent
 from typing_extensions import override
 
 from ModuleClass import Module, ModuleInfo, ModuleRegister
-from modules.site_catch import file_url
+from modules.file_utils import file_url
 
 
 @dataclasses.dataclass

@@ -34,7 +34,6 @@ HypeR Bot是一个适配 OneBot 和 Milky 协议并支持拓展自定义协议�
 
 ```shell
 uv sync          # 安装运行时与开发依赖到 .venv
-uv run patchright install chromium  # 安装网页阅读使用的 Chromium
 uv run python main.py
 ```
 
@@ -89,6 +88,13 @@ uv run pyrefly check    # 类型检查（strict 预设，无参数的项目模�
 - `log_use_nf`：是否为日志输出启用NerdFont;
 - `protocol`：适配的协议，目前仅支持OneBot.
 
+GitHub 链接预览、`.quote` 制图和 Agent HTML 渲染通过 Browserless 完成。在 `others` 中配置：
+
+```json
+"browserless_token": "",
+"browserless_endpoint": "https://production-sfo.browserless.io"
+```
+
 AI 聊天模块（`.chat`）需要在 `others` 中配置后端：
 
 ```json
@@ -127,7 +133,7 @@ Agent 的 `web_search` 与 `read_webpage` 默认使用 DeepSeek 官方
 3. 当前 `api_profiles.json` profile 的 `base_url` 为 `https://api.deepseek.com` 时，复用该 profile 的 `api_key`
 
 未配置 key、网络失败、限流或服务端不可用时，`web_search` 回退到原来的多引擎搜索；
-`read_webpage` 回退到 HTTP + Trafilatura、Patchright、Gemini 视觉和 Jina 链路。
+`read_webpage` 回退到 HTTP + Trafilatura、Jina Reader 和静态 DOM 提取，不在服务器上启动 Chromium。
 DeepSeek Search 成功但没有结果时直接返回空结果，不会触发回退。
 DeepSeek Fetch 返回 HTTP 404 时，日志会附带目标 URL、官方错误信息和响应中的 `trace_id`，便于区分
 目标页不可提取与 API 路由/账号权限问题。

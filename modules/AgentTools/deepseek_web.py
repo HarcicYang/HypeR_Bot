@@ -226,7 +226,7 @@ async def fetch(ctx: ToolContext, url: str) -> tuple[str, str]:
 
 def log_unavailable(tool: str, exc: Exception) -> None:
     """记录默认链路不可用；缺少配置属于预期降级。"""
-    message = f"{tool} 的 DeepSeek 默认链路不可用，执行本地回退: {exc}"
+    message = f"{tool} 的 DeepSeek 默认链路不可用，执行后备链路: {exc}"
     if isinstance(exc, DeepSeekNotConfigured):
         _logger.debug(message)
     else:

@@ -1,4 +1,5 @@
 import os
+import uuid
 from typing import Any
 
 from hyperot.v2 import Image, Message
@@ -7,24 +8,23 @@ from hyperot.v2.events import MessageReceivedEvent
 from typing_extensions import override
 
 from ModuleClass import Module, ModuleInfo, ModuleRegister, group_message
-from modules.site_catch import Catcher, file_url
+from modules.browserless import screenshot_html
+from modules.file_utils import file_url
 
 
-async def get_image(quote: str, ava_url: str, name: str, uin: int) -> str:
-    catcher = await Catcher.init()  # 共享浏览器，进程内只启动一次
-    try:
-        with open("./assets/quote.html", encoding="utf-8") as f:
-            html = f.read()
+async def get_image(quote: str, ava_url: str, name: str) -> str:
+    with open("./assets/quote.html", encoding="utf-8") as file:
+        html = file.read()
 
-        html = html.replace("{ava_url}", ava_url)
-        html = html.replace("{quote}", quote)
-        html = html.replace("{name}", name)
+    html = html.replace("{ava_url}", ava_url)
+    html = html.replace("{quote}", quote)
+    html = html.replace("{name}", name)
 
-        with open(f"./temps/quote_{uin}.html", "w", encoding="utf-8") as f:
-            f.write(html)
-        return await catcher.catch(file_url(f"./temps/quote_{uin}.html"), (1280, 640))
-    finally:
-        os.remove(f"./temps/quote_{uin}.html")
+    data = await screenshot_html(html)
+    path = f"./temps/quote_{uuid.uuid4().hex}.png"
+    with open(path, "wb") as file:
+        file.write(data)
+    return path
 
 
 @ModuleRegister.register(MessageReceivedEvent)
@@ -64,7 +64,7 @@ class Quoter(Module[MessageReceivedEvent]):
         uin = sender.get("user_id")
         if uin is None:
             return
-        res = await get_image(text, f"http://q2.qlogo.cn/headimg_dl?dst_uin={uin}&spec=640", name, uin)
+        res = await get_image(text, f"http://q2.qlogo.cn/headimg_dl?dst_uin={uin}&spec=640", name)
         await self.api.scene(self.event.scene_type, self.event.scene_id).send(
             Message(QuoteSegment(message_id=str(self.event.message_id)), Image(source=file_url(res)))
         )

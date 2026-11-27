@@ -1,9 +1,13 @@
+import json
+import tempfile
 import unittest
+from io import BytesIO
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
 
 from cfgr.manager import Serializers
 from hyperot import configurator
+from PIL import Image
 from typing_extensions import override
 
 try:
@@ -95,13 +99,59 @@ class DeepSeekWebToolTests(unittest.IsolatedAsyncioTestCase):
                 AsyncMock(side_effect=deepseek_web.DeepSeekWebUnavailable("service down")),
             ),
             patch.object(webpage_tools, "_fetch_static", AsyncMock(return_value=None)) as static_fetch,
-            patch.object(webpage_tools.Catcher, "init", AsyncMock(side_effect=RuntimeError("browser down"))),
             patch.object(webpage_tools, "_jina_read", AsyncMock(return_value=None)),
         ):
             result = await WebpageTools().read_webpage(self.ctx, "https://example.com/article")
 
         self.assertIn("网页阅读失败", result)
         static_fetch.assert_awaited_once_with("https://example.com/article")
+
+    async def test_read_webpage_uses_jina_after_local_sources_fail(self) -> None:
+        with (
+            patch.object(webpage_tools, "_check_public_url", AsyncMock()),
+            patch.object(
+                deepseek_web,
+                "fetch",
+                AsyncMock(side_effect=deepseek_web.DeepSeekWebUnavailable("service down")),
+            ),
+            patch.object(webpage_tools, "_fetch_static", AsyncMock(return_value=None)),
+            patch.object(webpage_tools, "_jina_read", AsyncMock(return_value="Jina content")) as jina_read,
+        ):
+            result = await WebpageTools().read_webpage(self.ctx, "https://example.com/article")
+
+        self.assertIn("读取方式：Jina Reader", result)
+        self.assertIn("Jina content", result)
+        jina_read.assert_awaited_once_with("https://example.com/article")
+
+    async def test_render_html_uses_browserless(self) -> None:
+        with BytesIO() as buffer:
+            Image.new("RGB", (720, 480)).save(buffer, "PNG")
+            png = buffer.getvalue()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch.object(webpage_tools, "RENDER_DIR", temp_dir),
+                patch.object(webpage_tools, "screenshot_html", AsyncMock(return_value=png)) as screenshot,
+            ):
+                result = await WebpageTools().render_html(
+                    self.ctx,
+                    "<h1>Example</h1>",
+                    width=720,
+                    height=480,
+                    full_page=True,
+                    wait_ms=1_200,
+                )
+
+            payload = json.loads(result)
+            self.assertEqual((payload["width"], payload["height"]), (720, 480))
+            self.assertFalse(payload["truncated"])
+            self.assertTrue(payload["file"].startswith(temp_dir))
+        screenshot.assert_awaited_once_with(
+            "<h1>Example</h1>",
+            width=720,
+            height=480,
+            full_page=True,
+            wait_ms=1_200,
+        )
 
     async def test_deepseek_search_empty_results_are_valid(self) -> None:
         with patch.object(deepseek_web, "_post", AsyncMock(return_value={"results": []})) as post:

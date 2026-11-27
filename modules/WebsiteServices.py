@@ -3,6 +3,7 @@ import os
 import re
 import threading
 import time
+import uuid
 
 from hyperot.network import httpx_get
 from hyperot.v2 import Image as ImageSegment
@@ -14,7 +15,8 @@ from typing_extensions import override
 
 import ModuleClass
 from modules.bili_renderer import fetch_resources, render, video_info
-from modules.site_catch import Catcher, file_url
+from modules.browserless import screenshot_url
+from modules.file_utils import file_url
 
 
 async def get_bv(text: str):
@@ -150,8 +152,11 @@ class GitHubView:
 
     @staticmethod
     async def _get(url: str) -> str:
-        cth = await Catcher.init()
-        return await cth.catch(url)
+        data = await screenshot_url(url)
+        path = f"./temps/web_{uuid.uuid4().hex}.png"
+        with open(path, "wb") as file:
+            file.write(data)
+        return path
 
     def head(self) -> str:
         return f"https://opengraph.githubassets.com/Yenai/{self.author}/{self.repo}"
@@ -183,46 +188,28 @@ class GitHubView:
 
     async def iss(self, code: str) -> Image.Image:
         url = f"https://github.com/{self.author}/{self.repo}/issues/{code}"
-        pth = await self._get(url)
-        img = Image.open(pth)
-        img = img.crop((0, 75, img.size[0], img.size[1] - 220))
-        return img
+        return Image.open(await self._get(url))
 
     async def pull(self, code: str) -> Image.Image:
         url = f"https://github.com/{self.author}/{self.repo}/pull/{code}"
-        pth = await self._get(url)
-        img = Image.open(pth)
-        img = img.crop((0, 75, img.size[0], img.size[1] - 220))
-        return img
+        return Image.open(await self._get(url))
 
     async def pull_diff(self, code: str) -> Image.Image:
         url = f"https://github.com/{self.author}/{self.repo}/pull/{code}/files"
-        pth = await self._get(url)
-        img = Image.open(pth)
-        img = img.crop((0, 75, img.size[0], img.size[1] - 150))
-        return img
+        return Image.open(await self._get(url))
 
     async def commit(self, code: str) -> Image.Image:
         url = f"https://github.com/{self.author}/{self.repo}/commit/{code}"
-        pth = await self._get(url)
-        img = Image.open(pth)
-        img = img.crop((0, 75, img.size[0], img.size[1] - 150))
-        return img
+        return Image.open(await self._get(url))
 
     async def release(self, tag: str) -> Image.Image:
-        """获取 release 页面截图并裁剪。"""
+        """获取 release 内容截图。"""
         url = f"https://github.com/{self.author}/{self.repo}/releases/tag/{tag}"
-        pth = await self._get(url)
-        img = Image.open(pth)
-        img = img.crop((0, 75, img.size[0], img.size[1] - 220))
-        return img
+        return Image.open(await self._get(url))
 
     async def repo_page(self, url: str) -> Image.Image:
         url = f"https://github.com/{self.author}" + (f"/{self.repo}" if self.repo is not None else "")
-        pth = await self._get(url)
-        img = Image.open(pth)
-        img = img.crop((0, 75, img.size[0], img.size[1] - 220))
-        return img
+        return Image.open(await self._get(url))
 
 
 @ModuleClass.ModuleRegister.register(MessageReceivedEvent)
